@@ -1101,8 +1101,13 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
   const [aktivBoks,setAktivBoks]=useState(null); // null | "kritisk" | "saker" | "kampanjer" | "signaturer"
-  const filtered = useMemo(()=>VARSLER.filter(v=>!søk||v.tittel.toLowerCase().includes(søk.toLowerCase())||v.sammendrag.toLowerCase().includes(søk.toLowerCase())),[søk]);
-
+  const [varslerData, setVarslerData] = useState([]);
+  useEffect(()=>{
+    sb.from("varsler").select("*").order("opprettet",{ascending:false})
+      .then(({data})=>{ if(data) setVarslerData(data); });
+  },[]);
+  
+  const filtered = useMemo(()=>varslerData.filter(v=>!søk||v.tittel?.toLowerCase().includes(søk.toLowerCase())||v.sammendrag?.toLowerCase().includes(søk.toLowerCase())),[søk,varslerData]);
   const kritiskeVarsler = VARSLER.filter(v=>v.status==="kritisk");
 
   const statBokser = [
