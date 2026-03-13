@@ -3220,6 +3220,29 @@ function PubliserModal({onClose,onPubliser}) {
 
 // ─── ROOT APP ─────────────────────────────────────────────────────────────
 export default function App() {
+  const [epost, setEpost] = useState("");
+const [sendt, setSendt] = useState(false);
+const meldPa = async () => {
+  if (!epost) return;
+  await sb.from("pamelding").insert({epost});
+  setSendt(true);
+};
+return (
+  <div style={{minHeight:"100vh",background:"#FAF7F2",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 20px",fontFamily:"'Playfair Display',serif",textAlign:"center"}}>
+    <div style={{fontSize:14,letterSpacing:2,color:"#8B1A1A",marginBottom:16,fontFamily:"sans-serif"}}>KOMMER SNART</div>
+    <h1 style={{fontSize:42,color:"#1a1a1a",marginBottom:16,lineHeight:1.2}}>Kulturvarsling.no</h1>
+    <p style={{fontSize:18,color:"#555",maxWidth:520,lineHeight:1.7,marginBottom:8}}>Vi bygger et varslingssystem for kulturlivet – slik at du aldri går glipp av en høring, et vedtak eller en frist som angår ditt fagfelt.</p>
+    <p style={{fontSize:16,color:"#777",maxWidth:480,marginBottom:32}}>Meld deg på, så gir vi deg beskjed når vi er klare.</p>
+    {sendt ? (
+      <p style={{color:"#8B1A1A",fontSize:18,fontWeight:700}}>Takk! Vi gir deg beskjed når vi lanserer.</p>
+    ) : (
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
+        <input value={epost} onChange={e=>setEpost(e.target.value)} placeholder="din@epost.no" style={{padding:"12px 16px",borderRadius:8,border:"1px solid #ccc",fontSize:16,width:260}}/>
+        <button onClick={meldPa} style={{padding:"12px 24px",background:"#8B1A1A",color:"white",border:"none",borderRadius:8,fontSize:16,cursor:"pointer"}}>Meld meg på</button>
+      </div>
+    )}
+  </div>
+);
   const [screen,setScreen]=useState("bruker-app");
   const [user,setUser]=useState(null);
   const [kommune,setKommune]=useState(null);
