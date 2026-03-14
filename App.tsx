@@ -374,7 +374,7 @@ function Landing({setScreen}) {
         </div>
       </div>
 
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)}/>}
+      {valgt&&<SaksModal sak={valgt} kampanjer={KAMPANJER} onClose={()=>setValgt(null)}/>}
     </div>
   );
 }
@@ -1103,9 +1103,9 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
   const [aktivBoks,setAktivBoks]=useState(null); // null | "kritisk" | "saker" | "kampanjer" | "signaturer"
   const [varslerData, setVarslerData] = useState([]);
   useEffect(()=>{
-    sb.from("varsler").select("*")
-      .then(({data})=>{ if(data) setVarslerData(data); });
-  },[]);
+  sb.from("varsler").select("*")
+    .then(({data,error})=>{ console.log("varsler:",data,error); if(data) setVarslerData(data); });
+},[]);
   
   const filtered = useMemo(()=>varslerData.filter(v=>!søk||v.tittel?.toLowerCase().includes(søk.toLowerCase())||v.sammendrag?.toLowerCase().includes(søk.toLowerCase())),[søk,varslerData]);
   const kritiskeVarsler = varslerData.filter(v=>v.status==="kritisk");
@@ -1325,7 +1325,7 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
         </div>
       </div>
 
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)}/>}
+      {valgt&&<SaksModal sak={valgt} kampanjer={KAMPANJER} onClose={()=>setValgt(null)}/>}
     </div>
   );
 }
@@ -1766,7 +1766,7 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=VARSLER}) {
         {filtered.map(v=><VarselKort key={v.id} v={v} onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
         {filtered.length===0&&<div style={{textAlign:"center",padding:"40px",color:C.muted,fontSize:14}}>Ingen saker matcher filteret. <button onClick={()=>{setKatFilter([]);setNivåFilter([]);setStatusFilter([]);setSøk("");setVisFulgte(false);}} style={{background:"none",border:"none",color:C.red,fontWeight:700,cursor:"pointer"}}>Nullstill</button></div>}
       </div>
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)}/>}
+      {valgt&&<SaksModal sak={valgt} kampanjer={KAMPANJER} onClose={()=>setValgt(null)}/>}
     </div>
   );
 }
@@ -1816,7 +1816,7 @@ function BrukerKampanjer({kampanjerData=KAMPANJER,varslerData=VARSLER,user=null}
           );
         })}
       </div>
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)}/>}
+      {valgt&&<SaksModal sak={valgt} kampanjer={KAMPANJER} onClose={()=>setValgt(null)}/>}
     </div>
   );
 }
