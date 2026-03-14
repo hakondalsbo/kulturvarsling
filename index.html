@@ -1,13 +1,45 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kulturvarsling.no – kommer snart</title>
+  <style>
+    body { margin:0; background:#FAF7F2; font-family:'Georgia',serif; display:flex; align-items:center; justify-content:center; min-height:100vh; text-align:center; padding:20px; box-sizing:border-box; }
+    .wrap { max-width:560px; }
+    .snart { font-size:13px; letter-spacing:3px; color:#8B1A1A; margin-bottom:20px; font-family:sans-serif; }
+    h1 { font-size:40px; color:#1a1a1a; margin:0 0 16px; line-height:1.2; }
+    p { font-size:17px; color:#555; line-height:1.7; margin:0 0 12px; }
+    .form { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:28px; }
+    input { padding:12px 16px; border-radius:8px; border:1px solid #ccc; font-size:16px; width:240px; }
+    button { padding:12px 24px; background:#8B1A1A; color:#fff; border:none; border-radius:8px; font-size:16px; cursor:pointer; }
+    .takk { color:#8B1A1A; font-size:18px; font-weight:bold; margin-top:28px; display:none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="snart">KOMMER SNART</div>
+    <h1>Kulturvarsling.no</h1>
+    <p>Vi bygger et varslingssystem for kulturlivet – slik at du aldri går glipp av en høring, et vedtak eller en frist som angår ditt fagfelt.</p>
+    <p style="color:#777;font-size:15px">Meld deg på, så gir vi deg beskjed når vi er klare.</p>
+    <div class="form">
+      <input id="epost" type="email" placeholder="din@epost.no"/>
+      <button onclick="meld()">Meld meg på</button>
+    </div>
+    <div class="takk" id="takk">Takk! Vi gir deg beskjed når vi lanserer.</div>
+  </div>
+  <script>
+    function meld() {
+      const e = document.getElementById('epost').value;
+      if (!e) return;
+      fetch('https://zyyijlvmgoanjdzngmon.supabase.co/rest/v1/pamelding', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEwMTYyODksImV4cCI6MjA1NjU5MjI4OX0.tIRnuVPwyFdSBwDfkiOqZMoKKbUhRuXkMKLMkQHgHDo','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEwMTYyODksImV4cCI6MjA1NjU5MjI4OX0.tIRnuVPwyFdSBwDfkiOqZMoKKbUhRuXkMKLMkQHgHDo'},
+        body:JSON.stringify({epost:e})
+      });
+      document.querySelector('.form').style.display='none';
+      document.getElementById('takk').style.display='block';
+    }
+  </script>
+</body>
 </html>
