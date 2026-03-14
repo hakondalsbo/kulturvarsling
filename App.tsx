@@ -238,6 +238,7 @@ useEffect(()=>{
   sb.from("varsler").select("*")
     .then(({data})=>{ if(data) setVarslerData(data); });
 },[]);
+  const filtered = varslerData;
   return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'DM Sans',sans-serif",color:C.text}}>
       <style>{css}</style>
