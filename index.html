@@ -34,11 +34,18 @@
       if (!e) return;
       fetch('https://zyyijlvmgoanjdzngmon.supabase.co/rest/v1/pamelding', {
         method:'POST',
-        headers:{'Content-Type':'application/json','apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEwMTYyODksImV4cCI6MjA1NjU5MjI4OX0.tIRnuVPwyFdSBwDfkiOqZMoKKbUhRuXkMKLMkQHgHDo','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEwMTYyODksImV4cCI6MjA1NjU5MjI4OX0.tIRnuVPwyFdSBwDfkiOqZMoKKbUhRuXkMKLMkQHgHDo'},
+        headers:{
+          'Content-Type':'application/json',
+          'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI',
+          'Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI'
+        },
         body:JSON.stringify({epost:e})
+      }).then(r => {
+        if(r.ok) {
+          document.querySelector('.form').style.display='none';
+          document.getElementById('takk').style.display='block';
+        }
       });
-      document.querySelector('.form').style.display='none';
-      document.getElementById('takk').style.display='block';
     }
   </script>
 </body>
