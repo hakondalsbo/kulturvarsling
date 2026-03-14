@@ -233,7 +233,11 @@ function NivåBadge({nivå,sted}) {
 // ─── LANDING PAGE ─────────────────────────────────────────────────────────
 function Landing({setScreen}) {
   const [valgt,setValgt]=useState(null);
-
+const [varslerData, setVarslerData] = useState([]);
+useEffect(()=>{
+  sb.from("varsler").select("*")
+    .then(({data})=>{ if(data) setVarslerData(data); });
+},[]);
   return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'DM Sans',sans-serif",color:C.text}}>
       <style>{css}</style>
@@ -282,8 +286,8 @@ function Landing({setScreen}) {
           {/* Mini-stats */}
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             {[
-              {n:VARSLER.length, lbl:"Aktive saker",ikon:"📋"},
-              {n:VARSLER.filter(v=>v.status==="kritisk").length, lbl:"Kritiske frister",ikon:"⚠️"},
+              {n:varslerData.length, lbl:"Aktive saker",ikon:"📋"},
+              {n:varslerData.filter(v=>v.status==="kritisk").length, lbl:"Kritiske frister",ikon:"⚠️"},
               {n:"4 288", lbl:"Signaturer",ikon:"✍️"},
             ].map((s,i)=>(
               <div key={i} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,padding:"14px 18px",textAlign:"center",minWidth:90}}>
@@ -306,7 +310,7 @@ function Landing({setScreen}) {
             <Btn variant="secondary" size="sm" onClick={()=>setScreen("bruker-login")}>Se alle og filtrer →</Btn>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
-            {VARSLER.map(v=>{
+            {varslerData.map(v=>{
               const ki=KATEGORIER.find(k=>k.id===v.kategori);
               const bc={kritisk:"#DC2626",viktig:"#D97706",normal:"#16A34A"}[v.status];
               return (
