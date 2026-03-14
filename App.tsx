@@ -1314,7 +1314,7 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
           <button onClick={()=>setView("varsler")} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700}}>Se alle {VARSLER.length} →</button>
         </div>
         <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:8}}>
-          {filtered.map(v=><VarselKort key={v.id} v={v} compact onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
+          {varslerData.slice(0,5).map(v=><VarselKort key={v.id} v={v} compact onClick={setValgt} fulgte={[]} toggleFølg={()=>{}}/>)}
           {filtered.length===0&&<div style={{fontSize:13,color:C.muted,padding:"20px 0"}}>Ingen saker matcher søket.</div>}
         </div>
       </div>
