@@ -3248,13 +3248,4 @@ return (
     )}
   </div>
 );
-  const [screen,setScreen]=useState("bruker-app");
-  const [user,setUser]=useState(null);
-  const [kommune,setKommune]=useState(null);
-
-  if(screen==="bruker-login")    return <BrukerLogin setScreen={setScreen} setUser={setUser}/>;
-  if(screen==="bruker-app")      return <BrukerApp user={user} setUser={setUser} setScreen={setScreen}/>;
-  if(screen==="kommune-login")   return <KommuneLogin setScreen={setScreen} setKommune={setKommune}/>;
-  if(screen==="kommune-app")     return <KommuneApp kommune={kommune} setScreen={setScreen}/>;
-  return <BrukerApp user={user} setUser={setUser} setScreen={setScreen}/>;
 }
