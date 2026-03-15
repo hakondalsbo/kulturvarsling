@@ -1104,10 +1104,15 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
 }
 
 // ─── BRUKER FORSIDE ───────────────────────────────────────────────────────
-function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varslerData=[]}) {
+function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varslerData:varslerProp=[]}) {
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
   const [aktivBoks,setAktivBoks]=useState(null);
+  const [varslerData, setVarslerData] = useState(varslerProp);
+  useEffect(()=>{
+    sb.from("varsler").select("*").eq("publisert",true).order("frist",{ascending:true})
+      .then(({data})=>{ if(data && data.length>0) setVarslerData(data.map(v=>({...v,nivå:v.niva,dager:v.dager??Math.max(0,Math.floor((new Date(v.frist)-new Date())/86400000))}))); });
+  },[]);
   
   const filtered = useMemo(()=>varslerData.filter(v=>!søk||v.tittel?.toLowerCase().includes(søk.toLowerCase())||v.sammendrag?.toLowerCase().includes(søk.toLowerCase())),[søk,varslerData]);
   const kritiskeVarsler = varslerData.filter(v=>v.status==="kritisk");
