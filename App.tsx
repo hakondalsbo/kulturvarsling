@@ -1315,7 +1315,7 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
         </div>
         <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:8}}>
      {varslerData.slice(0,5).map(v=><div key={v.id} onClick={()=>setValgt(v)} style={{background:"#fff",border:"1px solid #e8e0d5",borderRadius:12,padding:"16px",cursor:"pointer",marginBottom:8}}><div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{v.tittel}</div><div style={{fontSize:12,color:"#888"}}>{v.instans}</div></div>)}
-          {varslerData.length===0&&<div style={{fontSize:13,color:C.muted,padding:"20px 0"}}>Ingen saker matcher søket.</div>}
+        {varslerData.length===0&&<div style={{fontSize:13,color:"#aaa",padding:"20px 0"}}>Laster saker...</div>}
         </div>
       </div>
 
