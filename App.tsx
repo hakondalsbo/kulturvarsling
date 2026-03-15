@@ -399,11 +399,11 @@ function PersonvernModal({onClose}) {
             ✓ Kulturvarsling.no behandler dine data i henhold til GDPR og norsk personopplysningslov.
           </div>
           {[
-            ["Hvem er behandlingsansvarlig?","Åndsverkstedet AS er behandlingsansvarlig for alle personopplysninger som samles inn gjennom Kulturvarsling.no. Kontakt: personvern@kulturvarsling.no"],
+            ["Hvem er behandlingsansvarlig?","Åndsverkstedet AS er behandlingsansvarlig for alle personopplysninger som samles inn gjennom Kulturvarsling.no. Kontakt: kontakt@kulturvarsling.no"],
             ["Hvilke data samler vi inn?","Vi samler inn e-postadresse, navn og organisasjonstilknytning ved registrering. Ved bruk av tjenesten lagres hvilke saker du følger, kampanjer du har signert, og høringssvar du har sendt. Vi samler ikke inn sensitiv informasjon."],
             ["Hva bruker vi dataene til?","E-postadresse brukes til å sende varselnotifikasjoner du selv har aktivert. Navn og organisasjon brukes til å identifisere deg i høringssvar. Vi deler aldri dine data med tredjeparter til kommersielle formål."],
             ["Cookies og sporingsverktøy","Vi bruker kun funksjonelle informasjonskapsler som er nødvendige for at tjenesten skal fungere. Vi bruker ingen annonse- eller atferdssporingsverktøy."],
-            ["Dine rettigheter","Du har rett til innsyn, retting og sletting av dine data. Du kan når som helst trekke tilbake samtykket og slette kontoen din under Min side → Innstillinger. For henvendelser: personvern@kulturvarsling.no"],
+            ["Dine rettigheter","Du har rett til innsyn, retting og sletting av dine data. Du kan når som helst trekke tilbake samtykket og slette kontoen din under Min side → Innstillinger. For henvendelser: kontakt@kulturvarsling.no"],
             ["Datalagring","Data lagres på servere i EU/EØS-området. Vi oppbevarer data så lenge kontoen er aktiv, eller i inntil 12 måneder etter siste innlogging."],
           ].map(([tittel,tekst])=>(
             <div key={tittel} style={{marginBottom:20}}>
@@ -412,7 +412,7 @@ function PersonvernModal({onClose}) {
             </div>
           ))}
           <div style={{borderTop:`1px solid ${C.border}`,paddingTop:16,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
-            <span style={{fontSize:12,color:C.muted}}>Sist oppdatert: januar 2025</span>
+            <span style={{fontSize:12,color:C.muted}}>Sist oppdatert: januar 2026</span>
             <Btn variant="primary" size="sm" onClick={onClose}>Lukk</Btn>
           </div>
         </div>
@@ -556,7 +556,7 @@ function OnboardingWizard({user,setUser,onDone}) {
                 </div>
               </div>
               <div style={{fontSize:11,color:C.muted,lineHeight:1.55}}>
-                Du kan når som helst trekke tilbake samtykket og slette kontoen din. Kontakt personvern@kulturvarsling.no for spørsmål.
+                Du kan når som helst trekke tilbake samtykket og slette kontoen din. Kontakt kontakt@kulturvarsling.no for spørsmål.
               </div>
             </div>
           )}
@@ -825,6 +825,7 @@ function BrukerApp({user,setUser,setScreen}) {
     {id:"kampanjer",label:"Kampanjer",ikon:"✊"},
     {id:"mobiliser",label:"Mobiliser",ikon:"📬"},
     {id:"historikk",label:"Historikk",ikon:"📖"},
+    {id:"om-oss",label:"Om oss",ikon:"ℹ️"},
     ...(user ? [{id:"profil",label:"Min profil",ikon:"👤"}] : []),
     {id:"premium",label:"Premium",ikon:"⭐",premium:true},
   ];
@@ -898,7 +899,7 @@ function BrukerApp({user,setUser,setScreen}) {
         {view!=="forside"&&(
           <div style={{marginBottom:20}}>
             <h1 style={{margin:"0 0 4px",fontSize:22,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>
-              {({varsler:"Politiske varsler",historikk:"Sakshistorikk",kampanjer:"Kampanjer",mobiliser:"Mobiliser",profil:"Min profil",premium:"Premium-verktøy"})[view]}
+              {({varsler:"Politiske varsler",historikk:"Sakshistorikk",kampanjer:"Kampanjer",mobiliser:"Mobiliser",profil:"Min profil",premium:"Premium-verktøy","om-oss":"Om Kulturvarsling.no"})[view]}
             </h1>
             <div style={{height:3,width:40,background:C.red,borderRadius:99}}/>
           </div>
@@ -909,6 +910,7 @@ function BrukerApp({user,setUser,setScreen}) {
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={varsler} user={user}/>}
         {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={varsler}/>}
         {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
+        {view==="om-oss"    &&<OmOss/>}
         {view==="premium"   &&<PremiumVerktøy/>}
       </main>
 
@@ -916,10 +918,10 @@ function BrukerApp({user,setUser,setScreen}) {
       {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
       <footer style={{borderTop:`1px solid ${C.border}`,padding:"20px 24px",textAlign:"center",fontSize:12,color:C.muted,background:C.bgCard}}>
         <div style={{display:"flex",justifyContent:"center",gap:20,flexWrap:"wrap"}}>
-          <span>© 2025 Åndsverkstedet AS</span>
+          <span>© 2026 Åndsverkstedet AS</span>
           <button onClick={()=>setShowPersonvern(true)} style={{background:"none",border:"none",color:C.red,fontSize:12,fontWeight:600,cursor:"pointer"}}>🔒 Personvern</button>
           <button onClick={()=>setShowFeedback(true)} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>📬 Gi tilbakemelding</button>
-          <span>personvern@kulturvarsling.no</span>
+          <span>kontakt@kulturvarsling.no</span>
         </div>
       </footer>
     </div>
@@ -1102,15 +1104,10 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
 }
 
 // ─── BRUKER FORSIDE ───────────────────────────────────────────────────────
-function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{}}) {
+function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varslerData=[]}) {
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
-  const [aktivBoks,setAktivBoks]=useState(null); // null | "kritisk" | "saker" | "kampanjer" | "signaturer"
-  const [varslerData, setVarslerData] = useState([]);
-  useEffect(()=>{
-  sb.from("varsler").select("*")
-    .then(({data,error})=>{ console.log("varsler:",data,error); if(data) setVarslerData(data); });
-},[]);
+  const [aktivBoks,setAktivBoks]=useState(null);
   
   const filtered = useMemo(()=>varslerData.filter(v=>!søk||v.tittel?.toLowerCase().includes(søk.toLowerCase())||v.sammendrag?.toLowerCase().includes(søk.toLowerCase())),[søk,varslerData]);
   const kritiskeVarsler = varslerData.filter(v=>v.status==="kritisk");
@@ -3228,29 +3225,87 @@ function PubliserModal({onClose,onPubliser}) {
   );
 }
 
+// ─── OM OSS ───────────────────────────────────────────────────────────────
+function OmOss() {
+  return (
+    <div style={{maxWidth:720}}>
+      <div style={{background:"linear-gradient(135deg,#1A1512,#2D2319)",borderRadius:16,padding:"32px 36px",marginBottom:28,color:"#fff"}}>
+        <div style={{fontSize:11,fontWeight:700,letterSpacing:".1em",color:"#FCA5A5",marginBottom:10,textTransform:"uppercase"}}>Om prosjektet</div>
+        <h2 style={{fontSize:26,fontWeight:900,fontFamily:"'Playfair Display',serif",lineHeight:1.15,marginBottom:12}}>Et demokratisk varslingssystem for kulturfeltet</h2>
+        <p style={{fontSize:15,color:"rgba(255,255,255,.7)",lineHeight:1.7}}>
+          Kulturfeltet i Norge mangler et effektivt varslingssystem for politiske prosesser som angår dem.
+          Viktige beslutninger tas uten at kunstnere, kulturarbeidere og organisasjoner får mulighet til å respondere.
+        </p>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24}} className="grid-2">
+        <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:14,padding:"20px 22px"}}>
+          <div style={{fontSize:22,marginBottom:8}}>🔍</div>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>Objektiv og uavhengig</div>
+          <p style={{fontSize:13,color:"#4B5563",lineHeight:1.65}}>
+            Kulturvarsling.no samler og videreformidler offentlig informasjon. Vi tar ikke stilling til sakene,
+            legger ikke til egne meninger og sensurerer ikke. Alle publiserte saker hentes direkte fra
+            offentlige instanser – Stortinget, regjeringen, kommuner og fylkeskommuner.
+          </p>
+        </div>
+        <div style={{background:"#EEF2FF",border:"1px solid #C7D2FE",borderRadius:14,padding:"20px 22px"}}>
+          <div style={{fontSize:22,marginBottom:8}}>🏛️</div>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>For demokratiet</div>
+          <p style={{fontSize:13,color:"#4B5563",lineHeight:1.65}}>
+            Vi mener at bedre informasjon gir bedre demokrati. Plattformen er et verktøy – hva du gjør med
+            informasjonen, er opp til deg. Vi hjelper deg å komme til orde, ikke å bestemme hva du skal mene.
+          </p>
+        </div>
+      </div>
+
+      <div style={{background:"#FEFCFA",border:"1px solid #D9D0C7",borderRadius:14,padding:"24px 28px",marginBottom:24}}>
+        <div style={{fontWeight:700,fontSize:15,marginBottom:16,color:"#5C1009"}}>Hvem står bak?</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}} className="grid-2">
+          {[
+            {navn:"Frode Gjerløw",rolle:"Medgründer – dramatiker & regissør",bio:"Bred erfaring fra scenekunstfeltet. Del av duoen Åndsverkstedet, kjent for skuegaming-formen utviklet på Riksteatret der dataspill og teater forteller historier sammen."},
+            {navn:"Håkon Dalsbø",rolle:"Medgründer – dramatiker & rettighetsforvalter",bio:"Erfaring som dramatiker og rettighetsforvalter i forlag. Fokuserer på innovasjon og utvikling av kulturfeltet som en del av Åndsverkstedet."},
+          ].map(p=>(
+            <div key={p.navn}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+                <div style={{width:42,height:42,background:C.red,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:18,fontFamily:"serif",flexShrink:0}}>
+                  {p.navn[0]}
+                </div>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14}}>{p.navn}</div>
+                  <div style={{fontSize:12,color:C.muted}}>{p.rolle}</div>
+                </div>
+              </div>
+              <p style={{fontSize:13,color:C.muted,lineHeight:1.6}}>{p.bio}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,fontSize:13,color:C.muted,lineHeight:1.6}}>
+          Prosjektet er søkt finansiert gjennom Innovasjon Norge og Kulturrådet. Vi mener det er avgjørende at
+          kulturfeltet selv er med fra starten – både ideologisk og praktisk.
+        </div>
+      </div>
+
+      <div style={{background:C.bgAlt,borderRadius:14,padding:"20px 24px"}}>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>Kontakt oss</div>
+        <div style={{fontSize:13,color:C.muted,lineHeight:1.7}}>
+          Spørsmål, samarbeid eller tilbakemelding?<br/>
+          <a href="mailto:kontakt@kulturvarsling.no" style={{color:C.red,fontWeight:700}}>kontakt@kulturvarsling.no</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ROOT APP ─────────────────────────────────────────────────────────────
 export default function App() {
-  const [epost, setEpost] = useState("");
-const [sendt, setSendt] = useState(false);
-const meldPa = async () => {
-  if (!epost) return;
-  await sb.from("pamelding").insert({epost});
-  setSendt(true);
-};
-return (
-  <div style={{minHeight:"100vh",background:"#FAF7F2",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 20px",fontFamily:"'Playfair Display',serif",textAlign:"center"}}>
-    <div style={{fontSize:14,letterSpacing:2,color:"#8B1A1A",marginBottom:16,fontFamily:"sans-serif"}}>KOMMER SNART</div>
-    <h1 style={{fontSize:42,color:"#1a1a1a",marginBottom:16,lineHeight:1.2}}>Kulturvarsling.no</h1>
-    <p style={{fontSize:18,color:"#555",maxWidth:520,lineHeight:1.7,marginBottom:8}}>Vi bygger et varslingssystem for kulturlivet – slik at du aldri går glipp av en høring, et vedtak eller en frist som angår ditt fagfelt.</p>
-    <p style={{fontSize:16,color:"#777",maxWidth:480,marginBottom:32}}>Meld deg på, så gir vi deg beskjed når vi er klare.</p>
-    {sendt ? (
-      <p style={{color:"#8B1A1A",fontSize:18,fontWeight:700}}>Takk! Vi gir deg beskjed når vi lanserer.</p>
-    ) : (
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-        <input value={epost} onChange={e=>setEpost(e.target.value)} placeholder="din@epost.no" style={{padding:"12px 16px",borderRadius:8,border:"1px solid #ccc",fontSize:16,width:260}}/>
-        <button onClick={meldPa} style={{padding:"12px 24px",background:"#8B1A1A",color:"white",border:"none",borderRadius:8,fontSize:16,cursor:"pointer"}}>Meld meg på</button>
-      </div>
-    )}
-  </div>
-);
+  const [screen,setScreen] = useState("landing");
+  const [user,setUser] = useState(null);
+  const [kommune,setKommune] = useState(null);
+
+  if(screen==="landing")       return <Landing setScreen={setScreen}/>;
+  if(screen==="bruker-login")  return <BrukerLogin setScreen={setScreen} setUser={setUser}/>;
+  if(screen==="bruker-app")    return <BrukerApp user={user} setUser={setUser} setScreen={setScreen}/>;
+  if(screen==="kommune-login") return <KommuneLogin setScreen={setScreen} setKommune={setKommune}/>;
+  if(screen==="kommune-app")   return <KommuneApp kommune={kommune} setScreen={setScreen}/>;
+  return <Landing setScreen={setScreen}/>;
 }
