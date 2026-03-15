@@ -10,9 +10,11 @@
     .snart { font-size:13px; letter-spacing:3px; color:#8B1A1A; margin-bottom:20px; font-family:sans-serif; }
     h1 { font-size:40px; color:#1a1a1a; margin:0 0 24px; line-height:1.2; }
     p { font-size:17px; color:#555; line-height:1.7; margin:0 0 16px; }
-    .form { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:28px; }
+    .form { display:flex; flex-direction:column; gap:10px; align-items:center; margin-top:28px; }
+    .rad { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
     input { padding:12px 16px; border-radius:8px; border:1px solid #ccc; font-size:16px; width:240px; }
-    button { padding:12px 24px; background:#8B1A1A; color:#fff; border:none; border-radius:8px; font-size:16px; cursor:pointer; }
+    button { padding:12px 24px; background:#8B1A1A; color:#fff; border:none; border-radius:8px; font-size:16px; cursor:pointer; width:100%; max-width:496px; }
+    .samtykke { font-size:12px; color:#999; margin-top:10px; max-width:496px; }
     .takk { color:#8B1A1A; font-size:18px; font-weight:bold; margin-top:28px; display:none; }
   </style>
 </head>
@@ -25,17 +27,24 @@
     <p>Vi lanserer snart!</p>
     <p style="color:#777;font-size:15px">Meld deg på, så gir vi deg beskjed når vi er klare.</p>
     <div class="form">
-      <input id="epost" type="email" placeholder="din@epost.no"/>
-<button onclick="meld()">Meld meg på</button>
-    </div>
-    <p style="font-size:12px;color:#999;margin-top:12px">Ved å melde deg på samtykker du til at Kulturvarsling.no kan kontakte deg med informasjon om lansering og nyheter. Vi deler ikke din e-post med tredjeparter.</p>
+      <div class="rad">
+        <input id="fornavn" type="text" placeholder="Fornavn"/>
+        <input id="etternavn" type="text" placeholder="Etternavn"/>
+      </div>
+      <div class="rad">
+        <input id="epost" type="email" placeholder="din@epost.no" style="width:496px;max-width:100%;"/>
+      </div>
+      <button onclick="meld()">Meld meg på</button>
+      <p class="samtykke">Ved å melde deg på samtykker du til at Kulturvarsling.no kan kontakte deg med informasjon om lansering og nyheter. Vi deler ikke din e-post med tredjeparter.</p>
     </div>
     <div class="takk" id="takk">Takk! Vi gir deg beskjed når vi lanserer.</div>
   </div>
   <script>
     function meld() {
-      const e = document.getElementById('epost').value;
-      if (!e) return;
+      const fornavn = document.getElementById('fornavn').value;
+      const etternavn = document.getElementById('etternavn').value;
+      const epost = document.getElementById('epost').value;
+      if (!epost) return;
       fetch('https://zyyijlvmgoanjdzngmon.supabase.co/rest/v1/pamelding', {
         method:'POST',
         headers:{
@@ -43,7 +52,7 @@
           'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI',
           'Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI'
         },
-        body:JSON.stringify({epost:e})
+        body:JSON.stringify({fornavn, etternavn, epost})
       }).then(r => {
         if(r.ok) {
           document.querySelector('.form').style.display='none';
