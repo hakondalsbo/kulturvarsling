@@ -11,15 +11,17 @@
     .logo { width:80px; height:auto; margin-bottom:16px; }
     .snart { font-size:12px; letter-spacing:3px; color:#8B1A1A; margin-bottom:16px; font-family:sans-serif; }
     h1 { font-size:36px; color:#1a1a1a; margin:0 0 20px; line-height:1.2; }
-    h2 { font-size:18px; color:#1a1a1a; margin:40px 0 16px; font-family:'Georgia',serif; }
+    h2 { font-size:18px; color:#1a1a1a; margin:0 0 16px; font-family:'Georgia',serif; }
     p { font-size:16px; color:#555; line-height:1.7; margin:0 0 14px; text-align:left; }
     ul { text-align:left; padding-left:20px; margin:0 0 16px; }
     ul li { font-size:16px; color:#555; line-height:1.7; margin-bottom:8px; }
     .divider { width:48px; height:3px; background:#8B1A1A; border-radius:99px; margin:36px auto; }
-    .form { display:flex; flex-direction:column; gap:10px; align-items:center; margin-top:24px; width:100%; }
+    .lansering { font-size:20px; font-weight:bold; color:#1a1a1a; margin:0 0 8px; }
+    .ingress { font-size:15px; color:#777; margin:0 0 20px; }
+    .form { display:flex; flex-direction:column; gap:10px; align-items:center; width:100%; }
     input { padding:12px 16px; border-radius:8px; border:1px solid #ccc; font-size:16px; width:100%; max-width:480px; }
     button { padding:14px 24px; background:#8B1A1A; color:#fff; border:none; border-radius:8px; font-size:16px; cursor:pointer; width:100%; max-width:480px; }
-    .samtykke { font-size:12px; color:#999; margin-top:8px; max-width:480px; line-height:1.5; }
+    .samtykke { font-size:12px; color:#999; margin-top:8px; max-width:480px; line-height:1.5; text-align:center; }
     .takk { color:#8B1A1A; font-size:18px; font-weight:bold; margin-top:28px; display:none; }
     @media (max-width:480px) {
       h1 { font-size:28px; }
@@ -32,19 +34,6 @@
     <img src="/Kulturvarsling logo.png" alt="Kulturvarsling logo" class="logo"/>
     <div class="snart">KOMMER SNART</div>
     <h1>Kulturvarsling.no</h1>
-    <p style="text-align:center;">Kulturfeltet påvirkes daglig av politiske beslutninger – høringer, budsjettvedtak og lovforslag som angår kunstnere, organisasjoner og institusjoner over hele landet. Informasjonen er spredt, fristene er korte, og det er vanskelig å vite hvordan man skal engasjere seg i tide.</p>
-    <p style="text-align:center;">Vi lanserer snart!</p>
-    <p style="text-align:center;color:#777;font-size:15px">Meld deg på, så gir vi deg beskjed når vi er klare.</p>
-    <div class="form">
-      <input id="fornavn" type="text" placeholder="Fornavn"/>
-      <input id="etternavn" type="text" placeholder="Etternavn"/>
-      <input id="epost" type="email" placeholder="din@epost.no"/>
-      <button onclick="meld()">Meld meg på</button>
-      <p class="samtykke" style="text-align:center;">Ved å melde deg på samtykker du til at Kulturvarsling.no kan kontakte deg med informasjon om lansering og nyheter. Vi deler ikke din e-post med tredjeparter.</p>
-    </div>
-    <div class="takk" id="takk">Takk! Vi gir deg beskjed når vi lanserer.</div>
-
-    <div class="divider"></div>
 
     <h2>Et demokratisk varslingssystem for kulturfeltet</h2>
     <p>Kulturfeltet i Norge mangler i dag et effektivt varslingssystem for politiske prosesser som angår dem. Viktige beslutninger tas uten at kunstnere, kulturarbeidere og organisasjoner får mulighet til å respondere. Kulturvarsling.no vil bli en landsdekkende portal som samler, analyserer og varsler om relevante politiske forslag og vedtak – lokalt, regionalt og nasjonalt.</p>
@@ -56,7 +45,20 @@
       <li>Gi kultursektoren et effektivt verktøy for å beskytte sitt handlingsrom og fremme egne og felles interesser.</li>
       <li>Effektivisere offentlig sektors informasjonsdeling.</li>
     </ul>
-    <p>Vi søker støtte for å utvikle, teste og lansere denne portalen – til nytte for hele kulturfeltet og for demokratiet som helhet.</p>
+
+    <div class="divider"></div>
+
+    <p class="lansering">Vi lanserer snart!</p>
+    <p class="ingress">Meld deg på, så gir vi deg beskjed når vi er klare.</p>
+
+    <div class="form">
+      <input id="fornavn" type="text" placeholder="Fornavn"/>
+      <input id="etternavn" type="text" placeholder="Etternavn"/>
+      <input id="epost" type="email" placeholder="din@epost.no"/>
+      <button onclick="meld()">Meld meg på</button>
+      <p class="samtykke">Ved å melde deg på samtykker du til at Kulturvarsling.no kan kontakte deg med informasjon om lansering og nyheter. Vi deler ikke din e-post med tredjeparter.</p>
+    </div>
+    <div class="takk" id="takk">Takk! Vi gir deg beskjed når vi lanserer.</div>
   </div>
   <script>
     function meld() {
