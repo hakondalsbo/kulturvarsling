@@ -899,7 +899,7 @@ function BrukerApp({user,setUser,setScreen}) {
           </div>
         )}
         {view==="forside"   &&<BrukerForside setView={setView} varsler={varsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={varsler} kampanjerData={kampanjer}/>}
-        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={varsler}/>}
+        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={varsler} kampanjerData={kampanjer}/>}
         {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet}/>}
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={varsler} user={user}/>}
         {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={varsler}/>}
@@ -1101,7 +1101,7 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
   const [aktivBoks,setAktivBoks]=useState(null); // null | "kritisk" | "saker" | "kampanjer" | "signaturer"
-  const filtered = useMemo(()=>varsler.filter(v=>!søk||v.tittel.toLowerCase().includes(søk.toLowerCase())||v.sammendrag.toLowerCase().includes(søk.toLowerCase())),[søk]);
+  const filtered = useMemo(()=>varsler.filter(v=>!søk||v.tittel.toLowerCase().includes(søk.toLowerCase())||v.sammendrag.toLowerCase().includes(søk.toLowerCase())),[søk,varsler]);
 
   const kritiskeVarsler = varsler.filter(v=>v.status==="kritisk");
 
@@ -1320,7 +1320,7 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
         </div>
       </div>
 
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)}/>}
+      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjer}/>}
     </div>
   );
 }
@@ -1396,7 +1396,7 @@ function KampanjeKort({k,compact=false}) {
 }
 
 // ─── Saksmodal ─────────────────────────────────────────────────────────────
-function SaksModal({sak,onClose}) {
+function SaksModal({sak,onClose,kampanjer=[]}) {
   const [tab,setTab]=useState("info");
   const [malModal,setMalModal]=useState(null);
   const [visNyKampanje,setVisNyKampanje]=useState(false);
@@ -1685,7 +1685,7 @@ function DelMini({sak}) {
 }
 
 // ─── varsler / kampanjer / MOBILISER (forenklet) ──────────────────────────
-function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler}) {
+function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanjerData=[]}) {
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
   const [katFilter,setKatFilter]=useState([]);
@@ -1761,7 +1761,7 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler}) {
         {filtered.map(v=><VarselKort key={v.id} v={v} onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
         {filtered.length===0&&<div style={{textAlign:"center",padding:"40px",color:C.muted,fontSize:14}}>Ingen saker matcher filteret. <button onClick={()=>{setKatFilter([]);setNivåFilter([]);setStatusFilter([]);setSøk("");setVisFulgte(false);}} style={{background:"none",border:"none",color:C.red,fontWeight:700,cursor:"pointer"}}>Nullstill</button></div>}
       </div>
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)}/>}
+      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjerData}/>}
     </div>
   );
 }
@@ -1774,7 +1774,7 @@ function BrukerKampanjer({kampanjerData=kampanjer,varslerData=varsler,user=null}
     if(sort==="fremgang") return (b.sig/b.mal)-(a.sig/a.mal);
     if(sort==="signaturer") return b.sig-a.sig;
     return 0;
-  }),[sort]);
+  }),[sort,kampanjerData]);
   return (
     <div>
       <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
@@ -1811,7 +1811,7 @@ function BrukerKampanjer({kampanjerData=kampanjer,varslerData=varsler,user=null}
           );
         })}
       </div>
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)}/>}
+      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjerData}/>}
     </div>
   );
 }
