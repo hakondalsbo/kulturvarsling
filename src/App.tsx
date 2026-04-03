@@ -248,9 +248,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
       <nav style={{background:C.bgCard,borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 8px rgba(0,0,0,.06)"}}>
         <div style={{maxWidth:1100,margin:"0 auto",padding:"0 24px",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
           <div style={{display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
-            <div style={{width:30,height:30,background:C.red,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <span style={{color:"#fff",fontWeight:900,fontSize:15,fontFamily:"serif"}}>K</span>
-            </div>
+            <img src="/logo.png" alt="Kulturvarsling" style={{width:32,height:32,objectFit:"contain"}}/>
             <span style={{fontWeight:800,fontSize:15,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Kulturvarsling.no</span>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -271,7 +269,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
             <div style={{display:"inline-flex",alignItems:"center",gap:7,background:"rgba(140,28,19,.3)",border:"1px solid rgba(140,28,19,.5)",borderRadius:99,padding:"4px 12px",marginBottom:18}}>
               <span style={{fontSize:11,color:"#FCA5A5",fontWeight:700,letterSpacing:".03em"}}>🔔 KI-DREVET VARSLINGSSYSTEM</span>
             </div>
-            <h1 style={{fontSize:38,fontWeight:900,fontFamily:"'Playfair Display',serif",lineHeight:1.1,marginBottom:14,letterSpacing:"-.02em"}}>
+            <h1 style={{fontSize:38,fontWeight:900,fontFamily:"'Playfair Display',serif",color:"#FFF8F2",lineHeight:1.1,marginBottom:14,letterSpacing:"-.02em"}}>
               Aldri gå glipp av<br/>
               <span style={{color:"#FCA5A5"}}>en viktig kulturpolitisk sak</span>
             </h1>
@@ -893,7 +891,7 @@ function BrukerApp({user,setUser,setScreen}) {
 
           {/* Logo */}
           <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}} onClick={()=>setView("forside")}>
-            <img src="/favicon.svg" alt="Kulturvarsling" style={{width:34,height:34,flexShrink:0}}/>
+            <img src="/logo.png" alt="Kulturvarsling" style={{width:36,height:36,objectFit:"contain",flexShrink:0}}/>
             <div>
               <div style={{fontWeight:800,fontSize:16,fontFamily:"'Playfair Display',serif",color:C.redDark,lineHeight:1.1}}>Kulturvarsling</div>
               <div className="mob-hide" style={{fontSize:10,color:C.muted,fontWeight:500,letterSpacing:".04em",textTransform:"uppercase"}}>Kulturpolitisk varslingsplattform</div>
@@ -941,10 +939,10 @@ function BrukerApp({user,setUser,setScreen}) {
       {view==="forside"&&(
         <div style={{background:"#1A1512",color:"#fff"}}>
           <div style={{maxWidth:1100,margin:"0 auto",padding:"32px 24px 28px"}}>
-            <h1 style={{fontSize:30,fontWeight:900,fontFamily:"'Playfair Display',serif",lineHeight:1.2,marginBottom:10,letterSpacing:"-.02em",maxWidth:680}}>
+            <h1 style={{fontSize:30,fontWeight:900,fontFamily:"'Playfair Display',serif",color:"#FFF8F2",lineHeight:1.2,marginBottom:10,letterSpacing:"-.02em",maxWidth:680}}>
               Aldri mer gå glipp av en kulturpolitisk avgjørelse.
             </h1>
-            <p style={{fontSize:15,color:"rgba(255,255,255,.6)",lineHeight:1.65,maxWidth:580,margin:0}}>
+            <p style={{fontSize:15,color:"rgba(255,248,242,.6)",lineHeight:1.65,maxWidth:580,margin:0}}>
               Kulturvarsling overvåker Stortinget, Regjeringen og kommunene – filtrerer frem det som angår kulturfeltet – og varsler deg i tide til å si ifra.
             </p>
             {!user&&(
