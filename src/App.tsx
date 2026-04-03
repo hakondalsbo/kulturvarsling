@@ -893,9 +893,7 @@ function BrukerApp({user,setUser,setScreen}) {
 
           {/* Logo */}
           <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}} onClick={()=>setView("forside")}>
-            <div style={{width:36,height:36,background:C.red,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 10px ${C.red}50`,flexShrink:0}}>
-              <span style={{color:"#fff",fontWeight:900,fontSize:18,fontFamily:"'Playfair Display',serif",lineHeight:1}}>K</span>
-            </div>
+            <img src="/favicon.svg" alt="Kulturvarsling" style={{width:34,height:34,flexShrink:0}}/>
             <div>
               <div style={{fontWeight:800,fontSize:16,fontFamily:"'Playfair Display',serif",color:C.redDark,lineHeight:1.1}}>Kulturvarsling</div>
               <div className="mob-hide" style={{fontSize:10,color:C.muted,fontWeight:500,letterSpacing:".04em",textTransform:"uppercase"}}>Kulturpolitisk varslingsplattform</div>
@@ -942,37 +940,22 @@ function BrukerApp({user,setUser,setScreen}) {
       {/* Hero – kun på forsiden */}
       {view==="forside"&&(
         <div style={{background:"#1A1512",color:"#fff"}}>
-          <div style={{maxWidth:1100,margin:"0 auto",padding:"36px 24px 32px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:32,flexWrap:"wrap"}}>
-            <div style={{flex:1,minWidth:260}}>
-              <h1 style={{fontSize:32,fontWeight:900,fontFamily:"'Playfair Display',serif",lineHeight:1.15,marginBottom:10,letterSpacing:"-.02em",maxWidth:600}}>
-                Aldri mer gå glipp av en kulturpolitisk avgjørelse.
-              </h1>
-              <p style={{fontSize:15,color:"rgba(255,255,255,.65)",lineHeight:1.65,maxWidth:540,marginBottom:0}}>
-                Kulturvarsling overvåker Stortinget, Regjeringen og kommunene – filtrerer frem det som angår kulturfeltet – og varsler deg i tide til å si ifra.
-              </p>
-              {!user&&(
-                <div style={{marginTop:18,display:"flex",gap:10,flexWrap:"wrap"}}>
-                  <Btn variant="primary" onClick={()=>setScreen("bruker-login")}>Registrer deg gratis →</Btn>
-                  <button onClick={()=>setScreen("bruker-login")}
-                    style={{padding:"10px 18px",background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:9,color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                    Logg inn
-                  </button>
-                </div>
-              )}
-            </div>
-            <div style={{display:"flex",gap:10,flexWrap:"wrap",flexShrink:0}}>
-              {[
-                {n:varsler.length, lbl:"Aktive saker", ikon:"📋"},
-                {n:varsler.filter(v=>v.status==="kritisk").length, lbl:"Kritiske frister", ikon:"⚠️"},
-                {n:kampanjer.reduce((s,k)=>s+(k.sig||0),0).toLocaleString("no"), lbl:"Signaturer", ikon:"✍️"},
-              ].map((s,i)=>(
-                <div key={i} style={{background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.12)",borderRadius:12,padding:"14px 20px",textAlign:"center",minWidth:100}}>
-                  <div style={{fontSize:12,marginBottom:5,opacity:.7}}>{s.ikon}</div>
-                  <div style={{fontSize:26,fontWeight:800,fontFamily:"'Playfair Display',serif",lineHeight:1}}>{s.n}</div>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginTop:4}}>{s.lbl}</div>
-                </div>
-              ))}
-            </div>
+          <div style={{maxWidth:1100,margin:"0 auto",padding:"32px 24px 28px"}}>
+            <h1 style={{fontSize:30,fontWeight:900,fontFamily:"'Playfair Display',serif",lineHeight:1.2,marginBottom:10,letterSpacing:"-.02em",maxWidth:680}}>
+              Aldri mer gå glipp av en kulturpolitisk avgjørelse.
+            </h1>
+            <p style={{fontSize:15,color:"rgba(255,255,255,.6)",lineHeight:1.65,maxWidth:580,margin:0}}>
+              Kulturvarsling overvåker Stortinget, Regjeringen og kommunene – filtrerer frem det som angår kulturfeltet – og varsler deg i tide til å si ifra.
+            </p>
+            {!user&&(
+              <div style={{marginTop:18,display:"flex",gap:10,flexWrap:"wrap"}}>
+                <Btn variant="primary" onClick={()=>setScreen("bruker-login")}>Registrer deg gratis →</Btn>
+                <button onClick={()=>setScreen("bruker-login")}
+                  style={{padding:"9px 16px",background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:9,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                  Logg inn
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
