@@ -48,6 +48,12 @@ async function lagreProfil(userId, oppdateringer) {
   return !error;
 }
 
+async function upsertProfil(userId, data) {
+  const { error } = await sb.from("profiler")
+    .upsert({ id: userId, ...data, oppdatert: new Date().toISOString() });
+  return !error;
+}
+
 async function toggleFølgSak(brukerId, sakId, følger) {
   if (følger) {
     await sb.from("fulgte_saker").delete()
@@ -436,6 +442,12 @@ function OnboardingWizard({user,setUser,onDone}) {
 
   function fullfør() {
     setUser(u=>({...u,org,orgType,varselKat:valgtKat,varselNivå:valgtNivå,varselFrekvens:frekvens,onboardingDone:true}));
+    if(user?.id) {
+      upsertProfil(user.id, {
+        org, org_type: orgType, fagfelt: valgtKat,
+        varsel_frekvens: frekvens, onboarding_done: true
+      });
+    }
     onDone();
   }
 
@@ -655,6 +667,7 @@ function BrukerLogin({setScreen,setUser}) {
   const [feil,setFeil]=useState("");
   const [laster,setLaster]=useState(false);
   const [bekreftSendt,setBekreftSendt]=useState(false);
+  const [glemtModus,setGlemtModus]=useState(false);
 
   async function loggInn() {
     setLaster(true); setFeil("");
@@ -688,6 +701,7 @@ function BrukerLogin({setScreen,setUser}) {
       setFeil("E-post allerede registrert."); setLaster(false); return;
     }
     if(data.user) {
+      await upsertProfil(data.user.id, { navn, onboarding_done: false, plan: "gratis" });
       await new Promise(r=>setTimeout(r,500));
       setUser({
         id: data.user.id, navn, epost: data.user.email,
@@ -699,13 +713,29 @@ function BrukerLogin({setScreen,setUser}) {
     setLaster(false);
   }
 
+  async function nullstillPassord() {
+    if(!epost) { setFeil("Fyll inn e-postadresse først."); return; }
+    setLaster(true); setFeil("");
+    const { error } = await sb.auth.resetPasswordForEmail(epost, {
+      redirectTo: "https://www.kulturvarsling.no/app"
+    });
+    if(error) { setFeil("Kunne ikke sende tilbakestillingslenke."); setLaster(false); }
+    else { setBekreftSendt(true); setLaster(false); }
+  }
+
   if(bekreftSendt) return (
-    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'DM Sans',sans-serif"}}>
       <style>{css}</style>
-      <div style={{background:C.bgCard,borderRadius:16,padding:"40px 32px",maxWidth:420,textAlign:"center"}}>
+      <div style={{background:C.bgCard,borderRadius:16,padding:"40px 32px",maxWidth:420,textAlign:"center",border:`1px solid ${C.border}`}}>
         <div style={{fontSize:40,marginBottom:12}}>📧</div>
         <h2 style={{fontFamily:"'Playfair Display',serif",color:C.redDark,marginBottom:8}}>Sjekk e-posten din</h2>
-        <p style={{color:C.muted,fontSize:14,lineHeight:1.6}}>Vi har sendt en bekreftelseslenke til <strong>{epost}</strong>.</p>
+        <p style={{color:C.muted,fontSize:14,lineHeight:1.6,marginBottom:20}}>
+          {glemtModus
+            ? <>Vi har sendt en lenke for å tilbakestille passordet til <strong>{epost}</strong>.</>
+            : <>Vi har sendt en bekreftelseslenke til <strong>{epost}</strong>. Klikk på lenken for å aktivere kontoen din.</>
+          }
+        </p>
+        <Btn variant="secondary" size="sm" onClick={()=>{setBekreftSendt(false);setGlemtModus(false);}}>← Tilbake til innlogging</Btn>
       </div>
     </div>
   );
@@ -714,40 +744,65 @@ function BrukerLogin({setScreen,setUser}) {
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif",padding:16}}>
       <style>{css}</style>
       {visPersonvern&&<PersonvernModal onClose={()=>setVisPersonvern(false)}/>}
-      <div style={{width:"100%",maxWidth:420}}>
+      <div style={{width:"100%",maxWidth:440}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <div style={{width:44,height:44,background:C.red,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}>
             <span style={{color:"#fff",fontWeight:900,fontSize:22,fontFamily:"serif"}}>K</span>
           </div>
-          <h1 style={{fontSize:24,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>{mode==="login"?"Logg inn":"Opprett konto"}</h1>
-          <p style={{fontSize:14,color:C.muted,marginTop:6}}>Kulturvarsling.no – gratis for alle kulturaktører</p>
+          <h1 style={{fontSize:24,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>
+            {mode==="login"?"Logg inn på Kulturvarsling":"Opprett gratis konto"}
+          </h1>
+          <p style={{fontSize:14,color:C.muted,marginTop:6}}>
+            {mode==="login"
+              ? "Følg politiske saker og mobiliser kulturfeltet."
+              : "Gratis for alle kulturaktører – klar på ett minutt."}
+          </p>
         </div>
-        <Card>
+
+        {mode==="register"&&(
+          <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:12,padding:"12px 16px",marginBottom:16,display:"flex",gap:12,alignItems:"flex-start"}}>
+            <span style={{fontSize:18,flexShrink:0}}>✅</span>
+            <div style={{fontSize:13,color:C.green,lineHeight:1.6}}>
+              <strong>Du får:</strong> varsler om politiske saker, brevmaler til politikere og komiteer, signerbare kampanjer, og historikk over alle dine innspill.
+            </div>
+          </div>
+        )}
+
+        <Card style={{padding:"24px"}}>
           <Input label="E-postadresse" placeholder="deg@eksempel.no" value={epost} onChange={e=>setEpost(e.target.value)} type="email"/>
-          <Input label="Passord" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} type="password"/>
-          {mode==="register"&&<Input label="Navn / organisasjon" placeholder="Frode Gjerløw / Åndsverkstedet" value={navn} onChange={e=>setNavn(e.target.value)}/>}
+          <Input label="Passord" placeholder="Minst 6 tegn" value={pw} onChange={e=>setPw(e.target.value)} type="password"/>
+          {mode==="register"&&<Input label="Navn / organisasjon" placeholder="Eks: Frode Gjerløw / Åndsverkstedet" value={navn} onChange={e=>setNavn(e.target.value)}/>}
           {mode==="register"&&(
-            <div style={{fontSize:12,color:C.muted,lineHeight:1.55,marginBottom:8}}>
+            <div style={{fontSize:12,color:C.muted,lineHeight:1.55,marginBottom:12}}>
               Ved å opprette konto aksepterer du{" "}
               <button onClick={()=>setVisPersonvern(true)} style={{background:"none",border:"none",color:C.red,fontWeight:700,fontSize:12,cursor:"pointer",padding:0,textDecoration:"underline"}}>
                 personvernerklæringen
               </button>.
             </div>
           )}
-          {feil&&<div style={{background:"#FEE2E2",border:"1px solid #FECACA",borderRadius:8,padding:"8px 12px",marginBottom:8,fontSize:13,color:"#991B1B"}}>{feil}</div>}
-          <Btn variant="primary" size="lg" style={{width:"100%",marginTop:4}} onClick={mode==="login"?loggInn:registrer} disabled={laster}>
+          {feil&&<div style={{background:"#FEE2E2",border:"1px solid #FECACA",borderRadius:8,padding:"9px 13px",marginBottom:12,fontSize:13,color:"#991B1B",display:"flex",gap:7,alignItems:"center"}}>⚠️ {feil}</div>}
+          <Btn variant="primary" size="lg" style={{width:"100%",marginBottom:12}} onClick={mode==="login"?loggInn:registrer} disabled={laster}>
             {laster?"Laster...":(mode==="login"?"Logg inn →":"Opprett gratis konto →")}
           </Btn>
-          <div style={{textAlign:"center",marginTop:14,fontSize:13,color:C.muted}}>
+          {mode==="login"&&(
+            <div style={{textAlign:"center",marginBottom:4}}>
+              <button onClick={()=>{setGlemtModus(true);nullstillPassord();}}
+                style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>
+                Glemt passordet?
+              </button>
+            </div>
+          )}
+          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,textAlign:"center",fontSize:13,color:C.muted}}>
             {mode==="login"?"Har du ikke konto?":"Har du allerede konto?"}
-            <button onClick={()=>setMode(m=>m==="login"?"register":"login")} style={{background:"none",border:"none",color:C.red,fontWeight:700,fontSize:13,marginLeft:5}}>{mode==="login"?"Registrer deg":"Logg inn"}</button>
+            <button onClick={()=>{setMode(m=>m==="login"?"register":"login");setFeil("");}}
+              style={{background:"none",border:"none",color:C.red,fontWeight:700,fontSize:13,marginLeft:5,cursor:"pointer",fontFamily:"inherit"}}>
+              {mode==="login"?"Registrer deg gratis":"Logg inn"}
+            </button>
           </div>
         </Card>
-        <div style={{textAlign:"center",marginTop:16}}>
-          <button onClick={()=>setScreen("kommune-login")} style={{background:"none",border:"none",color:C.muted,fontSize:12}}>Er du fra en kommune? →</button>
-        </div>
-        <div style={{textAlign:"center",marginTop:8}}>
-          <button onClick={()=>setScreen("bruker-app")} style={{background:"none",border:"none",color:C.muted,fontSize:12}}>← Tilbake</button>
+        <div style={{textAlign:"center",marginTop:12,display:"flex",justifyContent:"center",gap:20}}>
+          <button onClick={()=>setScreen("kommune-login")} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>🏛 Er du fra en kommune?</button>
+          <button onClick={()=>setScreen("bruker-app")} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>← Tilbake</button>
         </div>
       </div>
     </div>
@@ -902,9 +957,9 @@ function BrukerApp({user,setUser,setScreen}) {
         {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={varsler} kampanjerData={kampanjer}/>}
         {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet}/>}
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={varsler} user={user}/>}
-        {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={varsler}/>}
+        {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={varsler} kampanjerData={kampanjer}/>}
         {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
-        {view==="premium"   &&<PremiumVerktøy/>}
+        {view==="premium"   &&<PremiumVerktøy varslerData={varsler}/>}
       </main>
 
       {/* Footer */}
@@ -1301,24 +1356,35 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
       <div style={{marginBottom:32}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Nyeste varsler</h2>
-          <button onClick={()=>setView("varsler")} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700}}>Se alle {varsler.length} →</button>
+          <button onClick={()=>setView("varsler")} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Se alle {varsler.length} →</button>
         </div>
-        <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:8}}>
-          {filtered.map(v=><VarselKort key={v.id} v={v} compact onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
-          {filtered.length===0&&<div style={{fontSize:13,color:C.muted,padding:"20px 0"}}>Ingen saker matcher søket.</div>}
-        </div>
+        {filtered.length===0
+          ? <div style={{fontSize:13,color:C.muted,padding:"20px 0"}}>Ingen saker matcher søket.</div>
+          : <div className="grid-3" style={{gap:14}}>
+              {filtered.slice(0,6).map(v=><VarselKort key={v.id} v={v} compact onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
+            </div>
+        }
+        {filtered.length>6&&(
+          <div style={{textAlign:"center",marginTop:12}}>
+            <button onClick={()=>setView("varsler")} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 18px",fontSize:12,color:C.red,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              Vis alle {filtered.length} varsler →
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Nyeste kampanjer */}
-      <div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Aktive kampanjer</h2>
-          <button onClick={()=>setView("kampanjer")} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700}}>Se alle →</button>
+      {/* Aktive kampanjer */}
+      {kampanjer.length>0&&(
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Aktive kampanjer</h2>
+            <button onClick={()=>setView("kampanjer")} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Se alle →</button>
+          </div>
+          <div className="grid-3" style={{gap:14}}>
+            {kampanjer.slice(0,3).map(k=><KampanjeKort key={k.id} k={k}/>)}
+          </div>
         </div>
-        <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:8}}>
-          {kampanjer.map(k=><KampanjeKort key={k.id} k={k} compact/>)}
-        </div>
-      </div>
+      )}
 
       {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjer}/>}
     </div>
@@ -1329,33 +1395,43 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
 function VarselKort({v,compact=false,onClick,fulgte=[],toggleFølg=()=>{}}) {
   const ki=KATEGORIER.find(k=>k.id===v.kategori);
   const bc=v.status==="kritisk"?"#DC2626":v.status==="viktig"?"#D97706":"#16A34A";
+  const fristDato = v.frist ? new Date(v.frist).toLocaleDateString("no-NO",{day:"numeric",month:"short"}) : null;
+  const statusLabel = {kritisk:"Kritisk",viktig:"Viktig",normal:"Normal"}[v.status]||v.status;
   return (
-    <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:compact?"12px 14px":"16px 20px",borderLeft:`4px solid ${bc}`,flexShrink:0,width:compact?310:undefined,transition:"box-shadow .15s"}}
+    <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:compact?"12px 14px":"16px 20px",borderLeft:`4px solid ${bc}`,transition:"box-shadow .15s"}}
       onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 20px rgba(0,0,0,.1)"}
       onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
       <div onClick={()=>onClick(v)} style={{cursor:"pointer"}}>
-        <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
-              {v.dager>=58&&<Badge color="#059669" bg="#D1FAE5" style={{fontSize:10,fontWeight:800}}>🆕 Ny</Badge>}
-              {ki&&<Badge color={C.muted}>{ki.ikon} {ki.label}</Badge>}
-              <NivåBadge nivå={v.nivå} sted={v.sted}/>
-            </div>
-            <div style={{fontSize:compact?13:14,fontWeight:700,lineHeight:1.35,color:C.text}}>{v.tittel}</div>
-            {!compact&&<p style={{margin:"5px 0 0",fontSize:12,color:C.muted,lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{v.sammendrag}</p>}
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,marginBottom:6}}>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",flex:1}}>
+            {v.dager>=58&&<Badge color="#059669" bg="#D1FAE5" style={{fontSize:10,fontWeight:800}}>🆕 Ny</Badge>}
+            {ki&&<Badge color={C.muted}>{ki.ikon} {ki.label}</Badge>}
+            <NivåBadge nivå={v.nivå} sted={v.sted}/>
           </div>
-          <div style={{textAlign:"right",flexShrink:0}}>
-            <Badge color={v.status==="kritisk"?C.red:v.status==="viktig"?C.amber:C.green} bg={v.status==="kritisk"?"#FEE2E2":v.status==="viktig"?"#FEF3C7":"#F0FDF4"}>{v.dager}d</Badge>
-            <div style={{fontSize:10,color:C.muted,marginTop:4}}>{v.instans}</div>
-          </div>
+          <Badge color={v.status==="kritisk"?C.red:v.status==="viktig"?C.amber:C.green}
+            bg={v.status==="kritisk"?"#FEE2E2":v.status==="viktig"?"#FEF3C7":"#F0FDF4"}
+            style={{flexShrink:0}}>
+            {statusLabel}
+          </Badge>
         </div>
+        <div style={{fontSize:compact?13:14,fontWeight:700,lineHeight:1.35,color:C.text,marginBottom:5}}>{v.tittel}</div>
+        <p style={{margin:0,fontSize:12,color:C.muted,lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:compact?2:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{v.sammendrag}</p>
       </div>
-      {!compact&&(
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
-          <span style={{fontSize:11,color:C.red,fontWeight:600,cursor:"pointer"}} onClick={()=>onClick(v)}>Åpne sak og mobiliser →</span>
-          <FølgKnapp sakId={v.id} fulgte={fulgte} toggleFølg={toggleFølg}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,paddingTop:8,borderTop:`1px solid ${C.border}`}}>
+        <div>
+          <div style={{fontSize:11,color:C.muted}}>{v.instans}</div>
+          {fristDato&&<div style={{fontSize:11,color:bc,fontWeight:700,marginTop:1}}>Frist: {fristDato} ({v.dager}d)</div>}
         </div>
-      )}
+        {compact
+          ? <FølgKnapp sakId={v.id} fulgte={fulgte} toggleFølg={toggleFølg}/>
+          : (
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <span style={{fontSize:11,color:C.red,fontWeight:600,cursor:"pointer"}} onClick={()=>onClick(v)}>Åpne →</span>
+              <FølgKnapp sakId={v.id} fulgte={fulgte} toggleFølg={toggleFølg}/>
+            </div>
+          )
+        }
+      </div>
     </div>
   );
 }
@@ -1366,7 +1442,7 @@ function KampanjeKort({k,compact=false}) {
   const [signert,setSignert]=useState(false);
   const [navn,setNavn]=useState("");const [epost,setEpost]=useState("");
   return (
-    <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",flexShrink:0,width:compact?290:undefined}}>
+    <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px"}}>
       <div style={{display:"flex",gap:5,marginBottom:7,flexWrap:"wrap"}}>
         {k.tags.map(t=><Badge key={t} color={C.muted}>{t}</Badge>)}
       </div>
@@ -1986,7 +2062,7 @@ const KOMITEER_DATA = [
   {id:"utd",     navn:"Utdannings- og forskningskomiteen", kontakt:"utdanning@stortinget.no",          leder:"Iselin Nybø (V)",      felt:["Museer","Kulturarv","Arkiver"], url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Utdannings-og-forskningskomiteen/"},
 ];
 
-function BrukerMobiliser({loggAktivitet=()=>{},user=null}) {
+function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanjerData=[]}) {
   const [tab,setTab]=useState("oversikt");
   const [sokPol,setSokPol]=useState("");
   const [malModal,setMalModal]=useState(null); // {type, kontekst}
@@ -1999,7 +2075,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null}) {
     {ikon:"📝",tittel:"Send høringssvar",tekst:"Formelt innspill til åpne høringer. Velg sak og mal – vi gjør det enkelt å si fra til riktig instans.",farge:"#F0FDF4",kant:"#86EFAC",tekst2:C.green,type:"horing_oversikt",tag:"4 maler"},
     {ikon:"📰",tittel:"Skriv pressemelding",tekst:"Nå media med en profesjonell pressemelding. Maler for protest, seier og generelle kulturpolitiske saker.",farge:"#FFF7ED",kant:"#FED7AA",tekst2:"#C2410C",type:"pressem",tag:"2 maler"},
     {ikon:"📱",tittel:"Del på sosiale medier",tekst:"Ferdige tekster for Facebook, Instagram og X/Twitter. Tilpass med én klokke og del videre.",farge:"#EDE9FE",kant:"#DDD6FE",tekst2:C.purple,type:"sosiale",tag:"3 maler"},
-    {ikon:"✊",tittel:"Signer kampanjer",tekst:"Støtt aktive underskriftskampanjer og spre dem i nettverket ditt.",farge:"#FEF2F2",kant:"#FECACA",tekst2:C.red,type:"kampanje",tag:`${kampanjer.length} aktive`},
+    {ikon:"✊",tittel:"Signer kampanjer",tekst:"Støtt aktive underskriftskampanjer og spre dem i nettverket ditt.",farge:"#FEF2F2",kant:"#FECACA",tekst2:C.red,type:"kampanje",tag:`${kampanjerData.length} aktive`},
   ];
 
   return (
@@ -2020,11 +2096,11 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null}) {
       {tab==="oversikt"&&(
         <div>
           {/* Hastesakene akkurat nå */}
-          {varsler.filter(v=>v.status==="kritisk").length>0&&(
+          {varslerData.filter(v=>v.status==="kritisk").length>0&&(
             <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:14,padding:"16px 20px",marginBottom:24}}>
               <div style={{fontWeight:800,fontSize:14,color:"#991B1B",marginBottom:12}}>⚠️ Hastesakene akkurat nå – disse trenger handling snarest</div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {varsler.filter(v=>v.status==="kritisk").map(v=>(
+                {varslerData.filter(v=>v.status==="kritisk").map(v=>(
                   <div key={v.id} style={{background:"#fff",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:700,fontSize:13,color:C.text}}>{v.tittel}</div>
@@ -2056,7 +2132,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null}) {
                   else if(c.type==="politiker_oversikt") setTab("politikere");
                   else if(c.type==="horing_oversikt") setTab("horinger");
                   else if(c.type==="pressem") setMalModal({type:"pressem",kontekst:null});
-                  else if(c.type==="sosiale") setMalModal({type:"sosiale",kontekst:varsler[0]});
+                  else if(c.type==="sosiale") setMalModal({type:"sosiale",kontekst:varslerData[0]??null});
                   else if(c.type==="kampanje") setTab("oversikt");
                 }}
                 style={{background:c.farge,border:`1.5px solid ${c.kant}`,borderRadius:14,padding:"18px 20px",cursor:"pointer",transition:"box-shadow .15s,transform .15s"}}
@@ -2074,12 +2150,14 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null}) {
           </div>
 
           {/* Kampanjer inline */}
-          <div style={{marginTop:28}}>
-            <h3 style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark,marginBottom:14}}>✊ Aktive underskriftskampanjer</h3>
-            <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:8}}>
-              {kampanjer.map(k=><KampanjeKort key={k.id} k={k} compact/>)}
+          {kampanjerData.length>0&&(
+            <div style={{marginTop:28}}>
+              <h3 style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark,marginBottom:14}}>✊ Aktive underskriftskampanjer</h3>
+              <div className="grid-3" style={{gap:14}}>
+                {kampanjerData.map(k=><KampanjeKort key={k.id} k={k}/>)}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -2153,7 +2231,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null}) {
             Velg en sak og klikk <strong>Skriv høringssvar</strong> for å velge blant fire forskjellige høringssvar-maler.
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {varsler.map(v=>{
+            {varslerData.map(v=>{
               const ki=KATEGORIER.find(k=>k.id===v.kategori);
               return (
                 <Card key={v.id} style={{borderLeft:`4px solid ${v.status==="kritisk"?"#DC2626":v.status==="viktig"?"#D97706":"#16A34A"}`}}>
@@ -2194,7 +2272,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null}) {
 }
 
 // ─── PREMIUM VERKTØY ──────────────────────────────────────────────────────
-function PremiumVerktøy() {
+function PremiumVerktøy({varslerData=[]}) {
   const [tool,setTool]=useState("budsjett");
   const [budsjettTekst,setBudsjettTekst]=useState("");
   const [analyse,setAnalyse]=useState("");
@@ -2273,13 +2351,13 @@ function PremiumVerktøy() {
         <Card>
           <div style={{fontSize:13,fontWeight:700,marginBottom:16}}>📈 Aktive saker per fagfelt</div>
           {KATEGORIER.map(k=>{
-            const n=varsler.filter(v=>v.kategori===k.id).length;
+            const n=varslerData.filter(v=>v.kategori===k.id).length;
             if(!n) return null;
             return (
               <div key={k.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
                 <div style={{width:120,fontSize:13,color:C.text,flexShrink:0}}>{k.ikon} {k.label}</div>
                 <div style={{flex:1,background:C.bgAlt,borderRadius:99,height:8,overflow:"hidden"}}>
-                  <div style={{background:C.red,width:`${Math.round(n/varsler.length*100)*3}%`,maxWidth:"100%",height:"100%",borderRadius:99}}/>
+                  <div style={{background:C.red,width:`${Math.round(n/Math.max(varslerData.length,1)*100)*3}%`,maxWidth:"100%",height:"100%",borderRadius:99}}/>
                 </div>
                 <div style={{fontSize:12,fontWeight:700,color:C.text,width:30,textAlign:"right"}}>{n}</div>
               </div>
