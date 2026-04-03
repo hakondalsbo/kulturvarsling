@@ -193,6 +193,11 @@ const css = `
     .mob-full{max-width:100%!important;border-radius:14px 14px 0 0!important;position:fixed!important;bottom:0!important;top:auto!important;left:0!important;right:0!important}
     .nav-txt{display:none!important}
     .hero-side{display:none!important}
+    .mob-nav{display:flex!important}
+    .main-content{padding-bottom:70px!important}
+  }
+  @media(min-width:641px){
+    .mob-nav{display:none!important}
   }
 `;
 
@@ -891,6 +896,18 @@ function BrukerApp({user,setUser,setScreen}) {
       setDataLastet(true);
     }
     lastData();
+
+    // Real-time: lytt på nye varsler
+    const kanalen = sb.channel("varsler-live")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"varsler",filter:"publisert=eq.true"},(payload)=>{
+        const v = payload.new;
+        const nytt = {...v, nivå:v.niva, dager:v.dager??Math.max(0,Math.floor((new Date(v.frist)-new Date())/86400000))};
+        setVarsler(prev=>[nytt,...prev]);
+        showToast(`Nytt varsel: ${v.tittel.slice(0,60)}…`,"info");
+      })
+      .subscribe();
+
+    return ()=>{ sb.removeChannel(kanalen); };
   },[]);
 
   async function loggAktivitet(entry) {
@@ -1003,7 +1020,7 @@ function BrukerApp({user,setUser,setScreen}) {
         </div>
       )}
 
-      <main style={{maxWidth:1100,margin:"0 auto",padding:"24px 16px"}}>
+      <main style={{maxWidth:1100,margin:"0 auto",padding:"24px 16px",paddingBottom:"env(safe-area-inset-bottom,0)"}} className="main-content">
         {view!=="forside"&&(
           <div style={{marginBottom:20}}>
             <h1 style={{margin:"0 0 4px",fontSize:22,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>
@@ -1012,7 +1029,7 @@ function BrukerApp({user,setUser,setScreen}) {
             <div style={{height:3,width:40,background:C.red,borderRadius:99}}/>
           </div>
         )}
-        {view==="forside"   &&<BrukerForside setView={setView} varsler={varsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={varsler} kampanjerData={kampanjer}/>}
+        {view==="forside"   &&<BrukerForside setView={setView} varsler={varsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={varsler} kampanjerData={kampanjer} dataLastet={dataLastet}/>}
         {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={varsler} kampanjerData={kampanjer}/>}
         {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet}/>}
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={varsler} user={user}/>}
@@ -1020,6 +1037,23 @@ function BrukerApp({user,setUser,setScreen}) {
         {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
         {view==="premium"   &&<PremiumVerktøy varslerData={varsler}/>}
       </main>
+
+      {/* Mobil bunnmeny */}
+      <div className="mob-nav" style={{display:"none",position:"fixed",bottom:0,left:0,right:0,background:C.bgCard,borderTop:`1px solid ${C.border}`,zIndex:200,padding:"6px 0 env(safe-area-inset-bottom,0)",boxShadow:"0 -2px 12px rgba(0,0,0,.08)"}}>
+        {[
+          {id:"forside",ikon:"🏠",label:"Forside"},
+          {id:"varsler",ikon:"🔔",label:"Varsler"},
+          {id:"kampanjer",ikon:"✊",label:"Kampanjer"},
+          {id:"mobiliser",ikon:"📬",label:"Mobiliser"},
+          ...(user?[{id:"profil",ikon:"👤",label:"Profil"}]:[]),
+        ].map(v=>(
+          <button key={v.id} onClick={()=>{ if(v.id==="mobiliser"&&!user){setScreen("bruker-login");}else{setView(v.id);}}}
+            style={{flex:1,background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 0",cursor:"pointer",fontFamily:"inherit",color:view===v.id?C.red:C.muted}}>
+            <span style={{fontSize:18}}>{v.ikon}</span>
+            <span style={{fontSize:10,fontWeight:view===v.id?700:400}}>{v.label}</span>
+          </button>
+        ))}
+      </div>
 
       {/* Footer */}
       {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
@@ -1211,7 +1245,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
 }
 
 // ─── BRUKER FORSIDE ───────────────────────────────────────────────────────
-function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[]}) {
+function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true}) {
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
   const [aktivBoks,setAktivBoks]=useState(null); // null | "kritisk" | "saker" | "kampanjer" | "signaturer"
@@ -1417,11 +1451,13 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
           <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Nyeste varsler</h2>
           <button onClick={()=>setView("varsler")} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Se alle {varsler.length} →</button>
         </div>
-        {filtered.length===0
-          ? <div style={{fontSize:13,color:C.muted,padding:"20px 0"}}>Ingen saker matcher søket.</div>
-          : <div className="grid-3" style={{gap:14}}>
-              {filtered.slice(0,6).map(v=><VarselKort key={v.id} v={v} compact onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
-            </div>
+        {!dataLastet
+          ? <div className="grid-3" style={{gap:14}}>{[0,1,2,3,4,5].map(i=><VarselSkeleton key={i}/>)}</div>
+          : filtered.length===0
+            ? <div style={{fontSize:13,color:C.muted,padding:"20px 0"}}>Ingen saker matcher søket.</div>
+            : <div className="grid-3" style={{gap:14}}>
+                {filtered.slice(0,6).map(v=><VarselKort key={v.id} v={v} compact onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
+              </div>
         }
         {filtered.length>6&&(
           <div style={{textAlign:"center",marginTop:12}}>
