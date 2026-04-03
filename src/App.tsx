@@ -888,63 +888,96 @@ function BrukerApp({user,setUser,setScreen}) {
       {showOnboarding&&user&&<OnboardingWizard user={user} setUser={setUser} onDone={()=>setShowOnboarding(false)}/>}
       {showPersonvern&&<PersonvernModal onClose={()=>setShowPersonvern(false)}/>}
 
-      <header style={{background:C.bgCard,borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 8px rgba(0,0,0,.06)"}}>
-        <div style={{maxWidth:1100,margin:"0 auto",padding:"0 16px",display:"flex",alignItems:"center",height:58,gap:12}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,cursor:"pointer"}} onClick={()=>setView("forside")}>
-            <div style={{width:28,height:28,background:C.red,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <span style={{color:"#fff",fontWeight:900,fontSize:14,fontFamily:"serif"}}>K</span>
+      <header style={{background:C.bgCard,borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(0,0,0,.07)"}}>
+        <div style={{maxWidth:1100,margin:"0 auto",padding:"0 20px",display:"flex",alignItems:"center",height:64,gap:14}}>
+
+          {/* Logo */}
+          <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}} onClick={()=>setView("forside")}>
+            <div style={{width:36,height:36,background:C.red,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 10px ${C.red}50`,flexShrink:0}}>
+              <span style={{color:"#fff",fontWeight:900,fontSize:18,fontFamily:"'Playfair Display',serif",lineHeight:1}}>K</span>
             </div>
-            <span className="mob-hide" style={{fontWeight:800,fontSize:14,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Kulturvarsling.no</span>
+            <div>
+              <div style={{fontWeight:800,fontSize:16,fontFamily:"'Playfair Display',serif",color:C.redDark,lineHeight:1.1}}>Kulturvarsling</div>
+              <div className="mob-hide" style={{fontSize:10,color:C.muted,fontWeight:500,letterSpacing:".04em",textTransform:"uppercase"}}>Kulturpolitisk varslingsplattform</div>
+            </div>
           </div>
-          <nav style={{display:"flex",gap:1,flex:1,overflowX:"auto"}}>
+
+          {/* Nav */}
+          <nav style={{display:"flex",gap:1,flex:1,overflowX:"auto",paddingLeft:6}}>
             {VIEWS.map(v=>(
               <button key={v.id}
                 onClick={()=>{ if(v.premium&&!isPremium){setShowPremium(true);}else{setView(v.id);}}}
-                style={{padding:"6px 10px",borderRadius:7,border:"none",background:view===v.id?(v.premium?"linear-gradient(135deg,#7C3AED,#4F46E5)":C.red):"none",color:view===v.id?"#fff":v.premium?C.purple:C.muted,fontSize:13,fontWeight:view===v.id?700:500,whiteSpace:"nowrap",flexShrink:0,fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                style={{padding:"6px 11px",borderRadius:7,border:"none",background:view===v.id?(v.premium?"linear-gradient(135deg,#7C3AED,#4F46E5)":C.red):"none",color:view===v.id?"#fff":v.premium?C.purple:C.muted,fontSize:13,fontWeight:view===v.id?700:500,whiteSpace:"nowrap",flexShrink:0,fontFamily:"inherit",display:"flex",alignItems:"center",gap:4,transition:"background .12s,color .12s"}}>
                 <span>{v.ikon}</span><span className="nav-txt">{v.label}</span>
               </button>
             ))}
           </nav>
-          <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+
+          {/* Høyre */}
+          <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
             <button onClick={()=>setScreen("kommune-login")}
-              style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${C.komBorder}`,background:C.komBg,color:C.komBlue,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+              style={{padding:"5px 11px",borderRadius:7,border:`1px solid ${C.komBorder}`,background:C.komBg,color:C.komBlue,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
               🏛 <span className="nav-txt">Kommune</span>
             </button>
             {user ? (
               <>
-                {!isPremium&&<Btn variant="premium" size="sm" onClick={()=>setShowPremium(true)} style={{whiteSpace:"nowrap"}}>⭐</Btn>}
-                {isPremium&&<Badge color={C.purple} bg="#EDE9FE">⭐</Badge>}
-                <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                  <div onClick={()=>setView("profil")} title={user.navn} style={{width:30,height:30,background:C.red,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",flexShrink:0}}>
-                    {(user.org||user.navn||"?")[0].toUpperCase()}
-                  </div>
-                  <button onClick={loggUt} title="Logg ut" style={{background:"none",border:"1px solid "+C.border,borderRadius:6,padding:"3px 8px",fontSize:11,color:C.muted,cursor:"pointer",fontFamily:"inherit"}}>Logg ut</button>
+                {!isPremium&&<Btn variant="premium" size="sm" onClick={()=>setShowPremium(true)} style={{whiteSpace:"nowrap"}}>⭐ Premium</Btn>}
+                {isPremium&&<Badge color={C.purple} bg="#EDE9FE">⭐ Premium</Badge>}
+                <div onClick={()=>setView("profil")} title={user.org||user.navn}
+                  style={{width:32,height:32,background:C.red,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",flexShrink:0,boxShadow:`0 1px 6px ${C.red}40`}}>
+                  {(user.org||user.navn||"?")[0].toUpperCase()}
                 </div>
+                <button onClick={loggUt} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"3px 9px",fontSize:11,color:C.muted,cursor:"pointer",fontFamily:"inherit"}}>Logg ut</button>
               </>
             ) : (
               <>
                 <Btn variant="secondary" size="sm" onClick={()=>setScreen("bruker-login")}>Logg inn</Btn>
-                <Btn variant="primary" size="sm" onClick={()=>setScreen("bruker-login")}>Registrer</Btn>
+                <Btn variant="primary" size="sm" onClick={()=>setScreen("bruker-login")}>Kom i gang</Btn>
               </>
             )}
           </div>
         </div>
       </header>
 
-      <main style={{maxWidth:1100,margin:"0 auto",padding:"24px 16px"}}>
-        {view==="forside"&&(
-          <div style={{marginBottom:20}}>
-            <div style={{display:"inline-flex",alignItems:"center",gap:7,background:C.red+"15",border:`1px solid ${C.red}30`,borderRadius:99,padding:"4px 12px",marginBottom:10}}>
-              <span style={{fontSize:11,color:C.red,fontWeight:700,letterSpacing:".03em"}}>🔔 KI-DREVET VARSLINGSSYSTEM</span>
+      {/* Hero – kun på forsiden */}
+      {view==="forside"&&(
+        <div style={{background:"#1A1512",color:"#fff"}}>
+          <div style={{maxWidth:1100,margin:"0 auto",padding:"36px 24px 32px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:32,flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:260}}>
+              <h1 style={{fontSize:32,fontWeight:900,fontFamily:"'Playfair Display',serif",lineHeight:1.15,marginBottom:10,letterSpacing:"-.02em",maxWidth:600}}>
+                Aldri mer gå glipp av en kulturpolitisk avgjørelse.
+              </h1>
+              <p style={{fontSize:15,color:"rgba(255,255,255,.65)",lineHeight:1.65,maxWidth:540,marginBottom:0}}>
+                Kulturvarsling overvåker Stortinget, Regjeringen og kommunene – filtrerer frem det som angår kulturfeltet – og varsler deg i tide til å si ifra.
+              </p>
+              {!user&&(
+                <div style={{marginTop:18,display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <Btn variant="primary" onClick={()=>setScreen("bruker-login")}>Registrer deg gratis →</Btn>
+                  <button onClick={()=>setScreen("bruker-login")}
+                    style={{padding:"10px 18px",background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:9,color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                    Logg inn
+                  </button>
+                </div>
+              )}
             </div>
-            <h1 style={{fontSize:26,fontWeight:900,fontFamily:"'Playfair Display',serif",color:C.redDark,lineHeight:1.15,marginBottom:5,letterSpacing:"-.02em"}}>
-              Aldri gå glipp av en viktig kulturpolitisk sak
-            </h1>
-            <p style={{fontSize:14,color:C.muted,lineHeight:1.6,maxWidth:560}}>
-              Kulturvarsling samler politiske prosesser – nasjonalt, regionalt og lokalt – og varsler deg om høringer og vedtak som angår ditt fagfelt, før fristene løper ut.
-            </p>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",flexShrink:0}}>
+              {[
+                {n:varsler.length, lbl:"Aktive saker", ikon:"📋"},
+                {n:varsler.filter(v=>v.status==="kritisk").length, lbl:"Kritiske frister", ikon:"⚠️"},
+                {n:kampanjer.reduce((s,k)=>s+(k.sig||0),0).toLocaleString("no"), lbl:"Signaturer", ikon:"✍️"},
+              ].map((s,i)=>(
+                <div key={i} style={{background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.12)",borderRadius:12,padding:"14px 20px",textAlign:"center",minWidth:100}}>
+                  <div style={{fontSize:12,marginBottom:5,opacity:.7}}>{s.ikon}</div>
+                  <div style={{fontSize:26,fontWeight:800,fontFamily:"'Playfair Display',serif",lineHeight:1}}>{s.n}</div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginTop:4}}>{s.lbl}</div>
+                </div>
+              ))}
+            </div>
           </div>
-        )}
+        </div>
+      )}
+
+      <main style={{maxWidth:1100,margin:"0 auto",padding:"24px 16px"}}>
         {view!=="forside"&&(
           <div style={{marginBottom:20}}>
             <h1 style={{margin:"0 0 4px",fontSize:22,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>
