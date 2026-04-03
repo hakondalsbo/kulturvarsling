@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { useState, useMemo, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase → Settings → API
@@ -166,7 +166,7 @@ Kulturfeltet bør kreve: (1) real-prisjusterte rammer, (2) gjeninnføring av ør
 
 // ─── Utility ──────────────────────────────────────────────────────────────
 const css = `
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap&font-display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
   button{transition:all .15s;cursor:pointer}
   button:hover{opacity:.85}
@@ -175,6 +175,8 @@ const css = `
   ::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:#D9D0C7;border-radius:99px}
   a{text-decoration:none}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
   .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -193,6 +195,49 @@ const css = `
     .hero-side{display:none!important}
   }
 `;
+
+// ─── Toast system ──────────────────────────────────────────────────────────
+let _showToast: (msg:string,type?:"ok"|"feil"|"info")=>void = ()=>{};
+export function showToast(msg:string, type:"ok"|"feil"|"info"="ok") { _showToast(msg,type); }
+
+function ToastContainer() {
+  const [toasts,setToasts]=useState<{id:number;msg:string;type:string}[]>([]);
+  _showToast = (msg,type="ok")=>{
+    const id=Date.now();
+    setToasts(t=>[...t,{id,msg,type}]);
+    setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),3200);
+  };
+  if(!toasts.length) return null;
+  return (
+    <div style={{position:"fixed",bottom:80,left:"50%",transform:"translateX(-50%)",zIndex:9999,display:"flex",flexDirection:"column",gap:8,alignItems:"center",pointerEvents:"none"}}>
+      {toasts.map(t=>(
+        <div key={t.id} style={{
+          background:t.type==="feil"?"#991B1B":t.type==="info"?"#1D4ED8":"#14532D",
+          color:"#fff",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:600,
+          boxShadow:"0 4px 20px rgba(0,0,0,.25)",fontFamily:"'DM Sans',sans-serif",
+          animation:"fadeInUp .2s ease",whiteSpace:"nowrap",
+        }}>
+          {t.type==="feil"?"⚠️":t.type==="info"?"ℹ️":"✓"} {t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Skeleton loader ────────────────────────────────────────────────────────
+function Skeleton({h=16,w="100%",r=6,style={}}: {h?:number;w?:string|number;r?:number;style?:any}) {
+  return <div style={{height:h,width:w,borderRadius:r,background:"linear-gradient(90deg,#EDE8E2 25%,#F6F3EF 50%,#EDE8E2 75%)",backgroundSize:"200% 100%",animation:"shimmer 1.4s infinite",...style}}/>;
+}
+function VarselSkeleton() {
+  return (
+    <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 16px",borderLeft:"4px solid #EDE8E2"}}>
+      <div style={{display:"flex",gap:6,marginBottom:10}}><Skeleton h={18} w={60}/><Skeleton h={18} w={80}/></div>
+      <Skeleton h={16} w="90%" style={{marginBottom:6}}/>
+      <Skeleton h={14} w="70%" style={{marginBottom:12}}/>
+      <div style={{display:"flex",justifyContent:"space-between"}}><Skeleton h={12} w={100}/><Skeleton h={12} w={60}/></div>
+    </div>
+  );
+}
 
 function Badge({children,color=C.red,bg,style={}}) {
   return <span style={{background:bg||color+"18",color,padding:"2px 9px",borderRadius:99,fontSize:11,fontWeight:700,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3,...style}}>{children}</span>;
@@ -1450,11 +1495,23 @@ function VarselKort({v,compact=false,onClick,fulgte=[],toggleFølg=()=>{}}) {
   );
 }
 
-function KampanjeKort({k,compact=false}) {
+function KampanjeKort({k,compact=false,user=null}) {
   const [sig,setSig]=useState(k.sig);
   const [vis,setVis]=useState(false);
   const [signert,setSignert]=useState(false);
-  const [navn,setNavn]=useState("");const [epost,setEpost]=useState("");
+  const [laster,setLaster]=useState(false);
+  const [navn,setNavn]=useState(user?.navn||"");
+  const [epost,setEpost]=useState(user?.epost||"");
+
+  async function signer() {
+    if(!navn||!epost) return;
+    setLaster(true);
+    const ok = await signKampanje(k.id, user?.id??null, navn, epost);
+    if(ok) { setSig(s=>s+1); setSignert(true); setVis(false); showToast("Signert! Takk for støtten ✊"); }
+    else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
+    setLaster(false);
+  }
+
   return (
     <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px"}}>
       <div style={{display:"flex",gap:5,marginBottom:7,flexWrap:"wrap"}}>
@@ -1474,7 +1531,7 @@ function KampanjeKort({k,compact=false}) {
           <input placeholder="Navn" value={navn} onChange={e=>setNavn(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:6,boxSizing:"border-box",fontFamily:"inherit"}}/>
           <input placeholder="E-post" value={epost} onChange={e=>setEpost(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:8,boxSizing:"border-box",fontFamily:"inherit"}}/>
           <div style={{display:"flex",gap:6}}>
-            <Btn variant="primary" size="sm" style={{flex:1}} onClick={()=>{if(navn&&epost){setSig(s=>s+1);setSignert(true);setVis(false);}}}>Signer</Btn>
+            <Btn variant="primary" size="sm" style={{flex:1}} onClick={signer} disabled={laster}>{laster?"Lagrer...":"Signer"}</Btn>
             <Btn variant="secondary" size="sm" onClick={()=>setVis(false)}>✕</Btn>
           </div>
         </div>
@@ -1488,6 +1545,12 @@ function KampanjeKort({k,compact=false}) {
 // ─── Saksmodal ─────────────────────────────────────────────────────────────
 function SaksModal({sak,onClose,kampanjer=[]}) {
   const [tab,setTab]=useState("info");
+  useEffect(()=>{
+    document.body.style.overflow="hidden";
+    const esc=(e:KeyboardEvent)=>{ if(e.key==="Escape") onClose(); };
+    window.addEventListener("keydown",esc);
+    return ()=>{ document.body.style.overflow=""; window.removeEventListener("keydown",esc); };
+  },[onClose]);
   const [malModal,setMalModal]=useState(null);
   const [visNyKampanje,setVisNyKampanje]=useState(false);
   const [visFeedback,setVisFeedback]=useState(false);
@@ -1961,7 +2024,7 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}) {
 
   const currentMal = maler.find(m=>m.id===valgtMal);
 
-  useState(()=>{
+  useEffect(()=>{
     if(currentMal) {
       let t="";
       if(type==="komite") t=currentMal.tekst(kontekst?.navn||"Familie- og kulturkomiteen");
@@ -1969,6 +2032,7 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}) {
       else t=currentMal.tekst(kontekst);
       setTekst(applyUserFill(t));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
   function velgMal(id) {
@@ -3308,13 +3372,55 @@ function PubliserModal({onClose,onPubliser}) {
 // ─── ROOT APP ─────────────────────────────────────────────────────────────
 export default function App() {
   const [screen,setScreen]=useState("bruker-app");
-  const [user,setUser]=useState(null);
-  const [kommune,setKommune]=useState(null);
+  const [user,setUser]=useState<any>(null);
+  const [kommune,setKommune]=useState<any>(null);
+  const [sessionSjekket,setSessionSjekket]=useState(false);
 
-  if(screen==="bruker-login")    return <BrukerLogin setScreen={setScreen} setUser={setUser}/>;
-  if(screen==="bruker-app")      return <BrukerApp user={user} setUser={setUser} setScreen={setScreen}/>;
-  if(screen==="kommune-login")   return <KommuneLogin setScreen={setScreen} setKommune={setKommune}/>;
-  if(screen==="kommune-app")     return <KommuneApp kommune={kommune} setScreen={setScreen}/>;
-  return <BrukerApp user={user} setUser={setUser} setScreen={setScreen}/>;
+  useEffect(()=>{
+    // Gjenopprett sesjon ved refresh
+    sb.auth.getSession().then(async ({data:{session}})=>{
+      if(session?.user) {
+        const profil = await hentProfil(session.user.id);
+        setUser({
+          id: session.user.id,
+          navn: profil?.navn || session.user.email?.split("@")[0] || "",
+          epost: session.user.email || "",
+          org: profil?.org || "",
+          orgType: profil?.org_type || "",
+          fagfelt: profil?.fagfelt || [],
+          plan: profil?.plan || "gratis",
+          onboardingDone: profil?.onboarding_done ?? false,
+          varselFrekvens: profil?.varsel_frekvens || "daglig",
+        });
+      }
+      setSessionSjekket(true);
+    });
+
+    // Lytt på auth-endringer (utlogging, token-refresh)
+    const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
+      if(event==="SIGNED_OUT" || !session) setUser(null);
+    });
+    return () => subscription.unsubscribe();
+  },[]);
+
+  if(!sessionSjekket) return (
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif"}}>
+      <style>{css}</style>
+      <div style={{textAlign:"center"}}>
+        <img src="/logo.png" alt="Kulturvarsling" style={{width:48,height:48,objectFit:"contain",marginBottom:16,opacity:.7}}/>
+        <div style={{display:"flex",gap:6,justifyContent:"center"}}>
+          {[0,1,2].map(i=>(
+            <div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.red,opacity:.3,animation:`pulse 1.2s ${i*0.2}s infinite`}}/>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  if(screen==="bruker-login")    return <><ToastContainer/><BrukerLogin setScreen={setScreen} setUser={setUser}/></>;
+  if(screen==="bruker-app")      return <><ToastContainer/><BrukerApp user={user} setUser={setUser} setScreen={setScreen}/></>;
+  if(screen==="kommune-login")   return <><ToastContainer/><KommuneLogin setScreen={setScreen} setKommune={setKommune}/></>;
+  if(screen==="kommune-app")     return <><ToastContainer/><KommuneApp kommune={kommune} setScreen={setScreen}/></>;
+  return <><ToastContainer/><BrukerApp user={user} setUser={setUser} setScreen={setScreen}/></>;
 }
 
