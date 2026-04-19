@@ -195,6 +195,18 @@ const css = `
     .hero-side{display:none!important}
     .mob-nav{display:flex!important}
     .main-content{padding-bottom:70px!important}
+    .desk-nav{display:none!important}
+    .landing-login{display:none!important}
+    .header-kommune{display:none!important}
+    .hero-title{font-size:24px!important;line-height:1.15!important;letter-spacing:-.01em!important}
+    .landing-hero-inner{flex-direction:column!important;gap:20px!important;padding:28px 16px 22px!important}
+    .landing-stats{justify-content:center!important}
+    .cta-bottom{flex-direction:column!important;padding:20px 16px!important}
+    .landing-nav-inner{padding:0 12px!important;gap:8px!important}
+    .landing-kommune{display:none!important}
+    .landing-logo-txt{font-size:13px!important}
+    .sub-nav{overflow-x:auto!important;-webkit-overflow-scrolling:touch!important;scrollbar-width:none!important}
+    .sub-nav::-webkit-scrollbar{display:none!important}
   }
   @media(min-width:641px){
     .mob-nav{display:none!important}
@@ -244,10 +256,10 @@ function VarselSkeleton() {
   );
 }
 
-function Badge({children,color=C.red,bg,style={}}) {
-  return <span style={{background:bg||color+"18",color,padding:"2px 9px",borderRadius:99,fontSize:11,fontWeight:700,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3,...style}}>{children}</span>;
+function Badge({children,color=C.red,bg,style={},className=""}) {
+  return <span className={className} style={{background:bg||color+"18",color,padding:"2px 9px",borderRadius:99,fontSize:11,fontWeight:700,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3,...style}}>{children}</span>;
 }
-function Btn({children,variant="primary",size="md",onClick,style={},disabled}) {
+function Btn({children,variant="primary",size="md",onClick,style={},disabled,className=""}) {
   const base = {border:"none",borderRadius:9,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,transition:"all .15s",...style};
   const variants = {
     primary:{background:C.red,color:"#fff",padding:size==="sm"?"7px 14px":size==="lg"?"14px 28px":"10px 20px",fontSize:size==="sm"?12:size==="lg"?16:14},
@@ -256,7 +268,7 @@ function Btn({children,variant="primary",size="md",onClick,style={},disabled}) {
     kom:{background:C.komBlue,color:"#fff",padding:size==="sm"?"7px 14px":size==="lg"?"14px 28px":"10px 20px",fontSize:size==="sm"?12:size==="lg"?16:14},
     premium:{background:"linear-gradient(135deg,#7C3AED,#4F46E5)",color:"#fff",padding:size==="sm"?"7px 14px":"10px 20px",fontSize:size==="sm"?12:14},
   };
-  return <button style={{...base,...variants[variant],...style}} onClick={onClick} disabled={disabled}>{children}</button>;
+  return <button className={className} style={{...base,...variants[variant],...style}} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 function Input({label,placeholder,value,onChange,type="text",rows}) {
   const s = {width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,color:C.text,background:C.bgCard,fontFamily:"inherit"};
@@ -296,17 +308,17 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
 
       {/* Nav */}
       <nav style={{background:C.bgCard,borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 8px rgba(0,0,0,.06)"}}>
-        <div style={{maxWidth:1100,margin:"0 auto",padding:"0 24px",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
+        <div className="landing-nav-inner" style={{maxWidth:1100,margin:"0 auto",padding:"0 24px",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
           <div style={{display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
             <img src="/logo.png" alt="Kulturvarsling" style={{width:32,height:32,objectFit:"contain"}}/>
             <span style={{fontWeight:800,fontSize:15,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Kulturvarsling.no</span>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <button onClick={()=>setScreen("kommune-login")}
+            <button className="landing-kommune" onClick={()=>setScreen("kommune-login")}
               style={{padding:"6px 14px",borderRadius:7,border:`1px solid ${C.komBorder}`,background:C.komBg,color:C.komBlue,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
               🏛 Kommune
             </button>
-            <Btn variant="secondary" size="sm" onClick={()=>setScreen("bruker-login")}>Logg inn</Btn>
+            <Btn variant="secondary" size="sm" onClick={()=>setScreen("bruker-login")} className="landing-login">Logg inn</Btn>
             <Btn variant="primary" size="sm" onClick={()=>setScreen("bruker-login")}>Kom i gang gratis</Btn>
           </div>
         </div>
@@ -314,12 +326,12 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
 
       {/* Hero – kompakt banner øverst */}
       <div style={{background:"#1A1512",color:"#fff"}}>
-        <div style={{maxWidth:1100,margin:"0 auto",padding:"48px 24px 40px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:40,flexWrap:"wrap"}}>
+        <div className="landing-hero-inner" style={{maxWidth:1100,margin:"0 auto",padding:"48px 24px 40px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:40,flexWrap:"wrap"}}>
           <div style={{flex:1,minWidth:280}}>
             <div style={{display:"inline-flex",alignItems:"center",gap:7,background:"rgba(140,28,19,.3)",border:"1px solid rgba(140,28,19,.5)",borderRadius:99,padding:"4px 12px",marginBottom:18}}>
               <span style={{fontSize:11,color:"#FCA5A5",fontWeight:700,letterSpacing:".03em"}}>🔔 KI-DREVET VARSLINGSSYSTEM</span>
             </div>
-            <h1 style={{fontSize:38,fontWeight:900,fontFamily:"'Playfair Display',serif",color:"#FFF8F2",lineHeight:1.1,marginBottom:14,letterSpacing:"-.02em"}}>
+            <h1 className="hero-title" style={{fontSize:38,fontWeight:900,fontFamily:"'Playfair Display',serif",color:"#FFF8F2",lineHeight:1.1,marginBottom:14,letterSpacing:"-.02em"}}>
               Aldri gå glipp av<br/>
               <span style={{color:"#FCA5A5"}}>en viktig kulturpolitisk sak</span>
             </h1>
@@ -334,7 +346,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
             </div>
           </div>
           {/* Mini-stats */}
-          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+          <div className="landing-stats" style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             {[
               {n:varsler.length, lbl:"Aktive saker",ikon:"📋"},
               {n:varsler.filter(v=>v.status==="kritisk").length, lbl:"Kritiske frister",ikon:"⚠️"},
@@ -359,7 +371,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
             <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Siste varsler</h2>
             <Btn variant="secondary" size="sm" onClick={()=>setScreen("bruker-login")}>Se alle og filtrer →</Btn>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
+          <div className="grid-3" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
             {varsler.map(v=>{
               const ki=KATEGORIER.find(k=>k.id===v.kategori);
               const bc={kritisk:"#DC2626",viktig:"#D97706",normal:"#16A34A"}[v.status];
@@ -390,7 +402,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
             <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Aktive kampanjer</h2>
             <Btn variant="secondary" size="sm" onClick={()=>setScreen("bruker-login")}>Signer og følg →</Btn>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
+          <div className="grid-3" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
             {kampanjer.map(k=>(
               <div key={k.id} style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px"}}>
                 <div style={{display:"flex",gap:5,marginBottom:8,flexWrap:"wrap"}}>
@@ -411,7 +423,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
         </div>
 
         {/* Nedre CTA */}
-        <div style={{background:"#1A1512",borderRadius:16,padding:"32px 36px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:24,flexWrap:"wrap"}}>
+        <div className="cta-bottom" style={{background:"#1A1512",borderRadius:16,padding:"32px 36px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:24,flexWrap:"wrap"}}>
           <div>
             <div style={{fontWeight:800,fontSize:18,fontFamily:"'Playfair Display',serif",color:"#fff",marginBottom:6}}>
               Vil du mobilisere, sende høringssvar og få varsler?
@@ -961,7 +973,7 @@ function BrukerApp({user,setUser,setScreen}) {
           </div>
 
           {/* Nav */}
-          <nav style={{display:"flex",gap:1,flex:1,overflowX:"auto",paddingLeft:6}}>
+          <nav className="desk-nav" style={{display:"flex",gap:1,flex:1,overflowX:"auto",paddingLeft:6}}>
             {VIEWS.map(v=>(
               <button key={v.id}
                 onClick={()=>{ if(v.premium&&!isPremium){setShowPremium(true);}else{setView(v.id);}}}
@@ -973,23 +985,23 @@ function BrukerApp({user,setUser,setScreen}) {
 
           {/* Høyre */}
           <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
-            <button onClick={()=>setScreen("kommune-login")}
+            <button className="header-kommune" onClick={()=>setScreen("kommune-login")}
               style={{padding:"5px 11px",borderRadius:7,border:`1px solid ${C.komBorder}`,background:C.komBg,color:C.komBlue,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
               🏛 <span className="nav-txt">Kommune</span>
             </button>
             {user ? (
               <>
-                {!isPremium&&<Btn variant="premium" size="sm" onClick={()=>setShowPremium(true)} style={{whiteSpace:"nowrap"}}>⭐ Premium</Btn>}
-                {isPremium&&<Badge color={C.purple} bg="#EDE9FE">⭐ Premium</Badge>}
+                {!isPremium&&<Btn variant="premium" size="sm" onClick={()=>setShowPremium(true)} style={{whiteSpace:"nowrap"}} className="mob-hide">⭐ Premium</Btn>}
+                {isPremium&&<Badge color={C.purple} bg="#EDE9FE" className="mob-hide">⭐ Premium</Badge>}
                 <div onClick={()=>setView("profil")} title={user.org||user.navn}
                   style={{width:32,height:32,background:C.red,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",flexShrink:0,boxShadow:`0 1px 6px ${C.red}40`}}>
                   {(user.org||user.navn||"?")[0].toUpperCase()}
                 </div>
-                <button onClick={loggUt} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"3px 9px",fontSize:11,color:C.muted,cursor:"pointer",fontFamily:"inherit"}}>Logg ut</button>
+                <button onClick={loggUt} className="mob-hide" style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"3px 9px",fontSize:11,color:C.muted,cursor:"pointer",fontFamily:"inherit"}}>Logg ut</button>
               </>
             ) : (
               <>
-                <Btn variant="secondary" size="sm" onClick={()=>setScreen("bruker-login")}>Logg inn</Btn>
+                <Btn variant="secondary" size="sm" onClick={()=>setScreen("bruker-login")} className="mob-hide">Logg inn</Btn>
                 <Btn variant="primary" size="sm" onClick={()=>setScreen("bruker-login")}>Kom i gang</Btn>
               </>
             )}
@@ -1001,7 +1013,7 @@ function BrukerApp({user,setUser,setScreen}) {
       {view==="forside"&&(
         <div style={{background:"#1A1512",color:"#fff"}}>
           <div style={{maxWidth:1100,margin:"0 auto",padding:"32px 24px 28px"}}>
-            <h1 style={{fontSize:30,fontWeight:900,fontFamily:"'Playfair Display',serif",color:"#FFF8F2",lineHeight:1.2,marginBottom:10,letterSpacing:"-.02em",maxWidth:680}}>
+            <h1 className="hero-title" style={{fontSize:30,fontWeight:900,fontFamily:"'Playfair Display',serif",color:"#FFF8F2",lineHeight:1.2,marginBottom:10,letterSpacing:"-.02em",maxWidth:680}}>
               Aldri mer gå glipp av en kulturpolitisk avgjørelse.
             </h1>
             <p style={{fontSize:15,color:"rgba(255,248,242,.6)",lineHeight:1.65,maxWidth:580,margin:0}}>
@@ -1090,9 +1102,9 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
 
   return (
     <div>
-      <div style={{display:"flex",gap:0,marginBottom:24,borderBottom:`1px solid ${C.border}`}}>
+      <div className="sub-nav" style={{display:"flex",gap:0,marginBottom:24,borderBottom:`1px solid ${C.border}`}}>
         {[["profil","👤 Organisasjonsprofil"],["fulgte","🔔 Saker jeg følger"],["aktivitet","📋 Aktivitet"],["innstillinger","⚙️ Innstillinger"]].map(([id,lbl])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:13,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap"}}>
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:13,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
             {lbl}
           </button>
         ))}
@@ -1615,9 +1627,9 @@ function SaksModal({sak,onClose,kampanjer=[]}) {
             </div>
             <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:C.muted,marginLeft:12,flexShrink:0,padding:4}}>✕</button>
           </div>
-          <div style={{display:"flex",gap:0,marginTop:16,borderBottom:`1px solid ${C.border}`}}>
+          <div className="sub-nav" style={{display:"flex",gap:0,marginTop:16,borderBottom:`1px solid ${C.border}`}}>
             {[["info","ℹ️ Info"],["mobiliser","📬 Mobiliser"],["kampanje","✊ Kampanje"],["horingssvar","📝 Høringssvar"],["del","🔗 Del"]].map(([id,lbl])=>(
-              <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:12,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap"}}>
+              <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:12,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
                 {lbl}{id==="kampanje"&&relKampanjer.length>0&&<span style={{marginLeft:4,background:C.red,color:"#fff",borderRadius:99,fontSize:10,padding:"1px 6px"}}>{relKampanjer.length}</span>}
               </button>
             ))}
@@ -2197,10 +2209,10 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
       {malModal&&<MalModal type={malModal.type} kontekst={malModal.kontekst} user={user} onClose={()=>setMalModal(null)} onSend={(entry)=>loggAktivitet(entry)}/>}
 
       {/* Sub-nav */}
-      <div style={{display:"flex",gap:0,marginBottom:24,borderBottom:`1px solid ${C.border}`}}>
+      <div className="sub-nav" style={{display:"flex",gap:0,marginBottom:24,borderBottom:`1px solid ${C.border}`}}>
         {[["oversikt","🗺 Oversikt"],["komiteer","🏛 Komiteer"],["politikere","👤 Politikere"],["horinger","📋 Høringer"]].map(([id,lbl])=>(
           <button key={id} onClick={()=>setTab(id)}
-            style={{padding:"9px 16px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:13,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap"}}>
+            style={{padding:"9px 16px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:13,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
             {lbl}
           </button>
         ))}
@@ -2238,7 +2250,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
           <p style={{fontSize:14,color:C.muted,marginBottom:20,lineHeight:1.6}}>
             Velg mobiliseringsform nedenfor. Alle kortene inneholder ferdige maler du kan tilpasse og sende direkte.
           </p>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
+          <div className="grid-3" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
             {ovCards.map((c,i)=>(
               <div key={i}
                 onClick={()=>{
@@ -2315,7 +2327,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
           </div>
           <input placeholder="Søk på navn, parti, sted..." value={sokPol} onChange={e=>setSokPol(e.target.value)}
             style={{width:"100%",padding:"10px 14px",borderRadius:9,border:`1.5px solid ${C.border}`,fontSize:14,marginBottom:16,boxSizing:"border-box",background:C.bgCard,fontFamily:"inherit"}}/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             {filtPol.map(p=>(
               <Card key={p.id} style={{display:"flex",flexDirection:"column",gap:0}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
@@ -2733,10 +2745,10 @@ function MinAktivitetSide({user,setUser,aktivitet,setShowVarselReg,setShowPremiu
       </div>
 
       {/* Tabs */}
-      <div style={{display:"flex",gap:0,marginBottom:24,borderBottom:`1px solid ${C.border}`}}>
+      <div className="sub-nav" style={{display:"flex",gap:0,marginBottom:24,borderBottom:`1px solid ${C.border}`}}>
         {[["aktivitet","📋 Min aktivitet"],["varsler","🔔 Varselinnstillinger"],["stats","📊 Min statistikk"]].map(([id,lbl])=>(
           <button key={id} onClick={()=>setTab(id)}
-            style={{padding:"9px 16px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:13,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit"}}>
+            style={{padding:"9px 16px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:13,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
             {lbl}
           </button>
         ))}
