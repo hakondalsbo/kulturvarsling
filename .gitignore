@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code MCP config (inneholder tilgangsnøkler)
+.mcp.json
+
+# Supabase CLI midlertidige filer
+supabase/.temp/

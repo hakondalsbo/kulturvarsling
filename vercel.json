@@ -1,9 +1,11 @@
 {
+  "crons": [
+    { "path": "/api/cron/hent-saker", "schedule": "0 6 * * *" }
+  ],
   "routes": [
+    { "handle": "filesystem" },
     { "src": "/app", "dest": "/index.html" },
     { "src": "/app/(.*)", "dest": "/index.html" },
-    { "src": "/assets/(.*)", "dest": "/assets/$1" },
-    { "src": "/(.*\\.(png|svg|ico|json|js|css|woff2?))", "dest": "/$1" },
     { "src": "/(.*)", "dest": "/vente.html" }
   ]
 }
