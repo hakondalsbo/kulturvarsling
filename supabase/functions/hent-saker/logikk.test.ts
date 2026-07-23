@@ -6,6 +6,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   erKulturRelevant,
+  erKulturSak,
+  finnHøringsfrist,
+  parseStortingetDato,
   statusFraFrist,
   parseRssItems,
 } from "./logikk.ts";
@@ -76,6 +79,114 @@ test("manglende frist er normal", () => {
 
 test("ugyldig dato krasjer ikke, blir normal", () => {
   assert.equal(statusFraFrist("ikke-en-dato", NÅ), "normal");
+});
+
+// ─── parseStortingetDato ──────────────────────────────────────────────────────
+
+test("epoch-format med tidssone: midnatt norsk tid blir riktig dag", () => {
+  // 1760479200000 ms = 15.10.2025 00:00 +0200 — uten offset-håndtering
+  // ville UTC-konvertering gitt 14.10.2025
+  assert.equal(parseStortingetDato("/Date(1760479200000+0200)/"), "2025-10-15");
+});
+
+test("norsk datoformat parses", () => {
+  assert.equal(parseStortingetDato("21.10.2025 00:00:00"), "2025-10-21");
+});
+
+test("placeholder 01.01.0001 blir null", () => {
+  assert.equal(parseStortingetDato("01.01.0001 00:00:00"), null);
+});
+
+test("tom/ugyldig dato blir null", () => {
+  assert.equal(parseStortingetDato(null), null);
+  assert.equal(parseStortingetDato(""), null);
+  assert.equal(parseStortingetDato("tullball"), null);
+});
+
+// ─── erKulturSak ──────────────────────────────────────────────────────────────
+
+test("FAMKULT-komitésak er kultursak uansett tittel", () => {
+  assert.equal(
+    erKulturSak({ komite: { id: "FAMKULT" }, tittel: "Endringer i åndsverkloven" }),
+    true,
+  );
+});
+
+test("hovedemne 6 (Kultur) er kultursak", () => {
+  assert.equal(
+    erKulturSak({ emne_liste: [{ id: 6, navn: "Kultur" }], tittel: "Prop. 1 S" }),
+    true,
+  );
+});
+
+test("transportsak i annen komité er ikke kultursak", () => {
+  assert.equal(
+    erKulturSak({
+      komite: { id: "TRANSKOM" },
+      emne_liste: [{ id: 30, navn: "Samferdsel" }],
+      tittel: "Utbygging av E6",
+    }),
+    false,
+  );
+});
+
+test("nøkkelord i tittel fanger kultursak utenfor komiteen", () => {
+  assert.equal(
+    erKulturSak({ komite: { id: "FINANS" }, tittel: "Momsfritak for musikkfestivaler" }),
+    true,
+  );
+});
+
+// ─── finnHøringsfrist ─────────────────────────────────────────────────────────
+
+const SAK_MED_FRISTER = {
+  saksgang: {
+    saksgang_steg_liste: [
+      { saksgang_hendelse_liste: [{ id: "FREMMET", dato: "15.10.2025 00:00:00" }] },
+      {
+        saksgang_hendelse_liste: [
+          { id: "HOERFRIST", dato: "21.10.2025 00:00:00" },
+          { id: "HOERFRIST", dato: "12.11.2025 00:00:00" },
+          { id: "HOER", dato: "30.10.2025 00:00:00" },
+        ],
+      },
+    ],
+  },
+};
+
+test("velger siste HOERFRIST (skriftlig innspillsfrist)", () => {
+  assert.equal(finnHøringsfrist(SAK_MED_FRISTER), "2025-11-12");
+});
+
+test("sak uten HOERFRIST gir null", () => {
+  assert.equal(
+    finnHøringsfrist({
+      saksgang: {
+        saksgang_steg_liste: [
+          { saksgang_hendelse_liste: [{ id: "FREMMET", dato: "15.10.2025 00:00:00" }] },
+        ],
+      },
+    }),
+    null,
+  );
+});
+
+test("HOERFRIST med placeholder-dato ignoreres", () => {
+  assert.equal(
+    finnHøringsfrist({
+      saksgang: {
+        saksgang_steg_liste: [
+          { saksgang_hendelse_liste: [{ id: "HOERFRIST", dato: "01.01.0001 00:00:00" }] },
+        ],
+      },
+    }),
+    null,
+  );
+});
+
+test("tom saksgang krasjer ikke", () => {
+  assert.equal(finnHøringsfrist({}), null);
+  assert.equal(finnHøringsfrist({ saksgang: null }), null);
 });
 
 // ─── parseRssItems ────────────────────────────────────────────────────────────

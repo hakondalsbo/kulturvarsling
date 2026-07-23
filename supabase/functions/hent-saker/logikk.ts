@@ -46,6 +46,74 @@ export function statusFraFrist(frist: string | null, nå: number = Date.now()): 
   return "normal";
 }
 
+// ─── Stortinget-datoformater ──────────────────────────────────────────────────
+// API-et bruker to formater: "/Date(1760479200000+0200)/" (med tidssone-offset som
+// MÅ legges til før dato-uttrekk, ellers blir midnatt lokal tid til dagen før i UTC)
+// og norsk "21.10.2025 00:00:00". Placeholder for ubrukte datoer er "01.01.0001".
+export function parseStortingetDato(verdi: string | null | undefined): string | null {
+  if (!verdi) return null;
+  const epoch = verdi.match(/\/Date\((\d+)([+-]\d{4})?\)/);
+  if (epoch) {
+    let ms = Number(epoch[1]);
+    if (epoch[2]) {
+      const fortegn = epoch[2].startsWith("-") ? -1 : 1;
+      const timer = Number(epoch[2].slice(1, 3));
+      const min = Number(epoch[2].slice(3, 5));
+      ms += fortegn * (timer * 60 + min) * 60000;
+    }
+    const d = new Date(ms);
+    return d.getUTCFullYear() > 1970 ? d.toISOString().split("T")[0] : null;
+  }
+  const norsk = verdi.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  if (norsk) {
+    const [, dd, mm, yyyy] = norsk;
+    if (Number(yyyy) < 1970) return null; // placeholder 01.01.0001
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const iso = verdi.match(/^(\d{4}-\d{2}-\d{2})/);
+  return iso ? iso[1] : null;
+}
+
+// ─── Klientside-filter for Stortingets saker ──────────────────────────────────
+// KILDEKART-funn (verifisert juli 2026): serverens komité-filter IGNORERES —
+// eksport/saker gir alltid hele sesjonen. Vi må velge kultursakene selv:
+// familie- og kulturkomiteen, hovedemne 6 (Kultur), eller nøkkelord-treff.
+export function erKulturSak(sak: {
+  komite?: { id?: string } | null;
+  emne_liste?: Array<{ id?: number; navn?: string }> | { emne?: Array<{ id?: number; navn?: string }> } | null;
+  tittel?: string;
+  korttittel?: string;
+}): boolean {
+  if (sak?.komite?.id === "FAMKULT") return true;
+  const rå = sak?.emne_liste;
+  const emner = Array.isArray(rå) ? rå : rå?.emne ?? [];
+  if (emner.some((e) => e?.id === 6 || /^kultur$/i.test(e?.navn ?? ""))) return true;
+  return erKulturRelevant(sak?.tittel ?? "", sak?.korttittel ?? "");
+}
+
+// ─── Høringsfrist fra sak-detalj (eksport/sak) ────────────────────────────────
+// Eneste fungerende maskinlesbare kilde til komiteenes høringsfrister
+// (eksport/horingsoversikt = 404, eksport/horinger = 500, verifisert).
+// Ved flere HOERFRIST-hendelser velges den SISTE (skriftlig innspillsfrist).
+export function finnHøringsfrist(sakDetalj: {
+  saksgang?: {
+    saksgang_steg_liste?: Array<{
+      saksgang_hendelse_liste?: Array<{ id?: string; dato?: string }>;
+    }>;
+  } | null;
+}): string | null {
+  const frister: string[] = [];
+  for (const steg of sakDetalj?.saksgang?.saksgang_steg_liste ?? []) {
+    for (const hendelse of steg?.saksgang_hendelse_liste ?? []) {
+      if (hendelse?.id === "HOERFRIST") {
+        const dato = parseStortingetDato(hendelse.dato);
+        if (dato) frister.push(dato);
+      }
+    }
+  }
+  return frister.length ? frister.sort()[frister.length - 1] : null;
+}
+
 // ─── RSS-parsing ──────────────────────────────────────────────────────────────
 export type RssItem = {
   tittel: string;

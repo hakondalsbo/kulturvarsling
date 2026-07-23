@@ -1,68 +1,150 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { erKulturRelevant, parseRssItems, statusFraFrist } from "./logikk.ts";
+import {
+  erKulturRelevant,
+  erKulturSak,
+  finnHøringsfrist,
+  parseRssItems,
+  statusFraFrist,
+} from "./logikk.ts";
 
-// ─── Stortinget API ───────────────────────────────────────────────────────────
-async function hentStortingetHøringer(): Promise<any[]> {
+// ─── Stortinget: kultursaker med høringsfrister ───────────────────────────────
+// KILDEKART-funn (verifisert juli 2026): det gamle endepunktet
+// eksport/horingsoversikt finnes ikke (404), og eksport/horinger er nede (500).
+// Strategi nå: hent ALLE saker for sesjonen (serverens komité-filter ignoreres
+// uansett), filtrer klientside med erKulturSak, og slå opp eksport/sak per NY
+// kultursak for å finne HOERFRIST (høringsfrist). Detaljoppslag gjøres kun for
+// saker vi ikke har fra før, så antall kall er lite etter første kjøring.
+async function hentStortingetSaker(eksKilder: Set<string>): Promise<any[]> {
   const items: any[] = [];
   const sesjoner = ["2025-2026"];
 
   for (const sesjon of sesjoner) {
     try {
-      const url =
-        `https://data.stortinget.no/eksport/horingsoversikt?sesjon=${sesjon}&format=json`;
-      const res = await fetch(url, {
-        headers: { Accept: "application/json" },
-      });
+      const res = await fetch(
+        `https://data.stortinget.no/eksport/saker?sesjonid=${sesjon}&format=json`,
+        { headers: { Accept: "application/json" } },
+      );
       if (!res.ok) {
-        console.error(`Stortinget API svarte ${res.status}`);
+        console.error(`Stortinget saker svarte ${res.status}`);
         continue;
       }
       const data = await res.json();
-      const horinger: any[] = data?.horinger_oversikt_liste ?? [];
+      const alleSaker: any[] = data?.saker_liste ?? [];
+      const kultursaker = alleSaker.filter(erKulturSak);
+      console.log(
+        `Stortinget (${sesjon}): ${alleSaker.length} saker totalt, ${kultursaker.length} kulturrelevante`,
+      );
 
-      for (const h of horinger) {
-        const id = h.id ?? h.høring_id ?? "";
-        const tittel = h.tittel ?? h.name ?? "";
+      for (const sak of kultursaker) {
+        const tittel = sak.tittel ?? sak.korttittel ?? "";
         if (!tittel) continue;
+        const kilde =
+          `https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=${sak.id}`;
+        if (eksKilder.has(kilde)) continue; // detaljoppslag kun for nye saker
+
+        let frist: string | null = null;
+        try {
+          const detRes = await fetch(
+            `https://data.stortinget.no/eksport/sak?sakid=${sak.id}&format=json`,
+            { headers: { Accept: "application/json" } },
+          );
+          if (detRes.ok) frist = finnHøringsfrist(await detRes.json());
+        } catch (e) {
+          console.error(`Detaljoppslag for sak ${sak.id} feilet:`, e);
+        }
 
         items.push({
           tittel,
-          instans: h.komite?.navn ?? "Stortinget",
-          kilde: `https://www.stortinget.no/no/Hva-skjer-pa-Stortinget/Horing/${id}/`,
-          frist: h.frist_dato
-            ? h.frist_dato.split("T")[0]
-            : (h.dato ? h.dato.split("T")[0] : null),
-          sammendrag_raa: h.beskrivelse ?? "",
-          kilde_id: `stortinget-${id}`,
+          instans: sak.komite?.navn
+            ? `${sak.komite.navn}, Stortinget`
+            : "Stortinget",
+          kilde,
+          frist,
+          sammendrag_raa: sak.henvisning ?? "",
+          kilde_id: `stortinget-sak-${sak.id}`,
+          forhåndsgodkjent: true, // valgt via komité/emne — skal ikke stoppes av nøkkelordfilteret
         });
       }
-      console.log(
-        `Stortinget (${sesjon}): ${horinger.length} høringer hentet`,
-      );
     } catch (e) {
-      console.error("Stortinget API feil:", e);
+      console.error("Stortinget saker feil:", e);
     }
   }
 
   return items;
 }
 
-// ─── Regjeringen KUD RSS ──────────────────────────────────────────────────────
+// ─── Stortinget: ventede saker (tidligvarsling) ───────────────────────────────
+// Regjeringens VARSLEDE kommende proposisjoner/meldinger — lar oss varsle
+// kulturfeltet FØR sakene fremmes for Stortinget. (Verifisert i kildekartet.)
+async function hentVentedeSaker(): Promise<any[]> {
+  const items: any[] = [];
+  try {
+    const res = await fetch(
+      "https://data.stortinget.no/eksport/ventedesaker?format=json",
+      { headers: { Accept: "application/json" } },
+    );
+    if (!res.ok) {
+      console.error(`Ventede saker svarte ${res.status}`);
+      return items;
+    }
+    const data = await res.json();
+    const saker: any[] = data?.saker_liste ?? [];
+
+    for (const sak of saker) {
+      const departement: string = sak.departement ?? "";
+      const tittel: string = sak.tittel ?? "";
+      if (!tittel) continue;
+      if (!/kultur/i.test(departement) && !erKulturRelevant(tittel)) continue;
+
+      items.push({
+        tittel: `Varslet sak: ${tittel}`,
+        instans: departement || "Regjeringen",
+        kilde:
+          `https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/ventede-saker/#sak-${sak.id}`,
+        frist: null,
+        sammendrag_raa:
+          `${sak.type ?? "Sak"} varslet fremmet i ${sak["måned"] ?? "kommende sesjon"}. ` +
+          "Tidligvarsling: saken er ennå ikke fremmet for Stortinget.",
+        kilde_id: `stortinget-ventet-${sak.id}`,
+        forhåndsgodkjent: true,
+      });
+    }
+    console.log(
+      `Ventede saker: ${saker.length} totalt, ${items.length} kulturrelevante`,
+    );
+  } catch (e) {
+    console.error("Ventede saker feil:", e);
+  }
+  return items;
+}
+
+// ─── Regjeringen RSS ──────────────────────────────────────────────────────────
+// KILDEKART-oppgradering: RSS-generatoren dekker høringer, NOU-er, meldinger og
+// proposisjoner fra ALLE departement (verifisert, 100 elementer per feed) — ikke
+// bare KUD. Nøkkelord- og Claude-filtrene siler ut det som ikke angår kultur.
 async function hentRegjeringenRSS(): Promise<any[]> {
   const items: any[] = [];
   const feeds = [
     {
+      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=dokumenter/h%C3%B8ringer",
+      instans: "Regjeringen – høring",
+    },
+    {
+      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=dokumenter/nouer",
+      instans: "Regjeringen – NOU",
+    },
+    {
+      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=dokumenter/meldinger",
+      instans: "Regjeringen – stortingsmelding",
+    },
+    {
+      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=dokumenter/proposisjoner",
+      instans: "Regjeringen – proposisjon",
+    },
+    {
       url: "https://www.regjeringen.no/no/dep/kud/rss/",
       instans: "Kulturdepartementet",
-    },
-    {
-      url: "https://www.regjeringen.no/no/dep/kud/aktuelt/rss/",
-      instans: "Kulturdepartementet",
-    },
-    {
-      url: "https://www.regjeringen.no/no/tema/kunst-og-kultur/rss/",
-      instans: "Regjeringen",
     },
   ];
 
@@ -84,39 +166,6 @@ async function hentRegjeringenRSS(): Promise<any[]> {
     }
   }
 
-  return items;
-}
-
-// ─── Stortinget: familie- og kulturkomiteens saker ────────────────────────────
-async function hentKomiteensSaker(): Promise<any[]> {
-  const items: any[] = [];
-  try {
-    const url =
-      "https://data.stortinget.no/eksport/saker?sesjon=2025-2026&komite=FaKu&format=json";
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) return items;
-
-    const data = await res.json();
-    const saker: any[] = data?.saker_liste ?? [];
-
-    for (const sak of saker) {
-      const id = sak.id ?? "";
-      const tittel = sak.tittel ?? sak.korttittel ?? "";
-      if (!tittel) continue;
-
-      items.push({
-        tittel,
-        instans: "Familie- og kulturkomiteen, Stortinget",
-        kilde: `https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=${id}`,
-        frist: sak.frist_dato ? sak.frist_dato.split("T")[0] : null,
-        sammendrag_raa: sak.beskrivelse ?? sak.innstilling ?? "",
-        kilde_id: `stortinget-sak-${id}`,
-      });
-    }
-    console.log(`Komiteen: ${saker.length} saker hentet`);
-  } catch (e) {
-    console.error("Komite-saker feil:", e);
-  }
   return items;
 }
 
@@ -186,20 +235,24 @@ Deno.serve(async (_req: Request) => {
     const eksKilder = new Set((eks ?? []).map((v: any) => v.kilde));
 
     // Hent fra alle kilder parallelt
-    const [høringer, rssItems, komiteen] = await Promise.all([
-      hentStortingetHøringer(),
+    const [stortingssaker, rssItems, ventede] = await Promise.all([
+      hentStortingetSaker(eksKilder),
       hentRegjeringenRSS(),
-      hentKomiteensSaker(),
+      hentVentedeSaker(),
     ]);
 
-    const alle = [...høringer, ...rssItems, ...komiteen];
+    const alle = [...stortingssaker, ...rssItems, ...ventede];
 
-    // Filtrer bort duplikater og ikke-relevante
+    // Filtrer bort duplikater og ikke-relevante.
+    // Saker valgt via komité/emne (forhåndsgodkjent) hopper over nøkkelordfilteret —
+    // en sak om åndsverkloven mangler f.eks. ordet «kultur» i tittelen.
+    // Claude-laget kvalitetssikrer uansett alt til slutt.
     const nye = alle.filter(
       (item) =>
         item.kilde &&
         !eksKilder.has(item.kilde) &&
-        erKulturRelevant(item.tittel, item.sammendrag_raa),
+        (item.forhåndsgodkjent ||
+          erKulturRelevant(item.tittel, item.sammendrag_raa)),
     );
 
     console.log(
