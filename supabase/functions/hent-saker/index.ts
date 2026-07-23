@@ -1,34 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-// ─── Kulturrelevante nøkkelord ────────────────────────────────────────────────
-const KULTUR_NØKKELORD = [
-  "kultur", "kunst", "scenekunst", "musikk", "film", "museum", "museer",
-  "bibliotek", "dans", "teater", "kulturliv", "kulturbudsjettet",
-  "kulturpolitikk", "kulturmidler", "kulturskole", "kulturbygg",
-  "kulturarv", "kulturinstitusjon", "kulturfondet", "kunstner",
-  "stipend", "kulturrådet", "kulturdirektorat", "spillmidler",
-  "litteratur", "opera", "ballett", "festival", "konsert", "kino",
-  "forfatter", "komponist", "billedkunst", "skulptur", "arkiv",
-  "riksteatret", "nationaltheatret", "operaen", "filminstituttet",
-];
-
-// Nøkkelord som indikerer at saken IKKE er kulturrelevant selv om den
-// passerer positiv nøkkelordsjekk (f.eks. via "Familie- og kulturkomiteen")
-const IKKE_KULTUR = [
-  "redningshelikopter", "helikopterbas", "beredskapsavtale",
-  "forsvarsdepartement", "politiet", "kriminalitet",
-  "veibygging", "samferdsel", "vegvesen",
-  "sykehus", "helseforetak", "legemiddel",
-  "juks i skolen", "eksamen", "karakterer",
-  "fengsel", "kriminalomsorg",
-];
-
-function erKulturRelevant(tittel: string, tekst = ""): boolean {
-  const haystack = `${tittel} ${tekst}`.toLowerCase();
-  if (IKKE_KULTUR.some((k) => haystack.includes(k))) return false;
-  return KULTUR_NØKKELORD.some((k) => haystack.includes(k));
-}
+import { erKulturRelevant, parseRssItems, statusFraFrist } from "./logikk.ts";
 
 // ─── Stortinget API ───────────────────────────────────────────────────────────
 async function hentStortingetHøringer(): Promise<any[]> {
@@ -104,48 +76,9 @@ async function hentRegjeringenRSS(): Promise<any[]> {
         continue;
       }
       const xml = await res.text();
-
-      // Parse <item> blokker
-      const itemBlokker = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)];
-      for (const match of itemBlokker) {
-        const blokk = match[1];
-
-        const tittel = (
-          blokk.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/)?.[1] ??
-          blokk.match(/<title>([\s\S]*?)<\/title>/)?.[1] ??
-          ""
-        ).trim();
-
-        const link = (
-          blokk.match(/<link>([\s\S]*?)<\/link>/)?.[1] ?? ""
-        ).trim();
-
-        const beskrivelse = (
-          blokk.match(
-            /<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/,
-          )?.[1] ??
-          blokk.match(/<description>([\s\S]*?)<\/description>/)?.[1] ??
-          ""
-        ).replace(/<[^>]+>/g, "").trim().slice(0, 600);
-
-        const pubDate =
-          blokk.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] ?? "";
-
-        if (!tittel || !link) continue;
-
-        items.push({
-          tittel,
-          instans: feed.instans,
-          kilde: link,
-          frist: null, // RSS har sjelden frist
-          sammendrag_raa: beskrivelse,
-          kilde_id: `rss-${link}`,
-          publisert_dato: pubDate
-            ? new Date(pubDate).toISOString().split("T")[0]
-            : null,
-        });
-      }
-      console.log(`RSS ${feed.url}: ${itemBlokker.length} items hentet`);
+      const parsed = parseRssItems(xml, feed.instans);
+      items.push(...parsed);
+      console.log(`RSS ${feed.url}: ${parsed.length} items hentet`);
     } catch (e) {
       console.error(`RSS feil for ${feed.url}:`, e);
     }
@@ -237,18 +170,6 @@ Svar BARE med gyldig JSON, ingen markdown:
     console.error("Claude feil:", e);
     return null;
   }
-}
-
-// ─── Bestem status ut fra frist ───────────────────────────────────────────────
-function statusFraFrist(frist: string | null): string {
-  if (!frist) return "normal";
-  const dager = Math.floor(
-    (new Date(frist).getTime() - Date.now()) / 86400000,
-  );
-  if (dager < 0) return "normal"; // allerede utløpt
-  if (dager <= 7) return "kritisk";
-  if (dager <= 21) return "viktig";
-  return "normal";
 }
 
 // ─── Hoved-handler ────────────────────────────────────────────────────────────
