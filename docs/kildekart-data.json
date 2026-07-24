@@ -1504,6 +1504,404 @@
    "prioritet": 5,
    "notater": "Avskrives. Funksjonaliteten (voteringer, saker) dekkes uansett av Stortingets eget åpne API (data.stortinget.no) som allerede er i pipelinen. Kildekoden ligger fortsatt på github.com/holderdeord om metodikk skulle være interessant.",
    "omrade": "ovrige"
+  },
+  {
+   "navn": "eInnsyn API (nasjonalt aggregat — dekker Stavanger m.fl.)",
+   "niva": "tverrgaende",
+   "tilgang": "api",
+   "endpoint": "https://api.einnsyn.no/search?entity=Moetemappe&administrativEnhet={enhetId}&moetedatoAfter=2026-07-24T00%3A00%3A00Z&limit=50 (+ /moetemappe, /enhet, /enhet/{id}/underenhet)",
+   "format": "JSON (REST, paginert med startingAfter/next-URL)",
+   "testet": true,
+   "test_resultat": "Verifisert 24.07.2026: GET /moetemappe ga ekte møtemapper (bl.a. Fylkesutvalet 30.09.2027); GET /enhet/enh_01j73r5z2gf7drvq9tf7e06xj9 ga Stavanger kommune (orgnr 964965226); /search med administrativEnhet + moetedatoAfter (URL-enkodet kolon!) ga Stavanger-møter 2026 (f.eks. 'Møte i Utvalg for by- og samfunnsutvikling 17.12.2026'). ALT uten API-nøkkel — dokumentasjonen påstår nøkkelkrav, men GET-lesing er åpen. Uenkodet kolon i moetedatoAfter gjør at filteret ignoreres stille (fikk 2006-møter). sortBy støtter kun score/id/entity — sorter/filtrer klientside.",
+   "dekning": "Alle virksomheter som publiserer til eInnsyn: Stavanger kommune (møtekalender siden 2023), mange kommuner, alle fylkeskommuner, statlige organ. /enhet gir komplett liste med enhetstype=KOMMUNE og orgnr for discovery.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 1,
+   "notater": "Størst gevinst per integrasjon. Config per kommune = eInnsyn enhetId (slås opp via /enhet mot orgnr). Møtemappe-objektet har moetedato, moetested, utvalg, videoLink og saksreferanser. OpenAPI-spec: github.com/felleslosninger/einnsyn-api-spec (openapi/einnsyn.openapi.yml). Eksempel-config: {\"stavanger\": {\"enhetId\": \"enh_01j73r5z2gf7drvq9tf7e06xj9\", \"orgnr\": \"964965226\"}}",
+   "verifisering": {
+    "bekreftet": true,
+    "http_status": "200",
+    "korrigert_endpoint": "https://api.einnsyn.no/search?entity=Moetemappe&administrativEnhet={enhetId}&moetedatoFrom=2026-07-24&limit=50",
+    "vurdering": "Kilden er ekte og selvverifisert 24.07.2026 uten API-nøkkel: GET /moetemappe ga 200 med ekte møtemapper (inkl. 'Møte i Fylkesutvalet 30.09.2027'), GET /enhet/enh_01j73r5z2gf7drvq9tf7e06xj9 ga Stavanger kommune (orgnr 964965226), og /search med administrativEnhet ga 50 treff som alle hadde journalenhet=Stavanger-ID (inkl. 'Møte i Utvalg for by- og samfunnsutvikling 17.12.2026'). Paginering via next/startingAfter fungerer. MEN én sentral delpåstand er FALSK: moetedatoAfter-parameteren ignoreres stille uansett URL-enkoding — resultatsettet med og uten parameteren var 100 % identisk (samme 50 ID-er), og 25 av 50 treff lå før cutoff-datoen. Agentens 'URL-enkodet kolon fikser filteret' er en feilslutning; beviset (des. 2026-møtet) finnes også i ufiltrert respons. Riktig parameternavn er moetedatoFrom (og moetedatoTo): moetedatoFrom=2026-07-24 ga korrekt min-dato 2026-08-18, moetedatoTo=2026-03-01 ga korrekt max 2026-02-23. Bruk korrigert endpoint; ellers står påstandene om format, åpen GET-tilgang og dekning seg."
+   },
+   "omrade": "kommuneplattformer"
+  },
+  {
+   "navn": "Bergen kommune — politikere-utvalg API (egen løsning, BK360/bksak bak)",
+   "niva": "kommune",
+   "tilgang": "api",
+   "endpoint": "https://www.bergen.kommune.no/politikere-utvalg/api/allemoter (+ /api/utvalg?q=, /api/utvalg/{id}, /api/moter/{id}, /api/agendapunkter?tittel=&utvalgId=&year=&start=&rows=, /api/saksgang?dokumentnummer=, /api/sakskart/{moteKildeId}, /api/kalender/{utvalgKildeId}.ics)",
+   "format": "JSON (REST, uautentisert) + iCal",
+   "testet": true,
+   "test_resultat": "Verifisert 24.07.2026: /api/allemoter ga alle møter gruppert per år-måned (Byrådet 03.08.2026, Forretningsutvalget 11.08.2026, med status 'Under forberedelse', utvalgId, kildesystem bk360); /api/utvalg?q= ga full utvalgsliste; /api/agendapunkter?tittel=kultur ga 6911 treff med saksnr, innstillingsdokumenter og møtekobling; /api/kalender/900101.ics ga gyldig iCal. API-stiene ble hentet fra Angular-bundelen (main-es2015*.js) — komplett serviceklasse kartlagt.",
+   "dekning": "Kun Bergen kommune (alle bystyreutvalg, byråd, KF-styrer; historikk til 2005 via bksak).",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 1,
+   "notater": "Rikest kommune-API i kartleggingen: fulltekstsøk på agendapunkter (f.eks. tittel=kultur) gjør kultursaksfiltrering trivielt serverside. Relevante utvalg: 'Utvalg for finans, kultur og næring' m.fl. Ingen auth, ingen rate-limit observert. Statisk config — ingen tenant-parameter.",
+   "verifisering": {
+    "bekreftet": true,
+    "http_status": "200",
+    "vurdering": "Bekreftet ved egne curl-kall 24.07.2026. /api/allemoter: HTTP 200, JSON med møter gruppert per år-måned, inneholdt nøyaktig de påståtte møtene (Byrådet 03.08.2026, Forretningsutvalget 11.08.2026, status 'Under forberedelse', utvalgId, kildesystem bk360). /api/utvalg?q=: HTTP 200, 454 KB JSON med full utvalgsliste inkl. bksak-historikk fra 2005 og KF-styrer. /api/agendapunkter?tittel=kultur: HTTP 200 med numTotal=6911 — identisk med påstanden — og treff med saksnr, innstillings-/vedtaksdokumenter og møtekobling. /api/kalender/900101.ics: HTTP 200, gyldig iCal (text/calendar, iCal4j). /api/saksgang?dokumentnummer=: HTTP 200 JSON. /api/moter/{id}: HTTP 200 med numerisk kildeId (f.eks. /api/moter/10142236); merk at den sammensatte id-en med kolon gir 500, så bruk kildeId. Uautentisert REST, format og dekning (kun Bergen kommune) stemmer. Direkte relevant for Kulturvarsling: kultursøk gir agendapunkter med saksnummer og dokument-id-er."
+   },
+   "omrade": "kommuneplattformer"
+  },
+  {
+   "navn": "OpenGov 360online (Tietoevry Public 360 møteportal) — restkommuner",
+   "niva": "tverrgaende",
+   "tilgang": "skraping",
+   "endpoint": "https://opengov.360online.com/Meetings/{ORGNAVN} (HTML; /Meetings/{ORG}/Meetings/Details/{id})",
+   "format": "HTML (server-rendert, ingen JSON funnet)",
+   "testet": true,
+   "test_resultat": "Testet 24.07.2026: /Meetings/BERGEN, /TRONDHEIM, /STAVANGER, /TROMSO, /KRISTIANSAND ga alle HTTP 500 (avviklede tenants — Stavanger byttet til eInnsyn 31.01.2023 iflg. egen nettside). /Meetings/AS (Ås kommune) ga HTTP 200 — plattformen lever fortsatt for mindre kommuner. Rot-URL 200.",
+   "dekning": "Kun kommuner som ikke har migrert bort. Ingen av storbyene. Per-kommune-sjekk nødvendig (org-navn i URL må være eksakt).",
+   "integrasjonsinnsats": "hoy",
+   "prioritet": 4,
+   "notater": "Nedprioriter: plattformen er i utfasing og krever HTML-skraping. Forutsigbart URL-mønster (Boards/Details, Meetings/Details med agendaItemId) gjør skraping mulig der den fortsatt brukes. Sjekk alltid eInnsyn først for samme kommune.",
+   "verifisering": {
+    "bekreftet": true,
+    "http_status": "200 (/Meetings/AS og møtedetaljer), 500 (BERGEN/TRONDHEIM/STAVANGER/TROMSO/KRISTIANSAND), 200 (rot)",
+    "vurdering": "Bekreftet ved egne curl-tester 24.07.2026. /Meetings/AS gir 200 med server-rendert norsk møteportal-HTML for Ås kommune: utvalg (Kommunestyret, Formannskapet, hovedutvalg), ferske 2026-data, og fungerende detaljmønster /Meetings/AS/Meetings/Details/{id} (testet 517677: 200 med Saksliste, møtedato 27.01.2026). Alle fem storby-tenants gir 500 som påstått. Format er HTML uten observert JSON-API. Dekningsbeskrivelsen (kun ikke-migrerte kommuner, per-kommune-sjekk av eksakt org-navn nødvendig) stemmer med observasjonene. Ikke etterprøvd: datoen for Stavangers eInnsyn-migrering (kun 500-statusen er verifisert)."
+   },
+   "omrade": "kommuneplattformer"
+  },
+  {
+   "navn": "Presseforbundet: 'Digitale møteportaler i norske kommuner' (kartlegging sept 2024)",
+   "niva": "tverrgaende",
+   "tilgang": "dataset",
+   "endpoint": "https://presse.no/wp-content/uploads/2024/09/Digital-moteportaler-i-norske-kommuner-23.09.2024.pdf",
+   "format": "PDF (47 sider)",
+   "testet": true,
+   "test_resultat": "Lastet ned og tekst-ekstrahert 24.07.2026: dokumenterer leverandørlandskapet (Acos, FirstAgenda, Aventia) og hvilke kommuner som publiserer åpent i forkant av møter vs. lukkede løsninger — relevant for å vite hvor sakskart faktisk blir maskinlesbart FØR møtet.",
+   "dekning": "Nasjonal oversikt over møteportal-praksis i kommunene (2024).",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 5,
+   "notater": "Ikke en datakilde for innhenting, men styringsunderlag for utrulling: bruk den til å prioritere hvilke kommuner som har åpen forhåndspublisering (der varsling gir verdi) og til leverandør-mapping når dekningen utvides utover storbyene.",
+   "verifisering": {
+    "bekreftet": true,
+    "http_status": "200 (via 307/308-redirect: presse.no -> www.presse.no -> presse.kultcdn.com)",
+    "korrigert_endpoint": "https://presse.kultcdn.com/2024/09/Digital-moteportaler-i-norske-kommuner-23.09.2024.pdf",
+    "vurdering": "Selvverifisert 24.07.2026 med curl -m 20: oppgitt URL fungerer (må følge redirects, ender i 200 med content-type application/pdf, 1 291 260 bytes). PDF v1.7, nøyaktig 47 sider som påstått. Tekst-ekstraksjon bekrefter: rapport fra Norsk Presseforbund / Pressens offentlighetsutvalg datert 23.09.2024, med kapittel 5 'Leverandørenes løsninger' (5.1 Acos, 5.2 First Agenda, 5.3 Aventia) og seksjon 4.2.1 'Kommunene som publiserer åpent i forkant av møtene' — dekningen matcher påstanden ordrett. Eneste avvik: endepunktet er en redirect-kjede, ikke direkte 200; stabil direktelenke er CDN-URL-en i korrigert_endpoint. Merk at dette er en statisk engangs-kartlegging (PDF fra sept 2024), ikke et maskinlesbart API — nyttig som referanse for hvilke kommuner/leverandører som publiserer åpent, ikke som løpende datakilde."
+   },
+   "omrade": "kommuneplattformer"
+  },
+  {
+   "navn": "Digdem (Sikri Elements møteportal) — multi-tenant GraphQL",
+   "niva": "tverrgaende",
+   "tilgang": "api",
+   "endpoint": "POST https://{tenant}.digdem.no/graphql — operasjoner: GetMonthMeetings($where:MeetingListWhere{date_gt,date_lt}), CommissionNames($where:{}), ModalMeeting($id) for saksliste/dokumenter/strømmer",
+   "format": "JSON (GraphQL, uautentisert)",
+   "testet": true,
+   "test_resultat": "Verifisert 24.07.2026 mot tre tenants i ren curl: trondheim-elements.digdem.no (Byrådet, Finans- og organisasjonsutvalget, Oppvekst- og kulturutvalget aug 2026 m/ kommunetv-strømlenker), tromso.digdem.no (Eldrerådet 13.08, Helse- og velferdsutvalget 19.08), hamar.digdem.no (Formannskap 26.08). VIKTIG FELLE: serveren har versjonsvakt som kaster 'Digdem har oppdatert, last siden paa nytt' hvis spørringens feltform avviker fra appens — send EKSAKT operasjonstekst fra bundelen med __typename i hvert feltvalg (ModalMeeting krevde byte-lik tekst; GetMonthMeetings tålte kun __typename-tillegg). Verifiserte eksakte tekster ligger i rapporten/scratchpad.",
+   "dekning": "Trondheim, Tromsø, Hamar verifisert; plattformen er multi-tenant ({tenant}.digdem.no) — flere Elements-kommuner forventes. Discovery via innsynsportal.no getLists.externalUrl.",
+   "integrasjonsinnsats": "middels",
+   "prioritet": 1,
+   "notater": "Én kodebase → mange kommuner. Meeting har id, archiveId, date, endDateTime, location, status (Regulært/Avlyst), published, commission{code,name}, lastDocumentUpdate (signal for når sakskart publiseres — poll på denne). Offentlig URL: https://{tenant}.digdem.no/motekalender/{meetingId}. Eksempel-config: {\"trondheim\": {\"host\": \"trondheim-elements.digdem.no\"}, \"tromso\": {\"host\": \"tromso.digdem.no\"}, \"hamar\": {\"host\": \"hamar.digdem.no\"}}",
+   "omrade": "kommuneplattformer"
+  },
+  {
+   "navn": "FirstAgenda Publication ('Politisk Agenda') — Kristiansand m.fl.",
+   "niva": "tverrgaende",
+   "tilgang": "api",
+   "endpoint": "GET https://politiskagenda.kristiansand.kommune.no/api/agenda/udvalgsliste (+ /api/agenda/udvalg/{id}?request.select={json}, /api/agenda/apiVersion)",
+   "format": "JSON (REST)",
+   "testet": true,
+   "test_resultat": "Verifisert 24.07.2026: /api/agenda/udvalgsliste ga komplett struktur {Udvalg:{'Valgperioden 2023-2027':[{Id,Navn,Moeder:[{Id,MeetingBeginUtc,Dato,Sted,Afsluttet,ReleasedDate,Navn}]}]}} — alle utvalg med alle møter. FELLE: direktekall uten cookies gir uendelig 302-løkke; løses med cookie-jar (curl -c/-b): første GET mot forsiden setter sesjonscookie, deretter fungerer API-et. Dansk feltnavngiving (Udvalg/Moeder).",
+   "dekning": "Kristiansand verifisert (inkl. historikk for gamle Søgne/Songdalen). FirstAgenda brukes av flere norske kommuner (jf. Presseforbundets kartlegging sept 2024) — samme API-mønster per kommune-subdomene.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 2,
+   "notater": "Møtedetaljer/dagsorden hentes per utvalg med request.select-JSON (feltmaske). Frontend peker mot publication.firstagenda.com som apiurl. Eksempel-config: {\"kristiansand\": {\"baseUrl\": \"https://politiskagenda.kristiansand.kommune.no\"}}. Abonnementsfunksjon per utvalg finnes også (e-post).",
+   "omrade": "kommuneplattformer"
+  },
+  {
+   "navn": "Innsynsportal.no ('Jupiter' innsynsplattform) — Trondheim/Tromsø",
+   "niva": "tverrgaende",
+   "tilgang": "api",
+   "endpoint": "POST https://{tenant}.innsynsportal.no/graphql — operasjoner: getLists (lister m/ externalUrl), SearchPostJournal, PublishedJournalsCalendarData, GlobalMeetingSearchV1",
+   "format": "JSON (GraphQL, uautentisert)",
+   "testet": true,
+   "test_resultat": "Verifisert 24.07.2026: getLists mot trondheim.innsynsportal.no ga 5 lister der 'Møter' (type POLITIKK) har externalUrl=https://trondheim-elements.digdem.no/motekalender og 'Folkevalgte' → digdem/sru; tromso.innsynsportal.no ga tilsvarende med tromso.digdem.no. KRITISK FELLE: spørringer UTEN __typename i feltvalget avvises med 'Innsyn er oppdatert, last siden på ny' (INTERNAL_SERVER_ERROR) — med __typename fungerer ren curl uten cookies/headere. Multi-tenant bekreftet i bundelen (hamar nevnt; hamar.innsynsportal.no finnes dog ikke — Hamar er direkte på digdem).",
+   "dekning": "Trondheim og Tromsø verifisert. Portalen wrapper postliste + byggesak + politikk og peker møtekalender videre til Digdem. 'Historiske møter' (Trondheim 2011-2023) ligger i selve portalen.",
+   "integrasjonsinnsats": "middels",
+   "prioritet": 3,
+   "notater": "Primær verdi: (1) discovery-mekanisme — getLists avslører hvilken digdem-instans en kommune bruker; (2) postliste-søk (SearchPostJournal med ProceedingsWhere) for kultursaker i postjournalen; (3) historiske politiske møter. Innsyn-URL-mønster: innsyn.{kommune}.kommune.no redirecter hit (verifisert for Tromsø).",
+   "omrade": "kommuneplattformer"
+  },
+  {
+   "navn": "Acos Innsyn Pluss — møteoversikt-API (innsynpluss.onacos.no + selvdriftede instanser)",
+   "niva": "tverrgaende",
+   "tilgang": "api",
+   "endpoint": "POST https://innsynpluss.onacos.no/api/presentation/v2/nye-innsyn/overviewInit body {\"type\":1,\"keyValues\":[]} (paginering: POST .../nye-innsyn/overview {\"type\":1,\"keyValues\":[{\"key\":\"page\",\"value\":\"2\"}]})",
+   "format": "JSON (REST)",
+   "testet": true,
+   "test_resultat": "Verifisert 24.07.2026 mot Askøy i ren curl: overviewInit med type=1 ga møteliste (Eldrerådet 24.08.2026, Kommunestyret 10.09.2026 kl 17:15 Kommunestyresalen) + komplett utvalgsfilter med alle utvalgs-IDer; paginering side 2 OK. KREVER: nettleser-User-Agent (IIS/WAF blokkerer ellers med 'You do not have permission'), Referer https://innsynpluss.onacos.no/{tenant}/moteoversikt/ (tenant-oppløsning!), og cookie-jar-oppvarming via GET mot møteoversikt-siden først. GET-varianten av overviewInit avvises — må være POST. Uten type-felt returneres feil oversikt (postliste).",
+   "dekning": "Askøy verifisert på delt vert innsynpluss.onacos.no/{tenant}/. Andre testede tenant-slugs (alver, øygarden, sola m.fl.) finnes ikke på denne verten — Acos-kommuner ligger dels på egne domener med samme /api/presentation/v2/nye-innsyn/-API (bekrefter fylkeskartleggingens mønster). Acos er blant de største leverandørene (jf. Presseforbundet 2024), bl.a. Bærum/Ullensaker bruker Acos Møteportal.",
+   "integrasjonsinnsats": "middels",
+   "prioritet": 2,
+   "notater": "Samme kode gjenbrukes på tvers: config per kommune = {baseUrl, tenantSti}. Eksempel-config: {\"askoy\": {\"base\": \"https://innsynpluss.onacos.no\", \"tenant\": \"askoy\"}}. Møte-identifier har format 'm-{guid}-{nr}!{hash}'; utvalgsfilter i overviewInit-responsen gir alle utvalg (identifier 'u-...') for målrettet filtrering. Noe skjør pga WAF — bruk faste headere og fallback-varsling ved 4xx.",
+   "omrade": "kommuneplattformer"
+  },
+  {
+   "navn": "tilskudd.no / tilskudd.lottstift.no — ordningsdata og tildelingsstatistikk (inkl. momskompensasjon)",
+   "niva": "nasjonalt",
+   "tilgang": "skraping",
+   "endpoint": "https://tilskudd.lottstift.no/ordning/DT-0036/2025/momskompensasjon-for-frivillige-organisasjonar og https://tilskudd.lottstift.no/forvalter/982391490/lotteri-og-stiftelsestilsynet — parse <script id=\"__NEXT_DATA__\"> (ren JSON)",
+   "format": "JSON embedded i HTML (Next.js __NEXT_DATA__); komplette pageProps med rammebeløp, tildelt beløp, mottakertall per år",
+   "testet": true,
+   "test_resultat": "Verifiserte __NEXT_DATA__-parsing: DT-0036 (momskompensasjon generell) viser ramme/tildelt per år 2021–2026 (2026-ramme: 3 079 000 000 kr; 2025: tildelt 2 870 304 350 kr). Forvaltersiden lister alle 6 Lottstift-ordninger med beløp: DT-0036 momskompensasjon varer/tjenester, DT-0037 momskompensasjon idrettsanlegg (389,8 mill), DT-0084 samfunnsnyttige/humanitære org fra spilleoverskuddet (1 212,6 mill), DT-0610 frivilligsentraler (266,8 mill), DT-0437 strømstøtte, DT-0085 problematisk spilleatferd. NB: www.tilskudd.no 301-redirecter til tilskudd.lottstift.no — portalen er overført fra DFØ til Lottstift. Ren _next/data-JSON-rute ga 404 (buildId roterer per deploy) — bruk __NEXT_DATA__-taggen som er stabil. Ingen åpne /api/-ruter (404). Fellesdatakatalog-datasettet 'Tilskudd.no' (DFØ) har ingen registrerte distribusjoner.",
+   "dekning": "Rammer og tildelingssummer for hele frivillighetsstøtte-kjeden Lottstift forvalter, pluss ALLE statlige tilskuddsordninger frivillige org kan søke (ca. 50 forvaltere, inkl. Kulturdirektoratet og fylkeskommunene som forvaltere). Årlige endringer i momskompensasjonsrammen er direkte varselsignal for kor, korps, teaterlag, festivaler.",
+   "integrasjonsinnsats": "middels",
+   "prioritet": 1,
+   "notater": "Beste maskinlesbare kilde for momskompensasjons-pengestrømmen. Regex/JSON-parsing av __NEXT_DATA__ er forutsigbar. Overvåk årlig: ny ramme publiseres når statsbudsjett/hovedfordeling er klar; tildelt-beløp oppdateres etter tildeling (desember for momskompensasjon). Portalen tilbyr også e-postvarsel per ordning (for mennesker, ikke API).",
+   "verifisering": {
+    "bekreftet": true,
+    "http_status": "200 (begge endepunkter; www.tilskudd.no gir 301 til tilskudd.lottstift.no som påstått)",
+    "vurdering": "Selvverifisert med curl 2026-07-24, alle kjernepåstander stemmer. (1) DT-0036-siden: HTTP 200, text/html med <script id=\"__NEXT_DATA__\"> som inneholder gyldig JSON; props.pageProps har cardGrantYearSeriesDiagram med ramme (grantSchemeAmount) 2021–2026 og tildelt (grantedAmount) 2021–2025 — 2026-ramme nøyaktig 3 079 000 000 kr og 2025-tildelt nøyaktig 2 870 304 350 kr, pluss mottakertall per år (2025: 24 940) og topp-mottakerliste med orgnr og beløp. (2) Forvaltersiden: HTTP 200, __NEXT_DATA__ med cardGrantSchemeList som lister nøyaktig de 6 påståtte ordningene med matchende beløp: momskompensasjon 2 925 000 000/2 870 304 350, idrettsanlegg 389 800 000, samfunnsnyttige/humanitære 1 212 626 000, frivilligsentraler 266 800 000, strømstøtte 58 226 000, problematisk spilleatferd 5 500 000. (3) www.tilskudd.no → 301 til tilskudd.lottstift.no, bekreftet. (4) /api/-rute ga 404, som påstått. Ett implementeringsforbehold: i forvalter-JSON identifiseres ordningene med numerisk id (36, 84, 610 …), ikke strengen \"DT-0036\" — DT-kodene finnes bare i URL-rutene, så parseren må mappe numerisk id → DT-kode selv. BuildId (nå \"--HSeQet8qrZ_A1YbRAYv\") roterer per deploy, så påstanden om å bruke __NEXT_DATA__-taggen fremfor _next/data-ruter er fornuftig. Kilden er ekte, fungerende og relevant for dekningen (frivillighetsstøtte inkl. kor/korps/teaterlag via momskompensasjonsrammen)."
+   },
+   "omrade": "hull:Spillemidler og frivillighetsøkonomien (Norsk Tippings overskudd, Lotteri- og stiftelsestilsynet)"
+  },
+  {
+   "navn": "Lovdata — rammeforskrifter for spillemiddelfordelingen (via allerede kartlagt Norsk Lovtidend-RSS)",
+   "niva": "nasjonalt",
+   "tilgang": "rss",
+   "endpoint": "https://lovdata.no/dokument/SF/forskrift/2026-04-17-615 (eksempel; fanges av https://lovdata.no/feed?data=LT&type=RSS)",
+   "format": "HTML (Lovdata-dokumentside); Lovtidend-RSS som varslingskanal",
+   "testet": true,
+   "test_resultat": "Hentet FOR-2026-04-17-615 'Forskrift om fordeling av Norsk Tippings overskudd til kulturformål' i fulltekst: fastsatt av KUD 17. april 2026 med hjemmel i pengespilloven § 12, definerer formålskategoriene (kulturfrivillighet, barn/unge inkl. DKS og Frifond, kulturarenaer og utstyr), i kraft 20. april 2026. Inneholder RAMMENE, ikke årlige beløp.",
+   "dekning": "Regelverksendringer i hele spillemiddelkjeden: kulturformål-forskriften (ny april 2026), idrettsanlegg-tilskuddsforskriften (kunngjort juni 2026, jf. regjeringen.no id3166004). Regelendringer her varsler strukturelle omlegginger av pengestrømmen.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 2,
+   "notater": "Norsk Lovtidend-RSS er allerede i KILDEKART (pri 2, 'testet, re-verifisering gjenstår'). Legg til nøkkelord 'Norsk Tipping', 'spillemidler', 'pengespilloven' i filterlogikken slik at disse forskriftene klassifiseres som kultursaker.",
+   "verifisering": {
+    "bekreftet": true,
+    "http_status": "200 (både dokumentside og Lovtidend-RSS)",
+    "vurdering": "Selvverifisert med curl. Dokumentsiden https://lovdata.no/dokument/SF/forskrift/2026-04-17-615 gir HTTP 200 (HTML, 33,7 kB) og innholdet matcher påstanden eksakt: FOR-2026-04-17-615 «Forskrift om fordeling av Norsk Tippings overskudd til kulturformål», fastsatt av KUD 17.04.2026 med hjemmel i pengespilloven § 12 andre ledd, i kraft 20.04.2026, og § 3 definerer nettopp kategoriene kulturfrivillighet, barn/unge (herunder DKS og Frifond), kulturarenaer og utstyr, samt andre kulturformål — rammer uten årlige beløp, som påstått. RSS-feeden https://lovdata.no/feed?data=LT&type=RSS gir HTTP 200 (text/xml, 100 items, ferskeste pubDate 22.07.2026, ca. 5 items/dag) og dekker kunngjøringer i Norsk Lovtidend avd. I og II, så nye rammeforskrifter i spillemiddelkjeden fanges der. Eneste nyanse: RSS-items lenker til kunngjøringsformen /dokument/LTI/forskrift/... mens eksempelet bruker konsolidert /dokument/SF/forskrift/... — begge fungerer og peker på samme dokument, så ingen korrigering trengs. Merk at feeden er hele Lovtidend, ikke filtrert på kultur; innhenteren må selv filtrere på nøkkelord/departement."
+   },
+   "omrade": "hull:Spillemidler og frivillighetsøkonomien (Norsk Tippings overskudd, Lotteri- og stiftelsestilsynet)"
+  },
+  {
+   "navn": "Regjeringen.no RSS-generator — dokumenttype kongelige resolusjoner",
+   "niva": "nasjonalt",
+   "tilgang": "rss",
+   "endpoint": "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=loverogregler/kongeligresolusjon",
+   "format": "RSS 2.0 XML",
+   "testet": true,
+   "test_resultat": "Fungerer med slug 'loverogregler/kongeligresolusjon' (slugene 'dokumenter/kongeligeresolusjoner' o.l. gir tomt feed). Returnerer items (KLD-verneforskrifter juni 2026). Søk i listingen på 'spillemidler', 'kulturformål', 'spelemidlar' ga NULL relevante treff — KUDs spillemiddelresolusjon legges ikke her.",
+   "dekning": "Kongelige resolusjoner som publiseres som dokument på regjeringen.no (kun et utvalg, 333 totalt, mest KLD). Dekker IKKE spillemiddel-fordelingen.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 4,
+   "notater": "Kartlagt primært som negativt funn: trenger IKKE egen overvåking av denne dokumenttypen for spillemiddelformål — bruk Offisielt fra statsråd-feeden i stedet. Kan ha marginal verdi for andre kulturrelevante resolusjoner (kulturmiljø-topic finnes med 13 dok).",
+   "omrade": "hull:Spillemidler og frivillighetsøkonomien (Norsk Tippings overskudd, Lotteri- og stiftelsestilsynet)"
+  },
+  {
+   "navn": "Lottstift.no — Viktige frister (årshjul for frivillighetsstøtte)",
+   "niva": "nasjonalt",
+   "tilgang": "skraping",
+   "endpoint": "https://lottstift.no/viktige-frister/",
+   "format": "Server-rendret HTML (WordPress); strukturert liste med dag/måned/tittel/målgruppe",
+   "testet": true,
+   "test_resultat": "200 OK, 54 KB. Ekstraherte fristliste programmatisk: 31. jan (problematisk spilleatferd), 13. mai (strømstøtte), 1. juni (frivilligsentraler), 1. sep (momskompensasjon varer/tjenester OG tilskot frå Norsk Tippings overskot), m.fl. Strukturen (dato-blokk + tittel + målgruppe) er stabil og parsebar.",
+   "dekning": "Alle søknads- og rapporteringsfrister Lottstift forvalter. Kritisk for frist-varsling til kulturfrivilligheten: momskompensasjon-fristen 1. september er den viktigste enkeltfristen for grasrot-kultur-Norge (sentralledd har EGNE tidligere frister).",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 2,
+   "notater": "VIKTIG NEGATIVT FUNN: lottstift.no har IKKE fungerende RSS (/feed/ 302-redirecter til forsiden) og WP REST API er stengt (401 'rest_authorization_required'). Nyhetsovervåking må skje via skraping av https://lottstift.no/aktuelt/ (server-rendret HTML med /nyheter/-lenker). Tildelingslister momskompensasjon publiseres som søkbare sider/vedlegg under /for-frivilligheten/ — utbetaling medio desember; tilskudd.lottstift.no dekker summene maskinlesbart.",
+   "omrade": "hull:Spillemidler og frivillighetsøkonomien (Norsk Tippings overskudd, Lotteri- og stiftelsestilsynet)"
+  },
+  {
+   "navn": "Frivillighetsregisteret — åpent API (Brønnøysundregistrene)",
+   "niva": "nasjonalt",
+   "tilgang": "api",
+   "endpoint": "https://data.brreg.no/frivillighetsregisteret/api/frivillige-organisasjoner (org-oppslag: /frivillige-organisasjoner/{orgnr}; kategorier: /icnpo-kategorier?spraak=NOB)",
+   "format": "JSON (HAL med _links; paginering via ?searchAfter={orgnr}&size=N)",
+   "testet": true,
+   "test_resultat": "200 OK uten autentisering. Returnerer orgnr, status, innførtdato, grasrotandel-deltakelse, ICNPO-kategorier, vedtekts-/regnskapsinfo per organisasjon. Kategorilisten verifisert: 1100='Kunst og kultur', 1200='Idrett', 1300='Rekreasjon og sosiale foreninger'. NB: filterparam 'icnpoKategori' på listeendepunktet så ut til å bli IGNORERT (returnerte ufiltrert liste) — full høsting + lokal filtrering på icnpoKategorier-feltet er tryggest.",
+   "dekning": "Alle frivillige organisasjoner registrert i Frivillighetsregisteret — grunnlaget for momskompensasjon og grasrotandel. Kulturorganisasjoner identifiseres via ICNPO 1100 (kunst og kultur).",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 3,
+   "notater": "Støtte-/berikelseskilde, ikke nyhetstrigger: brukes til å koble tildelinger/høringer til konkrete kulturorganisasjoner og til å estimere hvor mange org i et fylke/en kommune som berøres av endringer i momskompensasjonen. Ubegrenset åpen tilgang (samme infrastruktur som Enhetsregisteret data.brreg.no).",
+   "omrade": "hull:Spillemidler og frivillighetsøkonomien (Norsk Tippings overskudd, Lotteri- og stiftelsestilsynet)"
+  },
+  {
+   "navn": "Anleggsregisteret.no (spillemiddelsøknader idrettsanlegg og kulturbygg)",
+   "niva": "nasjonalt",
+   "tilgang": "skraping",
+   "endpoint": "https://www.anleggsregisteret.no/kulturanlegg/ (infosider); søkeapp: https://backoffice.anleggsregisteret.no/map-search (iframe); RSS: https://www.anleggsregisteret.no/feed/",
+   "format": "HTML (WordPress-infosider); søkeapp er Vaadin (sesjonsbasert, ikke REST); xlsx-eksport manuelt fra /finn-anlegg/",
+   "testet": true,
+   "test_resultat": "NEGATIVT HOVEDFUNN: ingen brukbar maskinlesbar tilgang. WP-RSS /feed/ finnes men har 0 items. wp-json stengt (401). Søkeappene (/finn-anlegg/ → backoffice/map-search, /status-soknad/ → backoffice/request-search) er Vaadin-apper med CSRF/sesjon og catch-all-ruting (alle /api/-prober returnerer app-skallet). data.norge.no-datasettet 'Anleggsregisteret' (KUD, NLOD 2.0, kontinuerlig oppdatert) peker kun til /finn-anlegg/ som xlsx-nedlasting via appen. Infosiden /kulturanlegg/ er stabil server-rendret HTML som bekrefter: desentralisert kulturbygg-ordning forvaltes av fylkeskommunane, tilskudd inntil 1/3 av prosjektkostnad.",
+   "dekning": "Register over alle spillemiddelsøknader og anlegg (idrett + kulturbygg). Datagrunnlaget finnes men er innelåst i Vaadin-appen.",
+   "integrasjonsinnsats": "hoy",
+   "prioritet": 4,
+   "notater": "Ikke verdt automatisering nå. Alternativ vei til samme informasjon: fylkeskommunenes vedtakslister (møteportalene) + KUD/fylkes-pressemeldinger om anleggstildelinger. Vurder halvårlig manuell xlsx-nedlasting fra /finn-anlegg/ hvis anleggsdata trengs som berikelse.",
+   "omrade": "hull:Spillemidler og frivillighetsøkonomien (Norsk Tippings overskudd, Lotteri- og stiftelsestilsynet)"
+  },
+  {
+   "navn": "Fylkeskommunenes kulturbygg-sider (desentralisert ordning) — frister og detaljfordeling",
+   "niva": "fylke",
+   "tilgang": "skraping",
+   "endpoint": "https://www.vestlandfylke.no/kultur/kunst--og-kulturutvikling/tilskot-til-kulturbygg/ (verifisert); tilsvarende: telemarkfylke.no, vestfoldfylke.no, ffk.no m.fl. — én URL per fylke",
+   "format": "Server-rendret HTML med fristtekst og retningslinjer",
+   "testet": true,
+   "test_resultat": "Vestland verifisert: 200 OK, 137 KB server-rendret HTML. Inneholder søknadsfrist-tekst ('Kommunane set eigne søknadsfristar') og bekrefter at 'Hovudutval for kultur, idrett og inkludering' vedtar retningslinjer og tildeling — dvs. detaljfordelingsvedtakene fattes i utvalgene som de ALLEREDE KARTLAGTE fylkes-møteportalene dekker. Telemark-siden svarte men fristtekst ble ikke funnet i første parse (mulig JS-avhengig innhold — trenger re-test). Websøk bekreftet tilsvarende sider hos Telemark, Vestfold, Finnmark, Akershus (frist 1. mars 2026) m.fl.",
+   "dekning": "Detaljfordelingen av spillemiddel-kulturbyggmidlene (89,5 mill kr i 2026) per fylke: søknadsfrister (varierer, ca. 1. mars–1. mai til fylket; kommunale frister tidligere) og tildelingsvedtak (hovedutvalg, juni og utover høsten).",
+   "integrasjonsinnsats": "middels",
+   "prioritet": 2,
+   "notater": "To-delt strategi: (a) VEDTAKENE fanges gratis av de allerede kartlagte fylkes-møteportalene — legg til søkeord 'kulturbygg', 'spillemidler', 'spelemidlar', 'kulturarena' i møtesaks-filtreringen; (b) FRISTENE krever én skrape-URL per fylke (11 fylkeskommuner + Oslo) med enkel 'søknadsfrist'-tekstuttrekk. Start med de 3-4 fylkene som har flest brukere.",
+   "omrade": "hull:Spillemidler og frivillighetsøkonomien (Norsk Tippings overskudd, Lotteri- og stiftelsestilsynet)"
+  },
+  {
+   "navn": "KUD tilskuddsoversikt på regjeringen.no (spillemiddelordningene samlet)",
+   "niva": "nasjonalt",
+   "tilgang": "skraping",
+   "endpoint": "https://www.regjeringen.no/no/dep/kud/tilskudd/id711839/ og ordningssiden https://www.regjeringen.no/no/dep/kud/tilskudd/desentralisert-ordning-for-tilskudd-til-/id86016/",
+   "format": "Server-rendret HTML",
+   "testet": false,
+   "test_resultat": "Ikke selvtestet i denne økten (funnet via søk). Samme sidemal som øvrige regjeringen.no-sider som er verifisert skrapbare i KILDEKART.",
+   "dekning": "Oversikt over alle KUDs tilskuddsordninger inkl. spillemiddelfinansierte; endringer her signaliserer omlegging av ordninger.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 4,
+   "notater": "Sekundær sjekk-kilde ved årlig gjennomgang; nyhetsstrømmen dekkes bedre av KUD-RSS og statsråd-feeden.",
+   "omrade": "hull:Spillemidler og frivillighetsøkonomien (Norsk Tippings overskudd, Lotteri- og stiftelsestilsynet)"
+  },
+  {
+   "navn": "Sametinget nyhets-RSS (Aktuelt, inkl. ukentlige tildelingslister)",
+   "niva": "nasjonalt",
+   "tilgang": "rss",
+   "endpoint": "https://sametinget.no/ArtikkelRSS.ashx?NyhetsKategoriId=9&Spraak=Norsk",
+   "format": "RSS 2.0 (application/rss+xml)",
+   "testet": true,
+   "test_resultat": "200 OK, gyldig RSS med 5 nyeste artikler: 'Sametinget tildeler nær tre millioner kroner til samisk musikk', 'Innvilgede saker 06.07.26-12.07.26', 'Over 1,2 millioner til samisk kunst og kulturliv' m.fl. Hver item har title, link, description, guid, pubDate, enclosure-bilde. Andre kategori-ID-er (1-5, 10, 12) gir 404 — kun kategori 9 finnes.",
+   "dekning": "Alle nyheter fra Sametinget: tilskuddstildelinger (kultur, musikk, kunst), politiske utspill, pressemeldinger. Fanger de ukentlige 'Innvilgede saker'-artiklene som er tildelingslistene fra sametingsrådet.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 1,
+   "notater": "KUN 5 items i feeden — poll minst daglig, helst 2x daglig i travle uker for å ikke miste saker. Samiskspråklige varianter kan finnes med annen Spraak-parameter (utestet). De ukentlige 'Innvilgede saker'-artiklene (lenket fra feeden) er HTML-tabeller med kolonnene Søker/Tittel/Innvilget beløp gruppert per tilskuddsordning — parse artikkelsiden for strukturerte tildelingsdata med beløp. Kultursaker identifiserbare via ordningsnavn (Institusjonsutvikling, Joik og samisk musikk osv.).",
+   "verifisering": {
+    "bekreftet": true,
+    "http_status": "200",
+    "vurdering": "Selvverifisert med curl: 200 OK, Content-Type application/rss+xml, gyldig RSS 2.0 (xmllint OK). Feeden inneholder nøyaktig de 5 påståtte artiklene, inkl. de ukentlige 'Innvilgede saker'-tildelingslistene fra sametingsrådet og tilskuddsnyheter om samisk musikk/kunst/kultur. Hver item har title, link, description, guid, pubDate og enclosure-bilde som påstått. Spot-sjekk av kategori-ID 1, 5 og 12 ga 404, konsistent med påstanden om at kun kategori 9 finnes. Dekningen matcher: relevant for kulturtilskudd. Merk: feeden viser kun de 5 nyeste artiklene, så hyppig polling (daglig) anbefales for ikke å miste saker."
+   },
+   "omrade": "hull:Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv"
+  },
+  {
+   "navn": "Sametingets aktive høringer",
+   "niva": "nasjonalt",
+   "tilgang": "skraping",
+   "endpoint": "https://sametinget.no/politikk/horinger/aktive-horinger/",
+   "format": "HTML (artikkelliste med lenkede overskrifter)",
+   "testet": true,
+   "test_resultat": "200 OK. 3 aktive høringer per 24.07.2026: 'Behov for samiske tilbud i Vesthavet valgkrets', 'Endring av tilskuddsordninger til barnehager med samiskspråklig tilbud' (frist 21.08.2026), 'Forvaltning av samiske menneskelige levninger'. Frister står dels i listeteksten, dels på detaljsidene. Avholdte høringer arkiveres på egen søsterside /avholdte-horinger/.",
+   "dekning": "Alle Sametingets egne høringer med frister — tidligvarsling for regelverl- og tilskuddsendringer som påvirker samisk kultursektor. Dekkes IKKE av regjeringens høringsside.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 2,
+   "notater": "Forutsigbar Acos-artikkelliste (samme mal som andre sider i CMS-et): skrap artikkeloverskrifter + lenker, diff mot forrige kjøring, hent detaljside for frist ved nye treff (regex 'frist ... dato'). Poll daglig. Artikkel-URL-er har stabilt mønster horing-{slug}.{id}.aspx.",
+   "verifisering": {
+    "bekreftet": true,
+    "http_status": "200",
+    "vurdering": "Selvverifisert med curl 24.07.2026. Endepunktet https://sametinget.no/politikk/horinger/aktive-horinger/ svarer 200 OK med text/html. Siden inneholder nøyaktig 3 aktive høringer med lenkede overskrifter (ac-content-teaser-title-link), og alle tre titler matcher påstanden: 'Høring: Behov for samiske tilbud, ordninger og tiltak i Vesthavet valgkrets', 'Høring: Forslag til endring av Sametingets tilskuddsordninger til barnehager med samiskspråklig tilbud' (frist 21. august 2026 står i listeteksten, som påstått), og 'Høring: Forvaltning av samiske menneskelige levninger' (ingen frist i listetekst, men detaljsiden .48599.aspx oppgir 'Frist for innspill er 1. februar 2027' — bekrefter at frister dels står i liste, dels på detaljside). Søstersiden /politikk/horinger/avholdte-horinger/ svarer også 200 OK. Format er server-rendret ASP.NET-HTML (aspnetForm), så innholdet er skrapbart uten JavaScript. Dekningsbeskrivelsen stemmer: dette er Sametingets egne høringer, ikke regjeringens. Ingen korrigering nødvendig."
+   },
+   "omrade": "hull:Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv"
+  },
+  {
+   "navn": "Sametingets tilskuddsregelverk med søknadsfrister (print-versjon)",
+   "niva": "nasjonalt",
+   "tilgang": "skraping",
+   "endpoint": "https://sametinget.no/stipend-og-tilskudd/oversikt-over-tilskuddsordninger/kultur/{ordning}/?print=1 (og øvrige ordninger/stipend, 37 regelverk totalt)",
+   "format": "HTML (server-rendret fullt regelverk; vanlig sidevisning er JS-lastet og tom for curl)",
+   "testet": true,
+   "test_resultat": "200 OK med ?print=1: fullt regelverk for 'Joik og samisk musikk' inkl. 'Søknadsfrist: 03.11.26 kl. 15.30', hvem kan søke, behandlingstid. Uten print=1 er innholdet usynlig for curl (lastes via dokumentleser-API med sesjonstoken). 4 kultur-ordninger bekreftet i sitemap: joik-og-samisk-musikk, kulturtiltak, prosjektstotte-til-samisk-litteratur, institusjonsutvikling; i tillegg kulturminne- og bygningsvern og duodjistipend m.fl.",
+   "dekning": "Søknadsfrister og vilkår for alle Sametingets tilskuddsordninger og stipend — kultur, kulturminnevern, duodji, litteratur, musikk, institusjoner.",
+   "integrasjonsinnsats": "middels",
+   "prioritet": 2,
+   "notater": "Enumerér ordnings-URL-er fra sitemap.xml (mønster oversikt-over-tilskuddsordninger/*/ og oversikt-over-stipend/*/), hent hver med ?print=1, regex 'Søknadsfrist:? ?([0-9.]+)( kl. [0-9.]+)?'. Noen ordninger har løpende frist. Poll ukentlig/månedlig — frister endres sjelden, men regelverkene revideres årlig etter plenumsbehandling av budsjettet.",
+   "verifisering": {
+    "bekreftet": true,
+    "http_status": "200",
+    "korrigert_endpoint": "https://sametinget.no/{regelverk-sti}/?print=1 — kanonisk liste: de 37 URL-ene i sitemap.xml som er foreldre til .../forord/ (under oversikt-over-tilskuddsordninger/ og oversikt-over-stipend/)",
+    "vurdering": "BEKREFTET ved selvtesting med curl. (1) kultur/joik-og-samisk-musikk/?print=1 ga 200 OK, text/html, 56 kB server-rendret fullt regelverk med ordrett 'Søknadsfrist: 03.11.26 kl. 15.30.', 'Hvem kan søke' og 'Behandlingstid' — nøyaktig som påstått. (2) Uten ?print=1: 200 OK men null treff på 'Søknadsfrist' i 51 kB HTML — påstanden om JS-lastet/tom sidevisning stemmer. (3) Alle 4 kultur-ordninger (joik-og-samisk-musikk, kulturtiltak, prosjektstotte-til-samisk-litteratur, institusjonsutvikling) testet OK med frister. (4) Påstanden '37 regelverk totalt' stemmer eksakt: sitemap.xml har nøyaktig 37 distinkte regelverkssider (foreldre til /forord/-kapitler). Stikkprøver på tvers av kategorier OK: oversikt-over-stipend/duodjistipend (frist 07.04.2026 kl. 15.30), samiske-hovedorganisasjoner (frist 02.02.2026), naring/duodji/velferdsordninger (frist 03.11.2026), sprak/sprakutviklingstiltak — alle 200 med fullt regelverk via ?print=1. CAVEAT: URL-malen 'kultur/{ordning}' gjelder kun kultur-kategorien; de øvrige 33 regelverkene ligger på varierende dybde (1-3 nivåer) og under oversikt-over-stipend/. Rene kategorisider (f.eks. naring/duodji/) er infosider UTEN frist — bruk sitemapens /forord/-foreldre som kanonisk URL-liste ved innhøsting. Dekningen (frister og vilkår for alle Sametingets tilskudd/stipend) er reell og relevant for Kulturvarsling."
+   },
+   "omrade": "hull:Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv"
+  },
+  {
+   "navn": "Sametingets møteoversikt-API (plenum, fagkomiteer, sametingsrådet) — Acos Innsyn JSON",
+   "niva": "nasjonalt",
+   "tilgang": "api",
+   "endpoint": "POST https://sametinget.no/api/presentation/v2/nye-innsyn/overview med body {\"type\":1,\"keyValues\":[{\"key\":\"Datasource\",\"value\":\"f8f7223d-d641-492d-ba1c-4187bf1a5053\"},{\"key\":\"page\",\"value\":\"1\"}]}",
+   "format": "JSON",
+   "testet": true,
+   "test_resultat": "200 OK fra ren curl (etter cookie-bootstrap): 28 kommende møter med tittel, dato, tid, sted — inkl. Sametingets plenum, Nærings- og kulturkomiteen (21.-22.09.2026), Plan- og finanskomiteen, Sametingsrådet (m/ 'plenumsaker'-møter), Plenumsledelsen, Eldrerådet. Med {\"key\":\"Dato\",\"value\":\"HeldMeetings\"} returneres 2004 avholdte møter tilbake i tid. XSRF-header IKKE nødvendig, kun cookies.",
+   "dekning": "Komplett møtekalender for alle Sametingets politiske organer, kommende og historiske. Tidligvarsling: komitémøter synlige måneder i forveien.",
+   "integrasjonsinnsats": "middels",
+   "prioritet": 1,
+   "notater": "KREVER cookie-bootstrap: gjør først GET https://sametinget.no/innsyn/moteoversikt/ og gjenbruk Set-Cookie (ASP.NET_SessionId m.fl.) i POST-kallene — enkel to-stegs fetch i Deno. Uten cookies: 302 + connection reset. Poll daglig. Utvalgsfiltrering mulig via UtvalgID-parameter (sett i lenker fra plenumssaker-sidene, f.eks. u-f8f7223d...-16 for plenum). Publiseringsforsinkelse oppgitt av Sametinget: inntil 3 dager.",
+   "omrade": "hull:Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv"
+  },
+  {
+   "navn": "Sametingets møtedetalj- og saksdokument-API (saksliste + saksfremlegg-PDF før møter)",
+   "niva": "nasjonalt",
+   "tilgang": "api",
+   "endpoint": "POST https://sametinget.no/api/presentation/v2/nye-innsyn/mote/{møte-id} og POST .../nye-innsyn/mote/saksfremlegg/{sak-id} (tom JSON-body {}); PDF-er på GET .../nye-innsyn/filer/{fil-id}?pid=1",
+   "format": "JSON (blokkstruktur 'b' med MEETING_CASES/MEETING_FILES; filer som PDF)",
+   "testet": true,
+   "test_resultat": "200 OK fra curl: Plenumsmøte 10.-13.03.2026 ga full saksliste med saksnummer (PS 001/26 Konstituering, 002/26 Sametingsrådets beretning, 005/26 redegjørelse sikkerhetspolitikk osv.). saksfremlegg-endepunktet ga dokumentliste med direkte PDF-URL-er (saksframlegg 158KB + 3 vedlegg). MERK: GET gir 405 — må bruke POST. Utropstegn i identifier må sendes literalt, ikke URL-enkodes (%21 gir 405).",
+   "dekning": "Sakslister med saksnummer og komplette saksdokumenter (PDF) for alle politiske møter — publiseres FØR møtene. Kjernekilde for tidligvarsling av kultursaker i plenum og Nærings- og kulturkomiteen.",
+   "integrasjonsinnsats": "middels",
+   "prioritet": 1,
+   "notater": "Kjede: overview (møteliste) → mote/{id} (saksliste) → mote/saksfremlegg/{id} (dokumenter). Samme cookie-bootstrap som møteoversikten. Møte-identifikatorer har format m-f8f7223d__d641__492d__ba1c__4187bf1a5053-{nr}!{suffiks}. Poll nye/endrede møter daglig; sakstitler alene gir kultursak-deteksjon (nøkkelordfilter), PDF-nedlasting ved treff.",
+   "omrade": "hull:Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv"
+  },
+  {
+   "navn": "Sametingets postjournal-API (sak- og dokumentsøk, Acos Innsyn)",
+   "niva": "nasjonalt",
+   "tilgang": "api",
+   "endpoint": "POST https://sametinget.no/api/presentation/v2/nye-innsyn/overview med body {\"type\":0,\"keyValues\":[{\"key\":\"Datasource\",\"value\":\"81ee5a0f-7f88-4735-a192-0e801c284fc4\"},{\"key\":\"searchTerm\",\"value\":\"kultur\"}]}",
+   "format": "JSON",
+   "testet": true,
+   "test_resultat": "200 OK fra curl med cookies: 542 472 poster totalt, sortert nyest først med saksnummer/dokumentID, dato, avsender, type. searchTerm=kultur ga 34 331 treff. Sakstype-filter fungerer: {\"key\":\"Sakstype\",\"value\":\"at-81ee5a0f__7f88__4735__a192__0e801c284fc4-DB!v6gKOW\"} (= Direktetilskudd) ga 8 032 treff inkl. 'Tilsagn om årlig driftstilskudd 2024 – Åarjelhsaemien Teatre'. Datofilter-nøkler (FromDate/ToDate rett i keyValues) ble IKKE respektert i test — bruk paging + dato i respons i stedet. Ett kall med Sakstype-filter tok >25 sek (timeout), retry med 60 sek OK.",
+   "dekning": "Hele Sametingets postjournal: innkommende/utgående dokumenter og arkivsaker, inkl. tilskuddssøknader, tilsagnsbrev, høringssvar, kulturminneuttalelser. Sametinget er IKKE i nasjonale eInnsyn — dette er eneste maskinlesbare innsynskilde.",
+   "integrasjonsinnsats": "middels",
+   "prioritet": 3,
+   "notater": "Samme cookie-bootstrap som møte-API-et. Stort volum og treg respons ved filtrering — poll daglig med searchTerm-filtre (kultur, tilskudd, museum, festival) og stopp ved kjente poster (dato synker monotont). 3 dagers publiseringsforsinkelse oppgitt. eInnsyn-fravær selv-verifisert: api.einnsyn.no/enhet?query=Sametinget og ?query=Sámediggi ga 0 treff mens kontrollsøk 'Kultur' ga 25 — ikke lag eInnsyn-integrasjon for Sametinget.",
+   "omrade": "hull:Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv"
+  },
+  {
+   "navn": "Sametingets kalender-RSS (hendelser og politiske møter)",
+   "niva": "nasjonalt",
+   "tilgang": "rss",
+   "endpoint": "https://sametinget.no/Handlers/rss.ashx?lang=1&typ=0&search=",
+   "format": "RSS 2.0 med event-utvidelse (ev:startdate/ev:enddate)",
+   "testet": true,
+   "test_resultat": "200 OK, 'Alle hendelser'-feed med 79 items: rådsmøter ('Rådsmøte', 'Ukentlig rådsmøte'), representasjon (Márkomeannu-festivalen, panelsamtale 'Kulturarvens motstandskraft'), seminarer. Hver item har lenke til Kalender/CalendarEvent.aspx?Id=..., pubDate og strukturert startdato (ev:startdate).",
+   "dekning": "Sametingsrådets og politikernes aktiviteter og arrangementer, inkl. kulturarrangement-deltakelse — supplement til møteoversikt-API-et for aktiviteter som ikke er formelle utvalgsmøter.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 3,
+   "notater": "Feeden deklarerer skipDays lørdag/søndag og skipHours 22-06 — poll på hverdager 07-21. Overlapper delvis med møteoversikt-API-et; bruk som sekundærkilde for representasjon/arrangementer. typ-parameterens andre verdier utestet.",
+   "omrade": "hull:Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv"
+  },
+  {
+   "navn": "sametinget.no sitemap.xml (endringsdeteksjon)",
+   "niva": "nasjonalt",
+   "tilgang": "dataset",
+   "endpoint": "https://sametinget.no/sitemap.xml",
+   "format": "XML (sitemaps.org med lastmod og hreflang for 4 språk)",
+   "testet": true,
+   "test_resultat": "200 OK, 1 MB, 1 869 URL-er med lastmod-tidsstempel. Inneholder alle plenumssak-årssider (2017-2026), alle 37 tilskuddsregelverk-hierarkier, høringssider og aktuelt-artikler.",
+   "dekning": "Hele nettstedet — egnet som fallback for å oppdage nye sider (ny årsside for plenumssaker, nye høringer, nye ordninger) via lastmod-diff.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 4,
+   "notater": "Diff lastmod daglig mot lagret tilstand; filtrer på URL-prefiksene /politikk/horinger/, /stipend-og-tilskudd/, /politikk/plenumssaker/, /aktuelt/. Kompenserer for at nyhets-RSS-en bare viser 5 items.",
+   "omrade": "hull:Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv"
+  },
+  {
+   "navn": "Plenumssaker per år (HTML-årssider)",
+   "niva": "nasjonalt",
+   "tilgang": "skraping",
+   "endpoint": "https://sametinget.no/politikk/plenumssaker/ (årssider: plenumssaker-2026.45564.aspx, plenumssaker-2025.35833.aspx osv. 2017-2026)",
+   "format": "HTML",
+   "testet": true,
+   "test_resultat": "200 OK. Indeksside lenker til 10 årssider (2017-2026). Årssidene lenker videre inn i møteoversikt-SPA-en (/innsyn/moteoversikt/#/details/m-...) med møte-ID-er som kan brukes direkte mot mote-API-et. Legacy-endepunktet innsyn.onacos.no/sametinget/mote/norsk/wfinnsyn.ashx (lenket fra møtekalendersiden) er DØDT (404).",
+   "dekning": "Historisk oversikt over plenumssaker 2017-2026 med inngang til saksdokumenter.",
+   "integrasjonsinnsats": "lav",
+   "prioritet": 5,
+   "notater": "Overflødiggjøres i praksis av møteoversikt-API-et (prioritet 1) som dekker samme data strukturert. Bruk kun årssidene til å plukke møte-ID-er for historisk backfill, eller som årlig sanity-sjekk. Ny årsside opprettes ved årsskiftet — fang via sitemap-diff.",
+   "omrade": "hull:Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv"
   }
  ],
  "omradesammendrag": [
@@ -1552,5 +1950,21 @@
    "sammendrag": "To store funn dominerer området: (1) eInnsyn-API-et (api.einnsyn.no/search) er helt åpent for lesing og gir søkbare journalposter, møtemapper og MØTESAKER fra stat, fylkeskommuner og et økende antall kommuner — med entity-, dato- og enhetsfiltre samt sortering på publisertDato. Dette er den beste maskinlesbare inngangen til lokalpolitiske kultursaker som finnes, og bør integreres først. (2) Kudos-API-et fra DFØ (kudos.dfo.no/api/v0) er åpent, veldokumentert og gir tildelingsbrev, tilskuddsbrev, NOU-er og proposisjoner som JSON — inkludert dokumentinnhold som REN TEKST via /contents, ideelt for Claude-filtrering. Solide støttekilder: Lovdata Norsk Lovtidend-RSS (nye nasjonale og lokale forskrifter), NTB presserom-RSS for Kulturdirektoratet (tildelinger og ordninger, publisherId=89220, mønsteret gjelder flere etater), og Google News RSS med norske søk (fungerer teknisk, men har eksplisitt ikke-kommersiell bruksbegrensning i feed-vilkårene). Doffin har et reelt public API men krever gratis registrering for nøkkel. Skuffelser: Holder de ord er nedlagt (DNS død), Altinget har ingen kultur-spesifikk feed (kun generell RSS, delvis paywall), og Kommunal Rapport mangler RSS helt. Anbefalt integrasjonsrekkefølge: eInnsyn → Kudos → Lovdata LT → NTB presserom → Google News (med vilkårsvurdering) → Doffin."
   }
  ],
- "hull_funnet": []
+ "hull_funnet": [],
+ "sluttspurt": {
+  "sammendrag": "Kommunekartlegging fullført: alle 5 storbyer plattform-identifisert og API-verifisert med egne curl-tester. Storby-mapping: Bergen = egen JSON-REST-løsning (politikere-utvalg, BK360 bak); Trondheim + Tromsø = innsynsportal.no (Jupiter) som pekere til Digdem (Sikri Elements møteportal, multi-tenant GraphQL på {tenant}.digdem.no — også Hamar verifisert); Stavanger = nasjonale eInnsyn (forlot OpenGov jan 2023); Kristiansand = FirstAgenda Publication (politiskagenda.kristiansand.kommune.no). Kritiske funn: (1) eInnsyn-API-et (api.einnsyn.no) er ÅPENT for lesing uten API-nøkkel, stikk i strid med dokumentasjonen — /search med entity=Moetemappe + administrativEnhet-filter gir møtekalender per kommune; kolon i datofiltre MÅ prosent-enkodes ellers ignoreres filteret stille. (2) Digdem og innsynsportal.no har en 'versjonsvakt' som avviser GraphQL-spørringer med feil feltform ('Innsyn/Digdem er oppdatert, last siden på ny') — løsningen er å sende eksakt spørringstekst fra app-bundelen inkl. __typename i alle feltvalg; da fungerer alt uautentisert fra curl. (3) Acos Innsyn Pluss bekrefter fylkessporet /api/presentation/v2/nye-innsyn/overviewInit men krever POST med {\"type\":1}, nettleser-UA, Referer med tenant-sti og cookie-oppvarming. (4) OpenGov 360online er avviklet for alle storbyene (500), men lever for små kommuner (Ås = 200). Anbefalt integrasjonsrekkefølge: eInnsyn (én integrasjon, nasjonal dekning) → Digdem (dekker Trondheim/Tromsø/Hamar +flere) → Bergen (rikest API, fulltekstsøk på 'kultur') → FirstAgenda (Kristiansand +flere) → Acos Innsyn Pluss. Kommune-config-modell per plattform: eInnsyn={enhetId}; Digdem={subdomene}; FirstAgenda={baseUrl}; Acos={baseUrl,tenantSti}; Bergen=statisk.",
+  "hull": [
+   {
+    "tema": "Spillemidler og frivillighetsøkonomien (Norsk Tippings overskudd, Lotteri- og stiftelsestilsynet)",
+    "begrunnelse": "Milliardbeløp til kulturformål fordeles UTENFOR statsbudsjettet og fanges dermed ikke av Gul bok-kilden: hovedfordelingen av spillemidler fastsettes ved kongelig resolusjon hver mai etter Norsk Tippings generalforsamling (kulturbygg, Frifond, Kulturrom, Den kulturelle skolesekken), fylkeskommunene detaljfordeler kulturbygg-midlene i egne vedtak, og Lotteri- og stiftelsestilsynet forvalter momskompensasjon til frivillige kulturorganisasjoner (kor, korps, teaterlag, festivaler). Ingen av de 95 kartlagte kildene dekker denne pengestrømmen — verken rammebeslutningene (som kan varsle kutt FØR de treffer mottakerne) eller tildelingslistene. For grasrot-kultur-Norge er dette den viktigste enkeltstående økonomiske blindsonen.",
+    "sokeoppdrag": "Kartlegg maskinlesbare kilder for hele spillemiddel- og frivillighetsstøtte-kjeden: (1) regjeringen.no — finn hvor kongelig resolusjon om hovedfordelingen av spillemidler til kulturformål og idrettsformål publiseres årlig (søk 'hovedfordelingen spillemidler kongelig resolusjon' på regjeringen.no, sjekk om den fanges av den eksisterende RSS-generatoren for KUD eller trenger egen overvåking av dokumenttype 'kongelig resolusjon'); (2) lottstift.no — undersøk om Lotteri- og stiftelsestilsynet har API, RSS eller strukturerte tildelingslister for momskompensasjon til frivillige organisasjoner (både generell ordning og idrett/kulturbygg-varianter), inkl. søknadsfrister; (3) anleggsregisteret.no — sjekk om registeret over spillemiddelsøknader til kulturbygg og idrettsanlegg har åpne data/JSON-endepunkter (test nettverkstrafikken på søkesidene); (4) frivillighetsregisteret (Brønnøysund) — sjekk åpne API-er for organisasjoner registrert med kulturformål; (5) verifiser hvordan fylkeskommunenes detaljfordeling av spillemidler til kulturbygg annonseres (frister på fylkes-nettsider) og om vedtakene fanges av de allerede kartlagte fylkes-møteportalene. Lever konkrete URL-er, API-endepunkter, oppdateringsfrekvens og årlig syklus (når på året hver beslutning tas)."
+   },
+   {
+    "tema": "Sametinget — plenumssaker, tilskuddsvedtak og høringer for samisk kulturliv",
+    "begrunnelse": "Et komplett institusjonelt blindpunkt: Sametinget er et eget folkevalgt organ med eget kulturbudsjett (flere hundre millioner kroner årlig til samisk musikk, festivaler, museer, forlag, kunstnerstipend), egne høringer, plenumsbehandling av kulturmeldinger og løpende tilskuddsvedtak i sametingsrådet. Ingen av de 95 kartlagte kildene dekker Sametinget, verken politisk (plenumssaker, komitémøter, høringer — tidligvarsling) eller økonomisk (tilskuddsordninger med frister, tildelingslister). For samiske kulturaktører og alle som følger samisk kulturpolitikk er dagens kildekart blindt, og sakene dukker heller ikke opp i fylkes-/kommuneportalene.",
+    "sokeoppdrag": "Kartlegg Sametingets digitale publiseringskanaler for politiske saker og tilskudd: (1) sametinget.no/politikk/plenumssaker/ — plenumssaker publiseres per år (verifisert 2021–2025); undersøk sidestrukturen (Acos CMS, .aspx-URL-er) og finn RSS-feed, sitemap eller JSON-endepunkt for nye saker, samt møtekalender for plenum og komiteer med saksdokumenter FØR møtene; (2) finn Sametingets postjournal/innsynsløsning — sjekk om Sametinget publiserer til nasjonale eInnsyn (søk 'Sametinget' i eInnsyn enhetsregisteret som allerede er kartlagt) eller har egen innsynsportal, og om sametingsrådets tilskuddsvedtak/protokoller er tilgjengelige der; (3) sametinget.no/stipend-og-tilskudd/ — kartlegg alle tilskuddsordninger for kultur med søknadsfrister, og finn hvor tildelingslister publiseres (nyhetssaker, PDF-er eller strukturert); (4) sjekk om Sametinget har høringssider med frister for pågående høringer; (5) undersøk sametinget.no for generell RSS-feed eller nyhets-API (test /rss, /feed og nettverkstrafikk på aktuelt-sidene). Lever konkrete URL-er, format (HTML-skraping vs. strukturert), og anbefalt pollefrekvens per kilde."
+   }
+  ],
+  "kjort": "2026-07-24"
+ }
 }
