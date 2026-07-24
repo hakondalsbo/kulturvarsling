@@ -270,15 +270,21 @@ Deno.serve(async (_req: Request) => {
 
       // Bruk Claude for bedre analyse hvis API-nøkkel er satt
       if (anthropicKey) {
-        const analyse = await analyserMedClaude(item, anthropicKey);
-        if (analyse && !analyse.relevant) continue; // ikke relevant ifølge Claude
-        if (analyse) {
-          kategori = analyse.kategori ?? kategori;
-          niva = analyse.niva ?? niva;
-          sammendrag = analyse.sammendrag || sammendrag;
-          // Bruk Claude-status kun hvis vi ikke har frist (frist er mer presis)
-          if (!item.frist) status = analyse.status ?? status;
+        let analyse = await analyserMedClaude(item, anthropicKey);
+        if (!analyse) analyse = await analyserMedClaude(item, anthropicKey); // ett nytt forsøk
+        if (!analyse) {
+          // Claude utilgjengelig (rate-limit e.l.): IKKE lagre ufiltrert.
+          // Saken er ikke i varsler ennå, så dedup stopper den ikke — den
+          // blir vurdert på nytt ved neste kjøring i stedet.
+          feil.push(`${item.tittel.slice(0, 60)}: Claude-analyse utilgjengelig, utsatt`);
+          continue;
         }
+        if (!analyse.relevant) continue; // ikke relevant ifølge Claude
+        kategori = analyse.kategori ?? kategori;
+        niva = analyse.niva ?? niva;
+        sammendrag = analyse.sammendrag || sammendrag;
+        // Bruk Claude-status kun hvis vi ikke har frist (frist er mer presis)
+        if (!item.frist) status = analyse.status ?? status;
       }
 
       const { error } = await supabase.from("varsler").insert({
