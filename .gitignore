@@ -28,3 +28,6 @@ dist-ssr
 
 # Supabase CLI midlertidige filer
 supabase/.temp/
+
+# Andre verktøys lokale config
+.codex/

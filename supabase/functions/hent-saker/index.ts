@@ -7,6 +7,7 @@ import {
   parseRssItems,
   statusFraFrist,
 } from "./logikk.ts";
+import { hentEInnsynKultursaker } from "./einnsyn.ts";
 
 // ─── Stortinget: kultursaker med høringsfrister ───────────────────────────────
 // KILDEKART-funn (verifisert juli 2026): det gamle endepunktet
@@ -211,13 +212,44 @@ Svar BARE med gyldig JSON, ingen markdown:
       }),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const kropp = await res.text().catch(() => "");
+      console.error(`Claude API ${res.status}: ${kropp.slice(0, 300)}`);
+      return null;
+    }
     const data = await res.json();
     const tekst = data.content?.[0]?.text ?? "{}";
     return JSON.parse(tekst.trim());
   } catch (e) {
     console.error("Claude feil:", e);
     return null;
+  }
+}
+
+// ─── Claude-helsesjekk ────────────────────────────────────────────────────────
+// Ett mikro-kall ved oppstart så responsen alltid viser OM og HVORFOR
+// AI-laget eventuelt er nede — aldri mer stille Claude-svikt.
+async function testClaude(apiKey: string | undefined): Promise<string> {
+  if (!apiKey) return "mangler ANTHROPIC_API_KEY";
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 8,
+        messages: [{ role: "user", content: "Svar kun: ok" }],
+      }),
+    });
+    if (res.ok) return "ok";
+    const kropp = await res.text().catch(() => "");
+    return `HTTP ${res.status}: ${kropp.slice(0, 200)}`;
+  } catch (e) {
+    return `nettverksfeil: ${String(e).slice(0, 150)}`;
   }
 }
 
@@ -229,19 +261,40 @@ Deno.serve(async (_req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+    const claudeStatus = await testClaude(anthropicKey);
+    if (claudeStatus !== "ok") console.error("Claude-helsesjekk:", claudeStatus);
 
     // Hent eksisterende kilder for deduplicering
     const { data: eks } = await supabase.from("varsler").select("kilde");
     const eksKilder = new Set((eks ?? []).map((v: any) => v.kilde));
 
+    const t0 = Date.now();
+
+    // Kilderegisteret: kobler kjøringslogg til kilde (ARKITEKTUR §1.4)
+    const { data: kilderRows } = await supabase
+      .from("kilder")
+      .select("id, adapter")
+      .eq("aktiv", true);
+    const kilderMap = new Map<string, string>(
+      (kilderRows ?? []).map((r: any) => [r.adapter, r.id]),
+    );
+
     // Hent fra alle kilder parallelt
-    const [stortingssaker, rssItems, ventede] = await Promise.all([
+    const [stortingssaker, rssItems, ventede, einnsynSaker] = await Promise.all([
       hentStortingetSaker(eksKilder),
       hentRegjeringenRSS(),
       hentVentedeSaker(),
+      hentEInnsynKultursaker(),
     ]);
 
-    const alle = [...stortingssaker, ...rssItems, ...ventede];
+    const merk = (liste: any[], adapter: string) =>
+      liste.map((i) => ({ ...i, adapter }));
+    const alle = [
+      ...merk(stortingssaker, "stortinget-saker"),
+      ...merk(rssItems, "regjeringen-rss"),
+      ...merk(ventede, "stortinget-ventede"),
+      ...merk(einnsynSaker, "einnsyn"),
+    ];
 
     // Filtrer bort duplikater og ikke-relevante.
     // Saker valgt via komité/emne (forhåndsgodkjent) hopper over nøkkelordfilteret —
@@ -260,6 +313,7 @@ Deno.serve(async (_req: Request) => {
     );
 
     let antallLagret = 0;
+    const lagretPerAdapter = new Map<string, number>();
     const feil: string[] = [];
 
     for (const item of nye) {
@@ -304,16 +358,46 @@ Deno.serve(async (_req: Request) => {
         feil.push(`${item.tittel}: ${error.message}`);
       } else {
         antallLagret++;
+        lagretPerAdapter.set(
+          item.adapter,
+          (lagretPerAdapter.get(item.adapter) ?? 0) + 1,
+        );
         eksKilder.add(item.kilde); // unngå dobbel innsetting i samme kjøring
       }
     }
 
+    // Kjøringslogg per kilde — «stillhet er ikke suksess»: en kilde med 0 funn
+    // eller vedvarende «tom»-status skal være synlig i kilde_kjoringer.
+    const kjøringer: Array<[string, number]> = [
+      ["stortinget-saker", stortingssaker.length],
+      ["regjeringen-rss", rssItems.length],
+      ["stortinget-ventede", ventede.length],
+      ["einnsyn", einnsynSaker.length],
+    ];
+    for (const [adapter, funnet] of kjøringer) {
+      const kildeId = kilderMap.get(adapter);
+      if (!kildeId) continue;
+      const status = funnet > 0 ? "ok" : "tom";
+      await supabase.from("kilde_kjoringer").insert({
+        kilde_id: kildeId,
+        status,
+        antall_funnet: funnet,
+        antall_nye: lagretPerAdapter.get(adapter) ?? 0,
+        varighet_ms: Date.now() - t0,
+      });
+      await supabase
+        .from("kilder")
+        .update({ sist_hentet: new Date().toISOString(), sist_status: status })
+        .eq("id", kildeId);
+    }
+
     const respons = {
       kjørt: new Date().toISOString(),
+      claude_status: claudeStatus,
       hentet_totalt: alle.length,
       nye_og_relevante: nye.length,
       lagret: antallLagret,
-      feil: feil.length > 0 ? feil : undefined,
+      feil: feil.length > 0 ? feil.slice(0, 10) : undefined,
     };
 
     console.log("Ferdig:", respons);

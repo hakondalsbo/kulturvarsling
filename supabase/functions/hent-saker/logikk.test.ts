@@ -189,6 +189,42 @@ test("tom saksgang krasjer ikke", () => {
   assert.equal(finnHøringsfrist({ saksgang: null }), null);
 });
 
+// ─── eInnsyn-adapter (mapEInnsynItem) ─────────────────────────────────────────
+
+test("eInnsyn-møtesak mappes med kanonisk lenke og organnavn", async () => {
+  const { mapEInnsynItem } = await import("./einnsyn.ts");
+  const mappet = mapEInnsynItem(
+    {
+      id: "ms_01kpxnyfghest8sjkpe3dak0ev",
+      offentligTittel: "Kultur- og miljøprisen 2025",
+      publisertDato: "2026-04-23T17:24:34.443401Z",
+      journalenhet: "enh_x",
+      moetesaksaar: 2026,
+      moetesakssekvensnummer: 13,
+    },
+    "Bydel Søndre Nordstrand",
+  );
+  assert.equal(mappet?.tittel, "Kultur- og miljøprisen 2025");
+  assert.equal(mappet?.instans, "Bydel Søndre Nordstrand");
+  assert.equal(
+    mappet?.kilde,
+    "https://einnsyn.no/moetesak/ms_01kpxnyfghest8sjkpe3dak0ev",
+  );
+  assert.equal(mappet?.publisert_dato, "2026-04-23");
+  assert.equal(mappet?.forhåndsgodkjent, true);
+});
+
+test("eInnsyn-item uten navn får fallback-organ, uten id/tittel forkastes", async () => {
+  const { mapEInnsynItem } = await import("./einnsyn.ts");
+  const utenNavn = mapEInnsynItem(
+    { id: "ms_1", offentligTittel: "Sak" },
+    undefined,
+  );
+  assert.equal(utenNavn?.instans, "Organ i eInnsyn");
+  assert.equal(mapEInnsynItem({ offentligTittel: "Mangler id" }), null);
+  assert.equal(mapEInnsynItem({ id: "ms_2" }), null);
+});
+
 // ─── parseRssItems ────────────────────────────────────────────────────────────
 
 const EKSEMPEL_RSS = `<?xml version="1.0" encoding="utf-8"?>
