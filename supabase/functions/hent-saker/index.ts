@@ -316,6 +316,12 @@ Deno.serve(async (_req: Request) => {
     const lagretPerAdapter = new Map<string, number>();
     const feil: string[] = [];
 
+    // Kostnadstak: maks antall saker som AI-vurderes per kjøring. Overskytende
+    // utsettes til neste kjøring (dedup slår ikke inn — de er ikke lagret).
+    // 80 saker ≈ maks ~2 kr per kjøring med Haiku; normal natt er øre.
+    const MAKS_CLAUDE_SAKER = 80;
+    let claudeSaker = 0;
+
     for (const item of nye) {
       let kategori = "scenekunst";
       let niva = "nasjonalt";
@@ -324,6 +330,11 @@ Deno.serve(async (_req: Request) => {
 
       // Bruk Claude for bedre analyse hvis API-nøkkel er satt
       if (anthropicKey) {
+        if (claudeSaker >= MAKS_CLAUDE_SAKER) {
+          feil.push(`${item.tittel.slice(0, 60)}: utsatt (kostnadstak per kjøring)`);
+          continue;
+        }
+        claudeSaker++;
         let analyse = await analyserMedClaude(item, anthropicKey);
         if (!analyse) analyse = await analyserMedClaude(item, anthropicKey); // ett nytt forsøk
         if (!analyse) {
