@@ -171,6 +171,9 @@ async function hentRegjeringenRSS(): Promise<any[]> {
 }
 
 // ─── Claude API: kategoriser og sammendrag ────────────────────────────────────
+// Siste feilårsak eksponeres i responsen (siste_analyse_feil) for feilsøking.
+let sisteAnalyseFeil: string | null = null;
+
 async function analyserMedClaude(
   item: any,
   apiKey: string,
@@ -214,14 +217,19 @@ Svar BARE med gyldig JSON, ingen markdown:
 
     if (!res.ok) {
       const kropp = await res.text().catch(() => "");
-      console.error(`Claude API ${res.status}: ${kropp.slice(0, 300)}`);
+      sisteAnalyseFeil = `HTTP ${res.status}: ${kropp.slice(0, 200)}`;
+      console.error("Claude API:", sisteAnalyseFeil);
       return null;
     }
     const data = await res.json();
-    const tekst = data.content?.[0]?.text ?? "{}";
-    return JSON.parse(tekst.trim());
+    const tekst = (data.content?.[0]?.text ?? "{}")
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/```\s*$/, "")
+      .trim();
+    return JSON.parse(tekst);
   } catch (e) {
-    console.error("Claude feil:", e);
+    sisteAnalyseFeil = `unntak: ${String(e).slice(0, 200)}`;
+    console.error("Claude feil:", sisteAnalyseFeil);
     return null;
   }
 }
@@ -316,11 +324,14 @@ Deno.serve(async (_req: Request) => {
     const lagretPerAdapter = new Map<string, number>();
     const feil: string[] = [];
 
-    // Kostnadstak: maks antall saker som AI-vurderes per kjøring. Overskytende
-    // utsettes til neste kjøring (dedup slår ikke inn — de er ikke lagret).
-    // 80 saker ≈ maks ~2 kr per kjøring med Haiku; normal natt er øre.
-    const MAKS_CLAUDE_SAKER = 80;
+    // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
+    // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke
+    // lagret). 25 holder kjøringen på ~1 min — trygt under Supabase-workerens
+    // regnekvote (80 ga WORKER_RESOURCE_LIMIT/546) og under Claude API-ets
+    // rate-grense for nye kontoer (50 kall/min).
+    const MAKS_CLAUDE_SAKER = 25;
     let claudeSaker = 0;
+    let antallAvvist = 0;
 
     for (const item of nye) {
       let kategori = "scenekunst";
@@ -344,7 +355,28 @@ Deno.serve(async (_req: Request) => {
           feil.push(`${item.tittel.slice(0, 60)}: Claude-analyse utilgjengelig, utsatt`);
           continue;
         }
-        if (!analyse.relevant) continue; // ikke relevant ifølge Claude
+        if (!analyse.relevant) {
+          // Husk avvisningen: lagres som UPUBLISERT rad (appen viser kun
+          // publisert=true), så samme sak aldri koster en ny AI-vurdering —
+          // dedup via kilde-URL stopper den ved neste kjøring.
+          const { error: avvistFeil } = await supabase.from("varsler").insert({
+            tittel: item.tittel,
+            sammendrag: "Automatisk avvist av relevansfilteret",
+            instans: item.instans,
+            kilde: item.kilde,
+            frist: item.frist ?? null,
+            kategori: analyse.kategori ?? "kulturpolitikk",
+            niva: analyse.niva ?? "nasjonalt",
+            sted: "Norge",
+            status: "normal",
+            publisert: false,
+          });
+          if (!avvistFeil) {
+            antallAvvist++;
+            eksKilder.add(item.kilde);
+          }
+          continue;
+        }
         kategori = analyse.kategori ?? kategori;
         niva = analyse.niva ?? niva;
         sammendrag = analyse.sammendrag || sammendrag;
@@ -405,9 +437,11 @@ Deno.serve(async (_req: Request) => {
     const respons = {
       kjørt: new Date().toISOString(),
       claude_status: claudeStatus,
+      siste_analyse_feil: sisteAnalyseFeil ?? undefined,
       hentet_totalt: alle.length,
       nye_og_relevante: nye.length,
       lagret: antallLagret,
+      avvist_av_filter: antallAvvist,
       feil: feil.length > 0 ? feil.slice(0, 10) : undefined,
     };
 
