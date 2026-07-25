@@ -222,7 +222,8 @@ Svar BARE med gyldig JSON, ingen markdown:
       return null;
     }
     const data = await res.json();
-    const tekst = (data.content?.[0]?.text ?? "{}")
+    // Robust mot thinking-blokker (Claude 5): finn tekstblokken eksplisitt.
+    const tekst = (data.content?.find((b: any) => b.type === "text")?.text ?? "{}")
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/```\s*$/, "")
       .trim();
