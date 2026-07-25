@@ -1620,6 +1620,24 @@ function SaksModal({sak,onClose,kampanjer=[]}) {
   const relPol=POLITIKERE.filter(p=>p.kategori.includes(sak.kategori)||p.nivå===sak.nivå);
   const relKampanjer=kampanjer.filter(k=>k.kategori===sak.kategori||k.sakId===sak.id);
 
+  // Klartekst (VEIKART E2): «hva betyr dette for deg?» — Claude forklarer saken
+  // ut fra brukerens profil. Svaret caches per sak+profiltype i backend.
+  const [klartekst,setKlartekst]=useState<any>(null);
+  const [klartekstStatus,setKlartekstStatus]=useState("idle"); // idle|laster|ok|ikke-innlogget|feil
+  async function hentKlartekst(){
+    setKlartekstStatus("laster");
+    try{
+      const {data:{session}}=await sb.auth.getSession();
+      if(!session?.user){ setKlartekstStatus("ikke-innlogget"); return; }
+      const profil=await hentProfil(session.user.id);
+      const {data,error}=await sb.functions.invoke("klartekst",{
+        body:{varsel_id:sak.id,profil:{fagfelt:profil?.fagfelt||[],org_type:profil?.org_type||"",fylke:profil?.fylke||null}}
+      });
+      if(error||!data?.svar) throw error||new Error("tomt svar");
+      setKlartekst(data.svar); setKlartekstStatus("ok");
+    }catch(e){ console.error("Klartekst-feil:",e); setKlartekstStatus("feil"); }
+  }
+
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
       {malModal&&<MalModal type={malModal.type} kontekst={malModal.kontekst} onClose={()=>setMalModal(null)}/>}
@@ -1652,6 +1670,45 @@ function SaksModal({sak,onClose,kampanjer=[]}) {
           {tab==="info"&&(
             <div>
               <div style={{background:C.bgAlt,borderRadius:12,padding:"14px 18px",marginBottom:16,fontSize:14,lineHeight:1.65,color:C.text}}>{sak.sammendrag}</div>
+
+              {/* KLARTEKST – forvaltningsspråk → menneskespråk (VEIKART E2) */}
+              {klartekstStatus!=="ok"&&klartekstStatus!=="ikke-innlogget"&&(
+                <Btn variant="premium" style={{width:"100%",marginBottom:14}} onClick={hentKlartekst} disabled={klartekstStatus==="laster"}>
+                  {klartekstStatus==="laster"?"⏳ Oversetter til klartekst …":"💬 Hva betyr dette for meg?"}
+                </Btn>
+              )}
+              {klartekstStatus==="feil"&&(
+                <div style={{background:"#FEE2E2",border:"1px solid #FECACA",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:C.red}}>
+                  Kunne ikke hente klartekst-forklaring akkurat nå. Prøv igjen om litt.
+                </div>
+              )}
+              {klartekstStatus==="ikke-innlogget"&&(
+                <div style={{background:"#F5F3FF",border:"1px solid #DDD6FE",borderRadius:10,padding:"12px 16px",marginBottom:14,fontSize:13,color:C.purple,lineHeight:1.5}}>
+                  💬 <strong>Hva betyr dette for deg?</strong> Registrer deg gratis, så forklarer vi hver sak i klartekst for akkurat ditt fagfelt og din organisasjon.
+                </div>
+              )}
+              {klartekstStatus==="ok"&&klartekst&&(
+                <div style={{background:"#F5F3FF",border:"1px solid #DDD6FE",borderRadius:12,padding:"14px 18px",marginBottom:14}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.purple,textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>💬 Hva betyr dette for deg?</div>
+                  <div style={{fontSize:14,fontWeight:700,lineHeight:1.5,marginBottom:8,color:C.text}}>{klartekst.hva_skjer}</div>
+                  {klartekst.hvem_pavirkes&&<div style={{fontSize:13,lineHeight:1.6,marginBottom:10,color:C.text}}>{klartekst.hvem_pavirkes}</div>}
+                  {(klartekst.tall_belop||klartekst.frist)&&(
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                      {klartekst.tall_belop&&<Badge color={C.purple} bg="#EDE9FE">💰 {klartekst.tall_belop}</Badge>}
+                      {klartekst.frist&&<Badge color={C.red} bg="#FEE2E2">⏰ {klartekst.frist}</Badge>}
+                    </div>
+                  )}
+                  {klartekst.hva_kan_du_gjore?.length>0&&(
+                    <div>
+                      <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",marginBottom:5}}>Dette kan du gjøre nå</div>
+                      {klartekst.hva_kan_du_gjore.map((h,i)=>(
+                        <div key={i} style={{fontSize:13,lineHeight:1.7,display:"flex",gap:7,color:C.text}}><span style={{color:C.purple}}>→</span><span>{h}</span></div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <a href={sak.kilde} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:8,background:"#EEF2FF",border:"1px solid #C7D2FE",borderRadius:10,padding:"12px 16px",color:C.komBlue,fontWeight:600,fontSize:14,marginBottom:14}}>
                 🔗 Les fullstendig sak hos {sak.instans} <span style={{marginLeft:"auto",opacity:.6}}>↗</span>
               </a>
