@@ -2622,8 +2622,10 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
 // ─── PREMIUM VERKTØY ──────────────────────────────────────────────────────
 function PremiumVerktøy({varslerData=[],user=null}) {
   const [tool,setTool]=useState("budsjett");
+  const [nivå,setNivå]=useState("kommune"); // kommune | fylke | nasjonalt
   const [kommuner,setKommuner]=useState([]);
   const [valgtKommune,setValgtKommune]=useState("");
+  const [valgtFylke,setValgtFylke]=useState(user?.fylkesnr||"");
   const [resultat,setResultat]=useState(null);
   const [loading,setLoading]=useState(false);
   const [feil,setFeil]=useState("");
@@ -2637,10 +2639,13 @@ function PremiumVerktøy({varslerData=[],user=null}) {
     return ()=>{avbrutt=true;};
   },[]);
 
-  async function analyserKommune(knr){
-    if(!knr) return;
+  async function analyser(){
+    let payload;
+    if(nivå==="kommune"){ if(!valgtKommune) return; payload={kommunenr:valgtKommune}; }
+    else if(nivå==="fylke"){ if(!valgtFylke) return; payload={fylkesnr:valgtFylke}; }
+    else payload={nasjonalt:true};
     setLoading(true); setFeil(""); setResultat(null);
-    const { data, error } = await sb.functions.invoke("budsjett",{body:{kommunenr:knr}});
+    const { data, error } = await sb.functions.invoke("budsjett",{body:payload});
     if(error||data?.feil){ setFeil(data?.feil||"Kunne ikke hente budsjettdata. Prøv igjen."); setLoading(false); return; }
     setResultat(data); setLoading(false);
   }
@@ -2673,15 +2678,35 @@ function PremiumVerktøy({varslerData=[],user=null}) {
       {tool==="budsjett"&&(
         <div>
           <Card style={{marginBottom:16}}>
-            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8}}>📊 Kulturbudsjett per kommune</div>
-            <p style={{fontSize:13,color:C.muted,marginBottom:14,lineHeight:1.55}}>Velg en kommune, så henter vi de faktiske KOSTRA-tallene fra SSB, sammenligner med landssnittet, og lar KI forklare hva de betyr for kulturfeltet.</p>
+            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8}}>📊 Kulturbudsjett — finn de skjulte kuttene</div>
+            <p style={{fontSize:13,color:C.muted,marginBottom:12,lineHeight:1.55}}>Ekte tall fra SSB (KOSTRA/nasjonalregnskap). Vi ser forbi totalen: når totalen stiger mens bibliotek, kulturskole eller investeringer kuttes, er det de skjulte kuttene som teller. KI forklarer hva tallene betyr.</p>
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              {[["kommune","🏘 Kommune"],["fylke","🗺 Fylke"],["nasjonalt","🏛 Nasjonalt"]].map(([id,lbl])=>(
+                <button key={id} onClick={()=>{setNivå(id);setResultat(null);}}
+                  style={{padding:"6px 12px",borderRadius:99,border:`1.5px solid ${nivå===id?C.purple:C.border}`,background:nivå===id?"#EDE9FE":C.bgCard,color:nivå===id?C.purple:C.muted,fontSize:12,cursor:"pointer",fontWeight:nivå===id?700:500,fontFamily:"inherit"}}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <select value={valgtKommune} onChange={e=>setValgtKommune(e.target.value)}
-                style={{flex:1,minWidth:180,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",background:"#fff"}}>
-                <option value="">{kommuner.length?"— Velg kommune —":"Laster kommuner…"}</option>
-                {kommuner.map(k=><option key={k.nr} value={k.nr}>{k.navn}</option>)}
-              </select>
-              <Btn variant="premium" onClick={()=>analyserKommune(valgtKommune)} disabled={loading||!valgtKommune}>
+              {nivå==="kommune"&&(
+                <select value={valgtKommune} onChange={e=>setValgtKommune(e.target.value)}
+                  style={{flex:1,minWidth:180,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",background:"#fff"}}>
+                  <option value="">{kommuner.length?"— Velg kommune —":"Laster kommuner…"}</option>
+                  {kommuner.map(k=><option key={k.nr} value={k.nr}>{k.navn}</option>)}
+                </select>
+              )}
+              {nivå==="fylke"&&(
+                <select value={valgtFylke} onChange={e=>setValgtFylke(e.target.value)}
+                  style={{flex:1,minWidth:180,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",background:"#fff"}}>
+                  <option value="">— Velg fylke —</option>
+                  {FYLKER.map(f=><option key={f.nr} value={f.nr}>{f.navn}</option>)}
+                </select>
+              )}
+              {nivå==="nasjonalt"&&(
+                <div style={{flex:1,minWidth:180,padding:"10px 12px",fontSize:14,color:C.muted,alignSelf:"center"}}>Statens samlede kulturutgifter</div>
+              )}
+              <Btn variant="premium" onClick={analyser} disabled={loading||(nivå==="kommune"&&!valgtKommune)||(nivå==="fylke"&&!valgtFylke)}>
                 {loading?"Henter…":"🔍 Analyser"}
               </Btn>
             </div>
@@ -2715,7 +2740,7 @@ function PremiumVerktøy({varslerData=[],user=null}) {
                     );
                   })}
                 </div>
-                <div style={{fontSize:10,color:C.muted,marginTop:12}}>Kilde: SSB KOSTRA tabell 13135 · {resultat.aar[0]}–{resultat.aar[resultat.aar.length-1]}{resultat.cache?" · bufret":""}</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:12}}>Kilde: SSB {resultat.nivå==="nasjonalt"?"nasjonalregnskap (COFOG)":"KOSTRA"} · {resultat.aar[0]}–{resultat.aar[resultat.aar.length-1]}{resultat.cache?" · bufret":""}</div>
               </Card>
               {resultat.tolkning&&(
                 <Card style={{borderLeft:`4px solid ${C.purple}`}}>
