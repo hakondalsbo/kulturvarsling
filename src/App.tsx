@@ -134,6 +134,37 @@ function erIMittOmråde(v, user) {
   return true;
 }
 
+// ─── Klartekst (E2) ─────────────────────────────────────────────────────────
+// Ber edge-funksjonen forklar-sak om en personlig «hva betyr dette for deg»-
+// forklaring. Funksjonen cacher per sak+profiltype, så gjentatte kall er
+// gratis. Returnerer {for_deg, hvem_paavirkes, belop, frist, handlingsvalg} —
+// eller {feil} som vi viser til brukeren.
+async function forklarSak(sak, user) {
+  const profil = {
+    orgType: user?.orgType || "",
+    orgNavn: user?.org || "",
+    fagfelt: user?.fagfelt || [],
+    kommunenr: user?.kommunenr || null,
+    fylkesnr: user?.fylkesnr || null,
+  };
+  const { data, error } = await sb.functions.invoke("forklar-sak", {
+    body: {
+      sak: {
+        id: sak.id, tittel: sak.tittel, sammendrag: sak.sammendrag,
+        instans: sak.instans, niva: sak.nivå ?? sak.niva, frist: sak.frist,
+      },
+      profil,
+      brukerId: user?.id || null,
+    },
+  });
+  if (error) { console.error("forklar-sak:", error); return { feil: "Kunne ikke hente forklaring. Prøv igjen." }; }
+  return data;
+}
+// Claude kan returnere JSON-null som strengen "null"/"ingen" — behandle som tomt.
+function harVerdi(x) {
+  return x && !["null", "ingen", "-", "n/a", ""].includes(String(x).trim().toLowerCase());
+}
+
 // ─── Tokens ────────────────────────────────────────────────────────────────
 const C = {
   red:"#8C1C13", redDark:"#5C1009", redLight:"#B02A20",
@@ -206,6 +237,8 @@ const css = `
   a{text-decoration:none}
   @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
   @keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .klar-spin{display:inline-block;animation:spin 1s linear infinite}
   .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -469,7 +502,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
         </div>
       </div>
 
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)}/>}
+      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} user={null} onLogin={()=>setScreen("bruker-login")}/>}
     </div>
   );
 }
@@ -1083,7 +1116,7 @@ function BrukerApp({user,setUser,setScreen}) {
             <div style={{height:3,width:40,background:C.red,borderRadius:99}}/>
           </div>
         )}
-        {view==="forside"   &&<BrukerForside setView={setView} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={aktiveVarsler} kampanjerData={kampanjer} dataLastet={dataLastet}/>}
+        {view==="forside"   &&<BrukerForside setView={setView} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={aktiveVarsler} kampanjerData={kampanjer} dataLastet={dataLastet} user={user}/>}
         {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer} user={user}/>}
         {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
@@ -1352,7 +1385,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,varslerData=[]
 }
 
 // ─── BRUKER FORSIDE ───────────────────────────────────────────────────────
-function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true}) {
+function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true,user=null}) {
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
   const [aktivBoks,setAktivBoks]=useState(null); // null | "kritisk" | "saker" | "kampanjer" | "signaturer"
@@ -1588,7 +1621,7 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
         </div>
       )}
 
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjer}/>}
+      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjer} user={user} onLogin={onLogin}/>}
     </div>
   );
 }
@@ -1686,7 +1719,7 @@ function KampanjeKort({k,compact=false,user=null}) {
 }
 
 // ─── Saksmodal ─────────────────────────────────────────────────────────────
-function SaksModal({sak,onClose,kampanjer=[]}) {
+function SaksModal({sak,onClose,kampanjer=[],user=null,onLogin=null}) {
   const [tab,setTab]=useState("info");
   useEffect(()=>{
     document.body.style.overflow="hidden";
@@ -1694,6 +1727,18 @@ function SaksModal({sak,onClose,kampanjer=[]}) {
     window.addEventListener("keydown",esc);
     return ()=>{ document.body.style.overflow=""; window.removeEventListener("keydown",esc); };
   },[onClose]);
+  // E2 Klartekst-tilstand
+  const [klartekst,setKlartekst]=useState(null);
+  const [klarLaster,setKlarLaster]=useState(false);
+  const [klarFeil,setKlarFeil]=useState("");
+  async function hentKlartekst() {
+    if(!user){ onLogin ? onLogin() : showToast("Logg inn for en personlig klartekst-forklaring","info"); return; }
+    setKlarLaster(true); setKlarFeil("");
+    const res = await forklarSak(sak, user);
+    setKlarLaster(false);
+    if(!res || res.feil){ setKlarFeil(res?.feil || "Kunne ikke hente forklaring. Prøv igjen."); return; }
+    setKlartekst(res);
+  }
   const [malModal,setMalModal]=useState(null);
   const [visNyKampanje,setVisNyKampanje]=useState(false);
   const [visFeedback,setVisFeedback]=useState(false);
@@ -1736,6 +1781,68 @@ function SaksModal({sak,onClose,kampanjer=[]}) {
           {tab==="info"&&(
             <div>
               <div style={{background:C.bgAlt,borderRadius:12,padding:"14px 18px",marginBottom:16,fontSize:14,lineHeight:1.65,color:C.text}}>{sak.sammendrag}</div>
+
+              {/* E2 KLARTEKST – «hva betyr dette for deg?» */}
+              <div style={{marginBottom:16}}>
+                {!klartekst&&!klarLaster&&(
+                  <button onClick={hentKlartekst}
+                    style={{width:"100%",background:"linear-gradient(135deg,#7C3AED,#4F46E5)",border:"none",borderRadius:12,padding:"14px 18px",color:"#fff",cursor:"pointer",fontFamily:"inherit",textAlign:"left",display:"flex",alignItems:"center",gap:12}}>
+                    <span style={{fontSize:22,flexShrink:0}}>💬</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:800,fontSize:15}}>Hva betyr dette for deg?</div>
+                      <div style={{fontSize:12,opacity:.85,marginTop:2,lineHeight:1.4}}>{user?"Få en personlig forklaring i klartekst – skreddersydd for din profil":"Logg inn for en personlig forklaring i klartekst"}</div>
+                    </div>
+                    <span style={{fontSize:18,opacity:.7,flexShrink:0}}>→</span>
+                  </button>
+                )}
+                {klarLaster&&(
+                  <div style={{background:"#F5F3FF",border:"1px solid #DDD6FE",borderRadius:12,padding:"16px 18px",display:"flex",alignItems:"center",gap:12,color:C.purple}}>
+                    <span className="klar-spin" style={{fontSize:18}}>⟳</span>
+                    <div style={{fontSize:13,fontWeight:600,lineHeight:1.5}}>Claude leser saken og skriver en forklaring for nettopp deg …</div>
+                  </div>
+                )}
+                {klarFeil&&(
+                  <div style={{background:"#FEE2E2",border:"1px solid #FECACA",borderRadius:10,padding:"11px 14px",fontSize:13,color:"#991B1B",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                    <span>⚠️ {klarFeil}</span>
+                    <button onClick={hentKlartekst} style={{background:"none",border:"none",color:"#991B1B",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline",flexShrink:0}}>Prøv igjen</button>
+                  </div>
+                )}
+                {klartekst&&(
+                  <div style={{background:"linear-gradient(135deg,#F5F3FF,#EEF2FF)",border:"1px solid #DDD6FE",borderRadius:14,padding:"18px 20px",animation:"fadeInUp .25s ease"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                      <span style={{fontSize:18}}>💬</span>
+                      <span style={{fontWeight:800,fontSize:14,color:C.purple}}>Hva dette betyr for deg</span>
+                      <Badge color={C.purple} bg="#EDE9FE" style={{fontSize:10}}>✨ AI-forklaring</Badge>
+                    </div>
+                    <div style={{fontSize:15,lineHeight:1.65,color:C.text,marginBottom:harVerdi(klartekst.hvem_paavirkes)||harVerdi(klartekst.belop)||harVerdi(klartekst.frist)?14:8}}>{klartekst.for_deg}</div>
+                    {(harVerdi(klartekst.hvem_paavirkes)||harVerdi(klartekst.belop)||harVerdi(klartekst.frist))&&(
+                      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+                        {harVerdi(klartekst.hvem_paavirkes)&&(
+                          <div style={{display:"flex",gap:9,fontSize:13,lineHeight:1.5}}><span style={{flexShrink:0}}>👥</span><span><strong style={{color:C.purple}}>Hvem påvirkes:</strong> {klartekst.hvem_paavirkes}</span></div>
+                        )}
+                        {harVerdi(klartekst.belop)&&(
+                          <div style={{display:"flex",gap:9,fontSize:13,lineHeight:1.5}}><span style={{flexShrink:0}}>💰</span><span><strong style={{color:C.purple}}>Økonomi:</strong> {klartekst.belop}</span></div>
+                        )}
+                        {harVerdi(klartekst.frist)&&(
+                          <div style={{display:"flex",gap:9,fontSize:13,lineHeight:1.5}}><span style={{flexShrink:0}}>⏰</span><span><strong style={{color:C.purple}}>Frist:</strong> {klartekst.frist}</span></div>
+                        )}
+                      </div>
+                    )}
+                    {Array.isArray(klartekst.handlingsvalg)&&klartekst.handlingsvalg.length>0&&(
+                      <div style={{borderTop:"1px solid #DDD6FE",paddingTop:12}}>
+                        <div style={{fontSize:11,fontWeight:700,color:C.purple,textTransform:"uppercase",letterSpacing:".04em",marginBottom:7}}>Hva du kan gjøre</div>
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {klartekst.handlingsvalg.map((h,i)=>(
+                            <div key={i} style={{display:"flex",gap:8,fontSize:13,lineHeight:1.5,color:C.text}}><span style={{color:C.purple,fontWeight:800,flexShrink:0}}>→</span><span>{h}</span></div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{fontSize:10,color:C.muted,marginTop:12,fontStyle:"italic"}}>AI-generert forklaring – kontroller mot originalsaken ved viktige beslutninger.</div>
+                  </div>
+                )}
+              </div>
+
               <a href={sak.kilde} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:8,background:"#EEF2FF",border:"1px solid #C7D2FE",borderRadius:10,padding:"12px 16px",color:C.komBlue,fontWeight:600,fontSize:14,marginBottom:14}}>
                 🔗 Les fullstendig sak hos {sak.instans} <span style={{marginLeft:"auto",opacity:.6}}>↗</span>
               </a>
@@ -2065,7 +2172,7 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanj
         {filtered.map(v=><VarselKort key={v.id} v={v} onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
         {filtered.length===0&&<div style={{textAlign:"center",padding:"40px",color:C.muted,fontSize:14}}>Ingen saker matcher filteret. <button onClick={()=>{setKatFilter([]);setNivåFilter([]);setStatusFilter([]);setSøk("");setVisFulgte(false);setMittOmråde(false);}} style={{background:"none",border:"none",color:C.red,fontWeight:700,cursor:"pointer"}}>Nullstill</button></div>}
       </div>
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjerData}/>}
+      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjerData} user={user}/>}
     </div>
   );
 }
@@ -2209,7 +2316,7 @@ function BrukerKampanjer({kampanjerData=kampanjer,varslerData=varsler,user=null}
           );
         })}
       </div>
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjerData}/>}
+      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjerData} user={user}/>}
     </div>
   );
 }
