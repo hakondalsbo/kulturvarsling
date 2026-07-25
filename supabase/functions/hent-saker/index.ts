@@ -385,6 +385,11 @@ Deno.serve(async (_req: Request) => {
         if (!item.frist) status = analyse.status ?? status;
       }
 
+      // E1: adapterens geografi er hard data og overstyrer Claudes nivå-gjetning.
+      // Stortinget/Regjeringen-adapterne setter aldri kommunenr/fylkesnr (nasjonalt).
+      if (item.kommunenr) niva = "kommune";
+      else if (item.fylkesnr) niva = "fylke";
+
       const { error } = await supabase.from("varsler").insert({
         tittel: item.tittel,
         sammendrag,
@@ -393,7 +398,9 @@ Deno.serve(async (_req: Request) => {
         frist: item.frist ?? null,
         kategori,
         niva,
-        sted: niva === "nasjonalt" ? "Nasjonalt" : "Norge",
+        sted: item.sted ?? (niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
+        kommunenr: item.kommunenr ?? null,
+        fylkesnr: item.fylkesnr ?? null,
         status,
         publisert: true,
       });

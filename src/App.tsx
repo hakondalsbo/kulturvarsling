@@ -105,6 +105,35 @@ async function sendFeedbackDB(brukerId, type, tekst, sakTittel) {
   });
 }
 
+// ─── Geografi (E1) ─────────────────────────────────────────────────────────
+// Kommuneliste fra Brønnøysundregistrenes åpne API (ingen nøkkel). Caches i
+// minnet — listen endres i praksis aldri i løpet av en økt.
+let _kommuneCache = null;
+async function hentKommuneListe() {
+  if (_kommuneCache) return _kommuneCache;
+  try {
+    const res = await fetch("https://data.brreg.no/enhetsregisteret/api/kommuner?size=500");
+    const data = await res.json();
+    _kommuneCache = (data?._embedded?.kommuner ?? [])
+      .filter(k => /^\d{4}$/.test(k.nummer) && k.navn !== "UTENLANDS")
+      // Brreg leverer "NORDRE FOLLO" — vis "Nordre Follo"
+      .map(k => ({ nummer: k.nummer, navn: k.navn.toLowerCase().replace(/(^|[\s-])\p{L}/gu, m => m.toUpperCase()) }))
+      .sort((a, b) => a.navn.localeCompare(b.navn, "no"));
+  } catch (e) { console.error("Kommuneliste-feil:", e); return []; }
+  return _kommuneCache;
+}
+
+// Matchingsregel: kommunesak matcher på brukerens kommune, fylkessak på
+// brukerens fylke, saker uten geografi (nasjonale) vises alltid. En kommunesak
+// fra nabokommunen i samme fylke matcher IKKE — «mitt fylke» betyr
+// fylkeskommunens egne saker, ikke alle saker i fylket.
+function erIMittOmråde(v, user) {
+  if (!user?.kommunenr) return true;
+  if (v.kommunenr) return v.kommunenr === user.kommunenr;
+  if (v.fylkesnr) return v.fylkesnr === user.fylkesnr;
+  return true;
+}
+
 // ─── Tokens ────────────────────────────────────────────────────────────────
 const C = {
   red:"#8C1C13", redDark:"#5C1009", redLight:"#B02A20",
@@ -744,6 +773,8 @@ function BrukerLogin({setScreen,setUser}) {
       plan: profil?.plan || "gratis",
       onboardingDone: profil?.onboarding_done || false,
       varselFrekvens: profil?.varsel_frekvens || "daglig",
+      kommunenr: profil?.kommunenr || null,
+      fylkesnr: profil?.fylkesnr || null,
     });
     setScreen("bruker-app");
     setLaster(false);
@@ -1053,11 +1084,11 @@ function BrukerApp({user,setUser,setScreen}) {
           </div>
         )}
         {view==="forside"   &&<BrukerForside setView={setView} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={aktiveVarsler} kampanjerData={kampanjer} dataLastet={dataLastet}/>}
-        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
+        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer} user={user}/>}
         {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
         {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
-        {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
+        {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
         {view==="premium"   &&<PremiumVerktøy varslerData={varsler}/>}
       </main>
 
@@ -1104,8 +1135,60 @@ function FølgKnapp({sakId,fulgte,toggleFølg,size="sm"}) {
   );
 }
 
+// ─── MITT OMRÅDE (E1 Geografi) ───────────────────────────────────────────────
+function MittOmrådeKort({user,setUser}) {
+  const [kommuner,setKommuner]=useState([]);
+  const [søketekst,setSøketekst]=useState("");
+  useEffect(()=>{ hentKommuneListe().then(setKommuner); },[]);
+
+  const valgt = kommuner.find(k=>k.navn.toLowerCase()===søketekst.trim().toLowerCase());
+  const nåværende = kommuner.find(k=>k.nummer===user?.kommunenr);
+
+  async function lagre() {
+    if(!valgt) return;
+    const fylkesnr = valgt.nummer.slice(0,2);
+    setUser(u=>({...u,kommunenr:valgt.nummer,fylkesnr}));
+    if(user?.id) await lagreProfil(user.id,{kommunenr:valgt.nummer,fylkesnr});
+    showToast(`Hjemkommune satt til ${valgt.navn}`);
+    setSøketekst("");
+  }
+  async function fjern() {
+    setUser(u=>({...u,kommunenr:null,fylkesnr:null}));
+    if(user?.id) await lagreProfil(user.id,{kommunenr:null,fylkesnr:null});
+    showToast("Hjemkommune fjernet","info");
+  }
+
+  return (
+    <Card>
+      <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>📍 Mitt område</div>
+      <div style={{fontSize:12,color:C.muted,lineHeight:1.55,marginBottom:12}}>
+        Velg hjemkommunen din, så kan varsellisten filtreres til nasjonale saker + ditt fylke + din kommune.
+      </div>
+      {user?.kommunenr&&(
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+          <Badge color={C.green} bg="#D1FAE5">📍 {nåværende?.navn||`Kommune ${user.kommunenr}`}</Badge>
+          <Badge color={C.purple} bg="#EDE9FE">🗺 Fylke {user.fylkesnr}</Badge>
+          <button onClick={fjern} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>Fjern</button>
+        </div>
+      )}
+      <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:".03em"}}>
+        {user?.kommunenr?"Bytt kommune":"Velg kommune"}
+      </div>
+      <input list="kommune-liste" value={søketekst} onChange={e=>setSøketekst(e.target.value)}
+        placeholder={kommuner.length?"Begynn å skrive kommunenavn …":"Laster kommuneliste …"}
+        style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,boxSizing:"border-box",fontFamily:"inherit",marginBottom:10}}/>
+      <datalist id="kommune-liste">
+        {kommuner.map(k=><option key={k.nummer} value={k.navn}/>)}
+      </datalist>
+      <Btn variant="primary" size="sm" style={{width:"100%"}} onClick={lagre} disabled={!valgt}>
+        {valgt?`Lagre ${valgt.navn}`:"Velg en kommune fra listen"}
+      </Btn>
+    </Card>
+  );
+}
+
 // ─── MIN PROFIL SIDE ─────────────────────────────────────────────────────────
-function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselReg,setShowPremium,setShowOnboarding,setShowPersonvern}) {
+function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,varslerData=[],setShowVarselReg,setShowPremium,setShowOnboarding,setShowPersonvern}) {
   const [tab,setTab]=useState("profil");
   const [redigerOrg,setRedigerOrg]=useState(false);
   const [orgVal,setOrgVal]=useState(user?.org||"");
@@ -1181,6 +1264,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
               </div>
             ))}
           </Card>
+          <MittOmrådeKort user={user} setUser={setUser}/>
         </div>
       )}
 
@@ -1897,26 +1981,28 @@ function DelMini({sak}) {
 }
 
 // ─── varsler / kampanjer / MOBILISER (forenklet) ──────────────────────────
-function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanjerData=[]}) {
+function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanjerData=[],user=null}) {
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
   const [katFilter,setKatFilter]=useState([]);
   const [nivåFilter,setNivåFilter]=useState([]);
   const [statusFilter,setStatusFilter]=useState([]);
   const [visFulgte,setVisFulgte]=useState(false);
+  const [mittOmråde,setMittOmråde]=useState(false);
   const filtered=useMemo(()=>varslerData.filter(v=>{
     if(katFilter.length>0&&!katFilter.includes(v.kategori)) return false;
     if(nivåFilter.length>0&&!nivåFilter.includes(v.nivå)) return false;
     if(statusFilter.length>0&&!statusFilter.includes(v.status)) return false;
     if(visFulgte&&!fulgte.includes(v.id)) return false;
+    if(mittOmråde&&!erIMittOmråde(v,user)) return false;
     if(søk){
       const q=søk.toLowerCase();
       if(!v.tittel.toLowerCase().includes(q)&&!v.sammendrag.toLowerCase().includes(q)&&!v.instans.toLowerCase().includes(q)&&!v.sted.toLowerCase().includes(q)) return false;
     }
     return true;
-  }),[søk,katFilter,nivåFilter,statusFilter,visFulgte,fulgte,varslerData]);
+  }),[søk,katFilter,nivåFilter,statusFilter,visFulgte,mittOmråde,fulgte,varslerData,user]);
 
-  const antallFilter=katFilter.length+nivåFilter.length+statusFilter.length+(visFulgte?1:0);
+  const antallFilter=katFilter.length+nivåFilter.length+statusFilter.length+(visFulgte?1:0)+(mittOmråde?1:0);
 
   return (
     <div>
@@ -1946,6 +2032,12 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanj
               {lbl}
             </button>
           ))}
+          {user?.kommunenr&&(
+            <button onClick={()=>setMittOmråde(m=>!m)} title="Nasjonale saker + ditt fylke + din kommune"
+              style={{padding:"4px 10px",borderRadius:99,border:`1.5px solid ${mittOmråde?C.green:C.border}`,background:mittOmråde?C.green:"none",color:mittOmråde?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:mittOmråde?700:400,fontFamily:"inherit"}}>
+              📍 Mitt område
+            </button>
+          )}
           <span style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",alignSelf:"center",marginLeft:8,marginRight:4}}>Status</span>
           {[["kritisk","⚠️ Kritisk","#DC2626"],["viktig","📌 Viktig","#D97706"],["normal","📄 Normal","#16A34A"]].map(([id,lbl,c])=>(
             <button key={id} onClick={()=>setStatusFilter(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])}
@@ -1960,7 +2052,7 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanj
             </button>
           )}
           {antallFilter>0&&(
-            <button onClick={()=>{setKatFilter([]);setNivåFilter([]);setStatusFilter([]);setVisFulgte(false);}}
+            <button onClick={()=>{setKatFilter([]);setNivåFilter([]);setStatusFilter([]);setVisFulgte(false);setMittOmråde(false);}}
               style={{padding:"4px 10px",borderRadius:99,border:`1px solid ${C.red}`,background:"none",color:C.red,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
               ✕ Nullstill filter ({antallFilter})
             </button>
@@ -1971,7 +2063,7 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanj
       <div style={{fontSize:12,color:C.muted,marginBottom:10}}>{filtered.length} saker{antallFilter>0?" (filtrert)":""}</div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {filtered.map(v=><VarselKort key={v.id} v={v} onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
-        {filtered.length===0&&<div style={{textAlign:"center",padding:"40px",color:C.muted,fontSize:14}}>Ingen saker matcher filteret. <button onClick={()=>{setKatFilter([]);setNivåFilter([]);setStatusFilter([]);setSøk("");setVisFulgte(false);}} style={{background:"none",border:"none",color:C.red,fontWeight:700,cursor:"pointer"}}>Nullstill</button></div>}
+        {filtered.length===0&&<div style={{textAlign:"center",padding:"40px",color:C.muted,fontSize:14}}>Ingen saker matcher filteret. <button onClick={()=>{setKatFilter([]);setNivåFilter([]);setStatusFilter([]);setSøk("");setVisFulgte(false);setMittOmråde(false);}} style={{background:"none",border:"none",color:C.red,fontWeight:700,cursor:"pointer"}}>Nullstill</button></div>}
       </div>
       {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjerData}/>}
     </div>

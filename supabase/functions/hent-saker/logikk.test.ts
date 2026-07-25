@@ -225,6 +225,115 @@ test("eInnsyn-item uten navn får fallback-organ, uten id/tittel forkastes", asy
   assert.equal(mapEInnsynItem({ id: "ms_2" }), null);
 });
 
+// ─── Geografi (E1): fylkesnrFraKommunenr + geografiFraBrreg ───────────────────
+
+test("fylkesnr er de to første sifrene i kommunenr", async () => {
+  const { fylkesnrFraKommunenr } = await import("./einnsyn.ts");
+  assert.equal(fylkesnrFraKommunenr("0301"), "03"); // Oslo
+  assert.equal(fylkesnrFraKommunenr("4601"), "46"); // Bergen → Vestland
+});
+
+test("ugyldig kommunenr gir null fylkesnr", async () => {
+  const { fylkesnrFraKommunenr } = await import("./einnsyn.ts");
+  assert.equal(fylkesnrFraKommunenr(null), null);
+  assert.equal(fylkesnrFraKommunenr(""), null);
+  assert.equal(fylkesnrFraKommunenr("46"), null);
+  assert.equal(fylkesnrFraKommunenr("ABCD"), null);
+});
+
+test("kommune (KOMM, sektor 6500) får kommunenr og fylkesnr", async () => {
+  const { geografiFraBrreg } = await import("./einnsyn.ts");
+  assert.deepEqual(
+    geografiFraBrreg({
+      organisasjonsform: { kode: "KOMM" },
+      institusjonellSektorkode: { kode: "6500" },
+      forretningsadresse: { kommunenummer: "4213" },
+    }),
+    { kommunenr: "4213", fylkesnr: "42" },
+  );
+});
+
+test("bydel/kommunalt organ (ORGL, sektor 6500) får kommunens geografi", async () => {
+  const { geografiFraBrreg } = await import("./einnsyn.ts");
+  assert.deepEqual(
+    geografiFraBrreg({
+      organisasjonsform: { kode: "ORGL" },
+      institusjonellSektorkode: { kode: "6500" },
+      forretningsadresse: { kommunenummer: "0301" },
+    }),
+    { kommunenr: "0301", fylkesnr: "03" },
+  );
+});
+
+test("fylkeskommune (FYLK) får KUN fylkesnr — adressen peker på admin-byen", async () => {
+  const { geografiFraBrreg } = await import("./einnsyn.ts");
+  // Vestland fylkeskommune har forretningsadresse i Bergen (4601):
+  // kommunenr 4601 ville feilaktig gjort fylkessaker til Bergens-saker.
+  assert.deepEqual(
+    geografiFraBrreg({
+      organisasjonsform: { kode: "FYLK" },
+      institusjonellSektorkode: { kode: "6500" },
+      forretningsadresse: { kommunenummer: "4601" },
+    }),
+    { kommunenr: null, fylkesnr: "46" },
+  );
+});
+
+test("statlig organ (sektor 6100) får ingen geografi — Oslo-fellen", async () => {
+  const { geografiFraBrreg } = await import("./einnsyn.ts");
+  // Universitetet i Oslo har forretningsadresse 0301 men er statsforvaltning:
+  // uten sektorsjekken ville alle statlige saker blitt «Oslo-saker».
+  assert.deepEqual(
+    geografiFraBrreg({
+      organisasjonsform: { kode: "ORGL" },
+      institusjonellSektorkode: { kode: "6100" },
+      forretningsadresse: { kommunenummer: "0301" },
+    }),
+    { kommunenr: null, fylkesnr: null },
+  );
+});
+
+test("manglende brreg-svar gir ingen geografi, ikke krasj", async () => {
+  const { geografiFraBrreg } = await import("./einnsyn.ts");
+  assert.deepEqual(geografiFraBrreg(null), { kommunenr: null, fylkesnr: null });
+  assert.deepEqual(geografiFraBrreg({}), { kommunenr: null, fylkesnr: null });
+});
+
+test("postadresse brukes som fallback når forretningsadresse mangler", async () => {
+  const { geografiFraBrreg } = await import("./einnsyn.ts");
+  assert.deepEqual(
+    geografiFraBrreg({
+      organisasjonsform: { kode: "KOMM" },
+      institusjonellSektorkode: { kode: "6500" },
+      postadresse: { kommunenummer: "1103" },
+    }),
+    { kommunenr: "1103", fylkesnr: "11" },
+  );
+});
+
+test("eInnsyn-sak med geografi får kommunenr, fylkesnr og organnavn som sted", async () => {
+  const { mapEInnsynItem } = await import("./einnsyn.ts");
+  const mappet = mapEInnsynItem(
+    { id: "ms_3", offentligTittel: "Kulturhusets driftsbudsjett" },
+    "Bydel Ullern",
+    { kommunenr: "0301", fylkesnr: "03" },
+  );
+  assert.equal(mappet?.kommunenr, "0301");
+  assert.equal(mappet?.fylkesnr, "03");
+  assert.equal(mappet?.sted, "Bydel Ullern");
+});
+
+test("eInnsyn-sak uten geografi får null-felt og null sted", async () => {
+  const { mapEInnsynItem } = await import("./einnsyn.ts");
+  const mappet = mapEInnsynItem(
+    { id: "ms_4", offentligTittel: "Sak uten geo" },
+    "Organ X",
+  );
+  assert.equal(mappet?.kommunenr, null);
+  assert.equal(mappet?.fylkesnr, null);
+  assert.equal(mappet?.sted, null);
+});
+
 // ─── parseRssItems ────────────────────────────────────────────────────────────
 
 const EKSEMPEL_RSS = `<?xml version="1.0" encoding="utf-8"?>
