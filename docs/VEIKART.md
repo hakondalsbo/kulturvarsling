@@ -35,11 +35,16 @@ Fra «mange kommuner» til «alle de store + pengestrømmene».
 - KOSTRA-budsjettvakt: «din kommune kutter X % i kultur» (årlig, automatisk)
 - Alt er ferdig kartlagt og verifisert i [KILDEKART.md](KILDEKART.md)
 
-### E4 — Dokument-dyplesing 📄
-Fra metadata til innhold.
-- Last ned saksdokumenter/PDF-er (lenkene har vi), Claude leser og trekker ut:
-  budsjett-tall, vedtaksforslag, konsekvenser — mates inn i klartekst-laget (E2)
-- Stortingets fulltekst-API (verifisert) først; deretter kommunale PDF-er
+### E4 — Budsjettverktøy + dokument-dyplesing 📄
+**Del 1 — Budsjettverktøy (✅ BYGGET):** Premium-fagverktøyet «tolke budsjett». Edge Function
+`budsjett` henter kommunens kulturøkonomi fra SSB KOSTRA (tabell 13135 — kr/innbygger, andel av
+kommunebudsjett, bibliotek, kulturskole, 2021–2025), sammenligner med landssnittet, og Claude
+tolker tallene i klartekst med et konkret spørsmål til lokalpolitikerne. Kommune-velger med alle
+358 kommuner. I appen: Premium → 📊 Kulturbudsjett.
+
+**Del 2 — Dokument-dyplesing (gjenstår):** Last ned saksdokumenter/PDF-er (lenkene har vi),
+Claude leser og trekker ut vedtaksforslag/konsekvenser → mates inn i klartekst-laget (E2).
+Stortingets fulltekst-API (verifisert) først; deretter kommunale PDF-er.
 
 ### E5 — Premium og betaling 💳
 Se prismodellen under. Stripe-abonnement (raskest å bygge, håndterer kort + kvitteringer);

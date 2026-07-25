@@ -1089,7 +1089,7 @@ function BrukerApp({user,setUser,setScreen}) {
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
         {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
         {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
-        {view==="premium"   &&<PremiumVerktøy varslerData={varsler}/>}
+        {view==="premium"   &&<PremiumVerktøy varslerData={varsler} user={user}/>}
       </main>
 
       {/* Mobil bunnmeny */}
@@ -2620,16 +2620,29 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
 }
 
 // ─── PREMIUM VERKTØY ──────────────────────────────────────────────────────
-function PremiumVerktøy({varslerData=[]}) {
+function PremiumVerktøy({varslerData=[],user=null}) {
   const [tool,setTool]=useState("budsjett");
-  const [budsjettTekst,setBudsjettTekst]=useState("");
-  const [analyse,setAnalyse]=useState("");
+  const [kommuner,setKommuner]=useState([]);
+  const [valgtKommune,setValgtKommune]=useState("");
+  const [resultat,setResultat]=useState(null);
   const [loading,setLoading]=useState(false);
+  const [feil,setFeil]=useState("");
 
-  function analysér() {
-    if(!budsjettTekst.trim()) return;
-    setLoading(true);
-    setTimeout(()=>{ setAnalyse(BUDSJETT_ANALYSE_MOCK); setLoading(false); },1800);
+  // Hent kommunelisten (fra SSB via budsjett-funksjonen) ved første visning.
+  useEffect(()=>{
+    let avbrutt=false;
+    sb.functions.invoke("budsjett",{body:{list:true}}).then(({data})=>{
+      if(!avbrutt&&data?.kommuner) setKommuner(data.kommuner);
+    });
+    return ()=>{avbrutt=true;};
+  },[]);
+
+  async function analyserKommune(knr){
+    if(!knr) return;
+    setLoading(true); setFeil(""); setResultat(null);
+    const { data, error } = await sb.functions.invoke("budsjett",{body:{kommunenr:knr}});
+    if(error||data?.feil){ setFeil(data?.feil||"Kunne ikke hente budsjettdata. Prøv igjen."); setLoading(false); return; }
+    setResultat(data); setLoading(false);
   }
 
   const tools=[
@@ -2660,37 +2673,72 @@ function PremiumVerktøy({varslerData=[]}) {
       {tool==="budsjett"&&(
         <div>
           <Card style={{marginBottom:16}}>
-            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12}}>📊 Budsjettanalyse</div>
-            <p style={{fontSize:13,color:C.muted,marginBottom:14,lineHeight:1.55}}>Lim inn tekst fra et kulturbudsjett, budsjettforslag eller bevilgningsdokument. KI-en analyserer hva tallene faktisk betyr for kulturfeltet.</p>
-            <textarea placeholder="Lim inn budsjettekst her... (f.eks. fra kommunebudsjett, statsbudsjettet, tilskuddsdokumenter)" value={budsjettTekst} onChange={e=>setBudsjettTekst(e.target.value)} rows={8}
-              style={{width:"100%",padding:12,borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,lineHeight:1.55,resize:"vertical",boxSizing:"border-box",fontFamily:"inherit",marginBottom:12,color:C.text}}/>
-            <div style={{display:"flex",gap:8}}>
-              <Btn variant="premium" style={{flex:1}} onClick={analysér} disabled={loading||!budsjettTekst.trim()}>
-                {loading?"Analyserer...":"🔍 Analyser budsjett"}
-              </Btn>
-              <Btn variant="secondary" size="sm" onClick={()=>{setBudsjettTekst("Oslo kommunes budsjettforslag 2026:\nKultur og idrett: 2 340 mill kr (+2,1%)\nFrie kulturmidler: 48 mill kr (-8%)\nScenekunst: 124 mill kr (uendret)\nMusikarrangement: 22 mill kr (-4 mill)\nStipendordninger: 8 mill kr (uendret)\nKulturbygg: 120 mill kr (+12%)"); }}>
-                Prøv eksempel
+            <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8}}>📊 Kulturbudsjett per kommune</div>
+            <p style={{fontSize:13,color:C.muted,marginBottom:14,lineHeight:1.55}}>Velg en kommune, så henter vi de faktiske KOSTRA-tallene fra SSB, sammenligner med landssnittet, og lar KI forklare hva de betyr for kulturfeltet.</p>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <select value={valgtKommune} onChange={e=>setValgtKommune(e.target.value)}
+                style={{flex:1,minWidth:180,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",background:"#fff"}}>
+                <option value="">{kommuner.length?"— Velg kommune —":"Laster kommuner…"}</option>
+                {kommuner.map(k=><option key={k.nr} value={k.nr}>{k.navn}</option>)}
+              </select>
+              <Btn variant="premium" onClick={()=>analyserKommune(valgtKommune)} disabled={loading||!valgtKommune}>
+                {loading?"Henter…":"🔍 Analyser"}
               </Btn>
             </div>
+            {feil&&<div style={{marginTop:10,fontSize:13,color:C.red}}>{feil}</div>}
           </Card>
           {loading&&(
             <Card style={{background:C.bgAlt,textAlign:"center",padding:"32px"}}>
               <div style={{fontSize:24,marginBottom:8}}>⏳</div>
-              <div style={{fontSize:14,color:C.muted}}>Analyserer budsjettet...</div>
+              <div style={{fontSize:14,color:C.muted}}>Henter KOSTRA-tall og tolker…</div>
             </Card>
           )}
-          {analyse&&!loading&&(
-            <Card style={{borderLeft:`4px solid ${C.purple}`}}>
-              <div style={{fontSize:13,fontWeight:700,color:C.purple,marginBottom:14,display:"flex",alignItems:"center",gap:6}}>
-                ⭐ KI-analyse
-                <Badge color={C.purple}>Kun Premium</Badge>
-              </div>
-              <div style={{fontSize:14,lineHeight:1.8,color:C.text,whiteSpace:"pre-line"}}>{analyse}</div>
-              <div style={{display:"flex",gap:8,marginTop:16}}>
-                <Btn variant="secondary" size="sm" onClick={()=>navigator.clipboard?.writeText(analyse)}>Kopier analyse</Btn>
-                <Btn variant="secondary" size="sm">Last ned PDF</Btn>
-              </div>
-            </Card>
+          {resultat&&!loading&&(
+            <div>
+              <Card style={{marginBottom:14}}>
+                <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:14,fontFamily:"'Playfair Display',serif"}}>{resultat.kommune}: kulturøkonomi</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}} className="grid-2">
+                  {resultat.nøkkeltall.map(n=>{
+                    const siste=n.serie.filter(v=>v!=null).slice(-1)[0];
+                    const forrige=n.serie.filter(v=>v!=null).slice(-2)[0];
+                    const opp=siste!=null&&forrige!=null?siste-forrige:null;
+                    const vsSnitt=siste!=null&&n.landssnitt!=null?siste-n.landssnitt:null;
+                    return (
+                      <div key={n.kode} style={{background:C.bgAlt,borderRadius:10,padding:"12px 14px"}}>
+                        <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{n.navn}</div>
+                        <div style={{fontSize:22,fontWeight:800,color:C.text}}>{siste??"—"}<span style={{fontSize:12,fontWeight:500,color:C.muted}}> {n.enhet}</span></div>
+                        <div style={{fontSize:11,marginTop:4,display:"flex",gap:8,flexWrap:"wrap"}}>
+                          {opp!=null&&<span style={{color:opp>0?C.green:opp<0?C.red:C.muted}}>{opp>0?"▲":opp<0?"▼":"■"} {opp>0?"+":""}{Math.round(opp*10)/10} fra i fjor</span>}
+                          {vsSnitt!=null&&<span style={{color:C.muted}}>snitt {n.landssnitt} ({vsSnitt>0?"+":""}{Math.round(vsSnitt*10)/10})</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{fontSize:10,color:C.muted,marginTop:12}}>Kilde: SSB KOSTRA tabell 13135 · {resultat.aar[0]}–{resultat.aar[resultat.aar.length-1]}{resultat.cache?" · bufret":""}</div>
+              </Card>
+              {resultat.tolkning&&(
+                <Card style={{borderLeft:`4px solid ${C.purple}`}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.purple,marginBottom:12,display:"flex",alignItems:"center",gap:6}}>⭐ KI-tolkning<Badge color={C.purple}>Premium</Badge></div>
+                  <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:12,lineHeight:1.4}}>{resultat.tolkning.overskrift}</div>
+                  {[["💰 Pengene",resultat.tolkning.hovedtall],["📈 Utviklingen",resultat.tolkning.utvikling],["🎯 Hva det betyr",resultat.tolkning.hva_betyr_det]].map(([t,tekst],i)=>(
+                    <div key={i} style={{marginBottom:12}}>
+                      <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:3}}>{t}</div>
+                      <div style={{fontSize:14,lineHeight:1.65,color:C.text}}>{tekst}</div>
+                    </div>
+                  ))}
+                  {resultat.tolkning.sporsmaal_til_politikerne&&(
+                    <div style={{background:"#F5F3FF",border:`1px solid ${C.komBorder}`,borderRadius:10,padding:"12px 14px",marginTop:6}}>
+                      <div style={{fontSize:12,fontWeight:700,color:C.purple,marginBottom:4}}>❓ Spør lokalpolitikerne</div>
+                      <div style={{fontSize:14,lineHeight:1.6,color:C.text,fontStyle:"italic"}}>«{resultat.tolkning.sporsmaal_til_politikerne}»</div>
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:8,marginTop:16}}>
+                    <Btn variant="secondary" size="sm" onClick={()=>navigator.clipboard?.writeText(`${resultat.kommune} – kulturbudsjett\n\n${resultat.tolkning.overskrift}\n\n${resultat.tolkning.hovedtall}\n\n${resultat.tolkning.hva_betyr_det}\n\nSpørsmål: ${resultat.tolkning.sporsmaal_til_politikerne}`)}>Kopier</Btn>
+                  </div>
+                </Card>
+              )}
+            </div>
           )}
         </div>
       )}
