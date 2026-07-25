@@ -886,6 +886,17 @@ function BrukerApp({user,setUser,setScreen}) {
   const [kampanjer,setKampanjer]=useState([]);
   const [dataLastet,setDataLastet]=useState(false);
 
+  // ── Aktive vs. historiske saker ──────────────────────────
+  // Utgått frist, eller saker uten frist eldre enn 90 dager, hører hjemme i
+  // historikken — ikke i varsellisten. Historikken er arkivet som senere gir
+  // statistikk og trender («hva skjedde i feltet mitt?»).
+  const idagISO = new Date().toISOString().split("T")[0];
+  const erHistorisk = (v)=>
+    (v.frist && v.frist < idagISO) ||
+    (!v.frist && v.opprettet && (Date.now()-new Date(v.opprettet).getTime()) > 90*86400000);
+  const aktiveVarsler = useMemo(()=>varsler.filter(v=>!erHistorisk(v)),[varsler]);
+  const historiskeVarsler = useMemo(()=>varsler.filter(erHistorisk),[varsler]);
+
   useEffect(()=>{
     async function lastData() {
       // Last varsler
@@ -1041,11 +1052,11 @@ function BrukerApp({user,setUser,setScreen}) {
             <div style={{height:3,width:40,background:C.red,borderRadius:99}}/>
           </div>
         )}
-        {view==="forside"   &&<BrukerForside setView={setView} varsler={varsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={varsler} kampanjerData={kampanjer} dataLastet={dataLastet}/>}
-        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={varsler} kampanjerData={kampanjer}/>}
-        {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet}/>}
-        {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={varsler} user={user}/>}
-        {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={varsler} kampanjerData={kampanjer}/>}
+        {view==="forside"   &&<BrukerForside setView={setView} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={aktiveVarsler} kampanjerData={kampanjer} dataLastet={dataLastet}/>}
+        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
+        {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
+        {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
+        {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
         {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
         {view==="premium"   &&<PremiumVerktøy varslerData={varsler}/>}
       </main>
@@ -1967,8 +1978,99 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanj
   );
 }
 
+// ─── START KAMPANJE (brukergenerert, med moderering) ──────────────────────────
+// Kampanjer opprettes med aktiv=false og blir synlige først etter godkjenning.
+function StartKampanjeModal({onClose,user,varslerData=[]}) {
+  const [tittel,setTittel]=useState("");
+  const [beskrivelse,setBeskrivelse]=useState("");
+  const [mål,setMål]=useState(500);
+  const [kategori,setKategori]=useState("scenekunst");
+  const [sakId,setSakId]=useState("");
+  const [status,setStatus]=useState(null); // null | "sender" | "sendt" | feiltekst
+  const inputStil={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",background:"#fff",boxSizing:"border-box"};
+  const send=async()=>{
+    if(!tittel.trim()||!beskrivelse.trim()){setStatus("Fyll ut både tittel og beskrivelse.");return;}
+    setStatus("sender");
+    const {error}=await sb.from("kampanjer").insert({
+      tittel:tittel.trim(),
+      beskrivelse:beskrivelse.trim(),
+      mal:Number(mål)||500,
+      kategori,
+      sak_id:sakId||null,
+      tags:[],
+      dager:30,
+      aktiv:false, // venter på godkjenning
+    });
+    if(error){setStatus("Noe gikk galt: "+error.message);return;}
+    setStatus("sendt");
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(26,18,16,.55)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+      <div style={{background:C.bgCard,borderRadius:18,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",padding:"26px 28px"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+          <h2 style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>✊ Start en kampanje</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.muted}}>×</button>
+        </div>
+        {!user&&(
+          <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"14px 16px",fontSize:13,color:"#92400E",lineHeight:1.6}}>
+            Du må være innlogget for å starte en kampanje — logg inn eller registrer deg gratis, så er du i gang på ett minutt.
+          </div>
+        )}
+        {user&&status==="sendt"&&(
+          <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:10,padding:"16px 18px",fontSize:14,color:C.green,lineHeight:1.6}}>
+            🎉 <strong>Takk! Kampanjen er sendt til godkjenning.</strong><br/>
+            Den blir synlig for alle så snart redaksjonen har sett over den — vanligvis innen et døgn.
+            <div style={{marginTop:12}}><Btn variant="secondary" onClick={onClose}>Lukk</Btn></div>
+          </div>
+        )}
+        {user&&status!=="sendt"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:14,marginTop:10}}>
+            <p style={{fontSize:13,color:C.muted,lineHeight:1.6}}>
+              Mobiliser feltet rundt en sak som betyr noe. Kampanjen kobles gjerne til en aktiv politisk sak — da får den frist, fakta og tyngde.
+            </p>
+            <div>
+              <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>TITTEL</label>
+              <input style={inputStil} value={tittel} onChange={e=>setTittel(e.target.value)} placeholder="F.eks. «Bevar kulturskoletilbudet i Arendal»" maxLength={90}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>HVA KJEMPER DERE FOR?</label>
+              <textarea style={{...inputStil,minHeight:90,resize:"vertical"}} value={beskrivelse} onChange={e=>setBeskrivelse(e.target.value)} placeholder="Beskriv saken, hvem som rammes, og hva dere krever." maxLength={600}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <div>
+                <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>SIGNATURMÅL</label>
+                <input style={inputStil} type="number" min={50} value={mål} onChange={e=>setMål(e.target.value)}/>
+              </div>
+              <div>
+                <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>FAGFELT</label>
+                <select style={inputStil} value={kategori} onChange={e=>setKategori(e.target.value)}>
+                  {KATEGORIER.map(k=><option key={k.id} value={k.id}>{k.ikon} {k.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>KNYTT TIL POLITISK SAK (VALGFRITT, MEN ANBEFALT)</label>
+              <select style={inputStil} value={sakId} onChange={e=>setSakId(e.target.value)}>
+                <option value="">— Ingen tilknytning —</option>
+                {varslerData.map(v=><option key={v.id} value={v.id}>{v.tittel.slice(0,70)}</option>)}
+              </select>
+            </div>
+            {status&&status!=="sender"&&(
+              <div style={{background:"#FEE2E2",border:"1px solid #FCA5A5",borderRadius:8,padding:"9px 12px",fontSize:13,color:C.red}}>{status}</div>
+            )}
+            <Btn variant="primary" onClick={send} disabled={status==="sender"}>
+              {status==="sender"?"Sender …":"Send til godkjenning →"}
+            </Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function BrukerKampanjer({kampanjerData=kampanjer,varslerData=varsler,user=null}) {
   const [valgt,setValgt]=useState(null);
+  const [showNy,setShowNy]=useState(false);
   const [sort,setSort]=useState("frist");
   const sorted=useMemo(()=>[...kampanjerData].sort((a,b)=>{
     if(sort==="frist") return a.dager-b.dager;
@@ -1986,7 +2088,10 @@ function BrukerKampanjer({kampanjerData=kampanjer,varslerData=varsler,user=null}
             {lbl}
           </button>
         ))}
+        <div style={{flex:1}}/>
+        <Btn variant="primary" size="sm" onClick={()=>setShowNy(true)}>➕ Start kampanje</Btn>
       </div>
+      {showNy&&<StartKampanjeModal onClose={()=>setShowNy(false)} user={user} varslerData={varslerData}/>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}} className="grid-2">
         {sorted.map(k=>{
           const relSak=k.sakId?varslerData.find(v=>v.id===k.sakId):null;
@@ -2607,13 +2712,26 @@ function VarselRegistreringModal({user,setUser,onClose}) {
 }
 
 // ─── SAKSHISTORIKK ────────────────────────────────────────────────────────
-function SaksHistorikkSide({aktivitet=[]}) {
+function SaksHistorikkSide({aktivitet=[],historiske=[]}) {
   const [valgt,setValgt]=useState(null);
   const utfallCfg={
     seier:{label:"Seier ✓",bg:"#D1FAE5",color:C.green,ikon:"🏆"},
     tap:{label:"Vedtatt mot vår vilje",bg:"#FEE2E2",color:C.red,ikon:"❌"},
-    pågår:{label:"Pågår / uavklart",bg:"#FEF3C7",color:C.amber,ikon:"⏳"},
+    pågår:{label:"Avsluttet / utfall ikke registrert",bg:"#FEF3C7",color:C.amber,ikon:"⏳"},
   };
+  // Ekte arkiv: saker med utgått frist (eller gamle uten frist) fra motoren.
+  // Utfallssporing (seier/tap) kobles på senere — grunnlaget samles her nå.
+  const arkivSaker = historiske.map(v=>({
+    id:v.id, tittel:v.tittel, sammendrag:v.sammendrag, kategori:v.kategori,
+    nivå:v.nivå||v.niva, sted:v.sted, kilde:v.kilde,
+    utfall:"pågår",
+    utfallTekst:"Fristen er passert og saken er arkivert. Utfallssporing (hva ble vedtatt?) er under utvikling — arkivet bygger datagrunnlaget.",
+    avsluttet:v.frist||v.opprettet,
+    hendelser:[
+      {dato:v.opprettet?.slice(0,10)||v.frist,tekst:`Fanget opp av Kulturvarsling (${v.instans||"ukjent kilde"})`},
+      ...(v.frist?[{dato:v.frist,tekst:"Fristen utløp"}]:[]),
+    ],
+  })).sort((a,b)=>(b.avsluttet||"").localeCompare(a.avsluttet||""));
   return (
     <div>
       <p style={{fontSize:14,color:C.muted,marginBottom:16,lineHeight:1.6}}>
@@ -2628,9 +2746,9 @@ function SaksHistorikkSide({aktivitet=[]}) {
       {/* Oppsummeringsstatistikk */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:28}}>
         {[
-          {n:SAK_HISTORIKK.filter(s=>s.utfall==="seier").length,label:"Seire",bg:"#D1FAE5",color:C.green,ikon:"🏆"},
-          {n:SAK_HISTORIKK.filter(s=>s.utfall==="tap").length,label:"Tapte saker",bg:"#FEE2E2",color:C.red,ikon:"❌"},
-          {n:SAK_HISTORIKK.filter(s=>s.utfall==="pågår").length,label:"Uavklarte",bg:"#FEF3C7",color:C.amber,ikon:"⏳"},
+          {n:arkivSaker.filter(s=>s.utfall==="seier").length,label:"Seire",bg:"#D1FAE5",color:C.green,ikon:"🏆"},
+          {n:arkivSaker.filter(s=>s.utfall==="tap").length,label:"Tapte saker",bg:"#FEE2E2",color:C.red,ikon:"❌"},
+          {n:arkivSaker.filter(s=>s.utfall==="pågår").length,label:"Arkiverte saker",bg:"#FEF3C7",color:C.amber,ikon:"⏳"},
         ].map((s,i)=>(
           <div key={i} style={{background:s.bg,borderRadius:14,padding:"16px 20px",border:`1px solid ${C.border}`}}>
             <div style={{display:"flex",justifyContent:"space-between"}}>
@@ -2643,7 +2761,12 @@ function SaksHistorikkSide({aktivitet=[]}) {
       </div>
 
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        {SAK_HISTORIKK.map(sak=>{
+        {arkivSaker.length===0&&(
+          <div style={{textAlign:"center",padding:"40px 20px",color:C.muted,fontSize:14}}>
+            Ingen arkiverte saker ennå — saker flyttes hit automatisk når fristen utløper.
+          </div>
+        )}
+        {arkivSaker.map(sak=>{
           const cfg=utfallCfg[sak.utfall];
           const ki=KATEGORIER.find(k=>k.id===sak.kategori);
           const åpen=valgt===sak.id;
