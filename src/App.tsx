@@ -69,28 +69,22 @@ async function hentFulgte(brukerId) {
   return (data ?? []).map(r => r.sak_id);
 }
 
-// ─── Premium-gating (E5) ──────────────────────────────────────────────────
-// Prismodellen (docs/VEIKART.md): gratis = nasjonale saker; geografisk filter
-// og ubegrenset klartekst er betalt. plan-feltet i profiler styres av
-// Stripe-webhooken – aldri av frontend.
+// ─── Gratis demokrati vs. premium fagverktøy ──────────────────────────────
+// GRUNNPRINSIPP (docs/VEIKART.md): Demokratisk informasjon er ALLTID gratis.
+// Å vite hva som skjer, følge saker, delta, mobilisere, filtrere til sitt eget
+// fylke/kommune OG forstå en sak i klartekst — koster ingenting. Premium (plan
+// styrt av Stripe-webhooken, aldri av frontend) er FAGVERKTØY som gjør en jobb
+// for deg: budsjettolkning/KOSTRA-sammenligning, AI-utkast til høringssvar,
+// historiske trender/eksport, organisasjonsverktøy. Se isFagverktøy-gating der.
 //
-// TODO(E2): Når klartekst-knappen («hva betyr dette for deg?») bygges, kall
-// kanBrukeKlartekst() før API-kallet og registrerKlartekstBruk() etter
-// vellykket svar. Telleren bor i localStorage per bruker+måned som stopgap –
-// flyttes til en klartekst_bruk-tabell når E2 bygges, slik at kvoten holder
-// på tvers av enheter.
-const KLARTEKST_GRATIS_PER_MND = 3;
-function klartekstNøkkel(brukerId){ return `klartekst-${brukerId}-${new Date().toISOString().slice(0,7)}`; }
+// Klartekst («hva betyr dette for meg?») er forståelse av en offentlig sak =
+// GRATIS for alle innloggede. Innlogging kreves kun for å hindre anonymt
+// misbruk av et betalt-per-kall AI-endepunkt — selve registreringen er gratis.
 export function kanBrukeKlartekst(user){
-  if(user?.plan==="premium") return true;
-  if(!user?.id) return false;
-  return Number(localStorage.getItem(klartekstNøkkel(user.id))||0) < KLARTEKST_GRATIS_PER_MND;
+  return !!user?.id;
 }
-export function registrerKlartekstBruk(user){
-  if(!user?.id||user?.plan==="premium") return;
-  const nøkkel=klartekstNøkkel(user.id);
-  localStorage.setItem(nøkkel, String(Number(localStorage.getItem(nøkkel)||0)+1));
-}
+// Beholdt for bakoverkompatibilitet med E2-koden; klartekst har ingen kvote nå.
+export function registrerKlartekstBruk(_user){ /* gratis — ingen teller */ }
 
 async function loggAktivitetDB(brukerId, entry) {
   await sb.from("aktivitet").insert({
@@ -145,6 +139,18 @@ const KATEGORIER = [
   {id:"visuell",label:"Visuell kunst",ikon:"🖼️"},{id:"museer",label:"Museer",ikon:"🏛️"},
   {id:"spill",label:"Spill",ikon:"🎮"},{id:"kulturarv",label:"Kulturarv & bygg",ikon:"🏗️"},
 ];
+
+// Norges 15 fylker (fylkesnr = to første siffer i kommunenr). Brukes til
+// geografisk personalisering: «vis meg det som angår mitt fylke». GRATIS —
+// demokratisk kjernefunksjon, aldri bak betalingsmur.
+const FYLKER = [
+  {nr:"03",navn:"Oslo"},{nr:"11",navn:"Rogaland"},{nr:"15",navn:"Møre og Romsdal"},
+  {nr:"18",navn:"Nordland"},{nr:"31",navn:"Østfold"},{nr:"32",navn:"Akershus"},
+  {nr:"33",navn:"Buskerud"},{nr:"34",navn:"Innlandet"},{nr:"39",navn:"Vestfold"},
+  {nr:"40",navn:"Telemark"},{nr:"42",navn:"Agder"},{nr:"46",navn:"Vestland"},
+  {nr:"50",navn:"Trøndelag"},{nr:"55",navn:"Troms"},{nr:"56",navn:"Finnmark"},
+];
+const fylkesnavn = (nr) => FYLKER.find(f=>f.nr===String(nr))?.navn ?? null;
 
 const POLITIKERE = [
   {id:1,navn:"Anette Hansen",parti:"Ap",rolle:"Kulturbyråd",nivå:"kommune",sted:"Oslo",kategori:["scenekunst","musikk"],kontakt:"anette.hansen@oslo.kommune.no"},
@@ -767,6 +773,8 @@ function BrukerLogin({setScreen,setUser}) {
       plan: profil?.plan || "gratis",
       onboardingDone: profil?.onboarding_done || false,
       varselFrekvens: profil?.varsel_frekvens || "daglig",
+      fylkesnr: profil?.fylkesnr || null,
+      kommunenr: profil?.kommunenr || null,
     });
     setScreen("bruker-app");
     setLaster(false);
@@ -1076,7 +1084,7 @@ function BrukerApp({user,setUser,setScreen}) {
           </div>
         )}
         {view==="forside"   &&<BrukerForside setView={setView} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={aktiveVarsler} kampanjerData={kampanjer} dataLastet={dataLastet}/>}
-        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer} isPremium={isPremium} setShowPremium={setShowPremium}/>}
+        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer} minFylke={user?.fylkesnr}/>}
         {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
         {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
@@ -1133,6 +1141,13 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
   const [redigerOrg,setRedigerOrg]=useState(false);
   const [orgVal,setOrgVal]=useState(user?.org||"");
   const [orgTypeVal,setOrgTypeVal]=useState(user?.orgType||"");
+  const [fylkeVal,setFylkeVal]=useState(user?.fylkesnr||"");
+  async function lagreOrg(){
+    const oppd={org:orgVal,orgType:orgTypeVal,fylkesnr:fylkeVal||null};
+    setUser(u=>({...u,...oppd}));
+    setRedigerOrg(false);
+    if(user?.id) await lagreProfil(user.id,{org:orgVal,org_type:orgTypeVal,fylkesnr:fylkeVal||null});
+  }
 
   return (
     <div>
@@ -1159,7 +1174,10 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
               <div>
                 <div style={{fontWeight:700,fontSize:16}}>{user?.org||user?.navn||"Ikke satt"}</div>
                 <div style={{fontSize:12,color:C.muted,marginTop:2}}>{user?.epost}</div>
-                {user?.orgType&&<div style={{fontSize:11,marginTop:4}}><Badge color={C.muted}>{({organisasjon:"🏢 Organisasjon",kunstner:"🎨 Frilanser/kunstner",institusjon:"🏛 Institusjon",annet:"👤 Annet"})[user.orgType]||user.orgType}</Badge></div>}
+                <div style={{fontSize:11,marginTop:4,display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {user?.orgType&&<Badge color={C.muted}>{({organisasjon:"🏢 Organisasjon",kunstner:"🎨 Frilanser/kunstner",institusjon:"🏛 Institusjon",annet:"👤 Annet"})[user.orgType]||user.orgType}</Badge>}
+                  {user?.fylkesnr&&<Badge color={C.komBlue}>📍 {fylkesnavn(user.fylkesnr)}</Badge>}
+                </div>
               </div>
             </div>
             {redigerOrg&&(
@@ -1179,7 +1197,16 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
                     ))}
                   </div>
                 </div>
-                <Btn variant="primary" size="sm" style={{width:"100%"}} onClick={()=>{setUser(u=>({...u,org:orgVal,orgType:orgTypeVal}));setRedigerOrg(false);}}>
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:".03em"}}>Hvilket fylke holder du til i?</div>
+                  <select value={fylkeVal} onChange={e=>setFylkeVal(e.target.value)}
+                    style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,boxSizing:"border-box",fontFamily:"inherit",background:"#fff"}}>
+                    <option value="">— Velg fylke (for «vis mitt fylke») —</option>
+                    {FYLKER.map(f=><option key={f.nr} value={f.nr}>{f.navn}</option>)}
+                  </select>
+                  <div style={{fontSize:11,color:C.muted,marginTop:5,lineHeight:1.5}}>Da kan du filtrere til saker som angår ditt fylke. Alltid gratis.</div>
+                </div>
+                <Btn variant="primary" size="sm" style={{width:"100%"}} onClick={lagreOrg}>
                   Lagre endringer
                 </Btn>
               </div>
@@ -1977,26 +2004,29 @@ function DelMini({sak}) {
 }
 
 // ─── varsler / kampanjer / MOBILISER (forenklet) ──────────────────────────
-function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanjerData=[],isPremium=false,setShowPremium=()=>{}}) {
+function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanjerData=[],minFylke=null}) {
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
   const [katFilter,setKatFilter]=useState([]);
   const [nivåFilter,setNivåFilter]=useState([]);
   const [statusFilter,setStatusFilter]=useState([]);
   const [visFulgte,setVisFulgte]=useState(false);
+  // Geo: «mitt fylke» = nasjonale saker + saker i brukerens eget fylke. GRATIS.
+  const [visMittFylke,setVisMittFylke]=useState(false);
   const filtered=useMemo(()=>varslerData.filter(v=>{
     if(katFilter.length>0&&!katFilter.includes(v.kategori)) return false;
     if(nivåFilter.length>0&&!nivåFilter.includes(v.nivå)) return false;
     if(statusFilter.length>0&&!statusFilter.includes(v.status)) return false;
+    if(visMittFylke&&minFylke&&v.nivå!=="nasjonalt"&&String(v.fylkesnr)!==String(minFylke)) return false;
     if(visFulgte&&!fulgte.includes(v.id)) return false;
     if(søk){
       const q=søk.toLowerCase();
-      if(!v.tittel.toLowerCase().includes(q)&&!v.sammendrag.toLowerCase().includes(q)&&!v.instans.toLowerCase().includes(q)&&!v.sted.toLowerCase().includes(q)) return false;
+      if(!v.tittel.toLowerCase().includes(q)&&!v.sammendrag.toLowerCase().includes(q)&&!v.instans.toLowerCase().includes(q)&&!(v.sted||"").toLowerCase().includes(q)) return false;
     }
     return true;
-  }),[søk,katFilter,nivåFilter,statusFilter,visFulgte,fulgte,varslerData]);
+  }),[søk,katFilter,nivåFilter,statusFilter,visFulgte,visMittFylke,minFylke,fulgte,varslerData]);
 
-  const antallFilter=katFilter.length+nivåFilter.length+statusFilter.length+(visFulgte?1:0);
+  const antallFilter=katFilter.length+nivåFilter.length+statusFilter.length+(visFulgte?1:0)+(visMittFylke?1:0);
 
   return (
     <div>
@@ -2019,18 +2049,18 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanj
         </div>
 
         <div style={{display:"flex",gap:6,flexWrap:"wrap",paddingTop:8,borderTop:`1px solid ${C.border}`}}>
+          {/* Geografi er GRATIS — demokratisk kjernefunksjon (docs/VEIKART.md). */}
+          {minFylke&&(
+            <button onClick={()=>setVisMittFylke(v=>!v)}
+              style={{padding:"4px 10px",borderRadius:99,border:`1.5px solid ${visMittFylke?C.komBlue:C.border}`,background:visMittFylke?C.komBlue:"none",color:visMittFylke?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:visMittFylke?700:400,fontFamily:"inherit",marginRight:4}}>
+              📍 {fylkesnavn(minFylke)||"Mitt fylke"}
+            </button>
+          )}
           <span style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",alignSelf:"center",marginRight:4}}>Nivå</span>
-          {/* Premium-gating (E5): geografisk filtrering er betalt per prismodellen.
-              TODO(E1): når adapterne fyller kommunenr/fylkesnr og profilen vet hvor
-              brukeren holder til, skal gatingen dekke «min kommune / mitt fylke»-
-              filteret – ikke bare nivåknappene her. */}
           {[["nasjonalt","🏛 Nasjonalt"],["fylke","🗺 Fylke"],["kommune","📍 Kommune"]].map(([id,lbl])=>(
-            <button key={id} onClick={()=>{
-                if(id!=="nasjonalt"&&!isPremium){ setShowPremium(true); return; }
-                setNivåFilter(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
-              }}
-              style={{padding:"4px 10px",borderRadius:99,border:`1.5px solid ${nivåFilter.includes(id)?C.komBlue:C.border}`,background:nivåFilter.includes(id)?C.komBlue:"none",color:nivåFilter.includes(id)?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:nivåFilter.includes(id)?700:400,fontFamily:"inherit",opacity:id!=="nasjonalt"&&!isPremium?.65:1}}>
-              {lbl}{id!=="nasjonalt"&&!isPremium?" ⭐":""}
+            <button key={id} onClick={()=>setNivåFilter(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])}
+              style={{padding:"4px 10px",borderRadius:99,border:`1.5px solid ${nivåFilter.includes(id)?C.komBlue:C.border}`,background:nivåFilter.includes(id)?C.komBlue:"none",color:nivåFilter.includes(id)?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:nivåFilter.includes(id)?700:400,fontFamily:"inherit"}}>
+              {lbl}
             </button>
           ))}
           <span style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",alignSelf:"center",marginLeft:8,marginRight:4}}>Status</span>
@@ -2047,7 +2077,7 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanj
             </button>
           )}
           {antallFilter>0&&(
-            <button onClick={()=>{setKatFilter([]);setNivåFilter([]);setStatusFilter([]);setVisFulgte(false);}}
+            <button onClick={()=>{setKatFilter([]);setNivåFilter([]);setStatusFilter([]);setVisFulgte(false);setVisMittFylke(false);}}
               style={{padding:"4px 10px",borderRadius:99,border:`1px solid ${C.red}`,background:"none",color:C.red,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
               ✕ Nullstill filter ({antallFilter})
             </button>
@@ -3136,8 +3166,8 @@ function PremiumModal({user,onClose,onLogin}) {
       <div style={{background:C.bgCard,borderRadius:20,width:"100%",maxWidth:480,overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.35)"}} onClick={e=>e.stopPropagation()}>
         <div style={{background:"linear-gradient(135deg,#4C1D95,#6D28D9)",padding:"28px 28px 24px",color:"#fff"}}>
           <div style={{fontSize:10,fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",opacity:.7,marginBottom:8}}>Kulturvarsling</div>
-          <h2 style={{fontSize:22,fontWeight:800,fontFamily:"'Playfair Display',serif",marginBottom:6}}>⭐ Oppgrader til Premium</h2>
-          <p style={{fontSize:13,opacity:.8,lineHeight:1.55}}>Forstå hva politikken betyr for DEG – og støtt utviklingen av en mer åpen kulturpolitisk debatt.</p>
+          <h2 style={{fontSize:22,fontWeight:800,fontFamily:"'Playfair Display',serif",marginBottom:6}}>⭐ Premium-verktøy</h2>
+          <p style={{fontSize:13,opacity:.85,lineHeight:1.55}}>All informasjon, geografisk filter og klartekst er <strong>gratis for alle</strong>. Premium gir deg fagverktøyene som sparer tid – og støtter en åpen, gratis demokratiplattform.</p>
         </div>
         <div style={{padding:"24px 28px"}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
@@ -3149,7 +3179,7 @@ function PremiumModal({user,onClose,onLogin}) {
             ))}
           </div>
           <div style={{marginBottom:20}}>
-            {["📍 Geografisk filter – saker fra DIN kommune og fylke","💬 Klartekst: «hva betyr dette for deg?» – ubegrenset","🔔 Følg ubegrenset antall saker","📅 Fristkalender rett inn i din kalender (ICS)","✍️ AI-utkast til høringssvar","⚡ E-postvarsel straks ved kritisk sak"].map((f,i)=>(
+            {["📊 Budsjettolkning: forstå kommunens kulturbudsjett og sammenlign med nabokommuner","✍️ AI-utkast til profesjonelt høringssvar","📈 Historiske trender, statistikk og dataeksport","📅 Fristkalender rett inn i din kalender (ICS)","⚡ E-postvarsel straks ved kritisk sak"].map((f,i)=>(
               <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,fontSize:13,color:C.text}}>
                 <span style={{color:C.green,fontWeight:700}}>✓</span>{f}
               </div>

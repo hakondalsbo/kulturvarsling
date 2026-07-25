@@ -53,24 +53,32 @@ utvidet utgave (flere saker, geografisk seksjon for DIN region, tallgrunnlag).
 
 ---
 
-## Prismodell (forslag)
+## Prismodell — GRUNNPRINSIPP: demokrati er gratis
 
-| | **Gratis** | **Premium 99 kr/mnd** (790/år) | **Organisasjon 2 990 kr/år** |
+> **Kulturvarsling er en demokrati-plattform.** All informasjon om saker, retten til å følge
+> med, forstå, delta og mobilisere er GRATIS og skal aldri ha betalingsmur. Man betaler ikke
+> for å vite hva politikerne bestemmer om kulturen sin. Premium er **fagverktøy** som gjør en
+> jobb for deg — ikke tilgang til det demokratiske.
+
+| | **Gratis (demokratisk kjerne)** | **Premium 99 kr/mnd** (fagverktøy) | **Organisasjon 2 990 kr/år** |
 |---|---|---|---|
-| Nasjonale saker + frister | ✅ | ✅ | ✅ |
+| Alle saker (nasjonalt/fylke/kommune) | ✅ | ✅ | ✅ |
+| **Geografisk filter (mitt fylke/kommune)** | ✅ | ✅ | ✅ |
+| Følge saker | ✅ ubegrenset | ✅ | ✅ |
+| **Klartekst «hva betyr dette for deg»** | ✅ | ✅ | ✅ |
+| Kampanjer + mobilisering + delta i høring | ✅ | ✅ | ✅ |
 | Ukentlig nyhetsbrev | ✅ | ✅ utvidet m/regional seksjon | ✅ |
-| Følge saker | 5 | Ubegrenset | Ubegrenset |
-| **Geografisk filter (din kommune/fylke)** | — | ✅ | ✅ flere geografier |
-| **Klartekst «hva betyr dette for deg»** | 3/mnd | Ubegrenset | Ubegrenset |
+| **Budsjettolkning / KOSTRA-sammenligning** («din kommune vs nabo», utvikling over tid) | — | ✅ | ✅ |
+| **AI-utkast til profesjonelt høringssvar** | — | ✅ | ✅ |
+| Historiske trender, statistikk, dataeksport | — | ✅ | ✅ |
 | Fristkalender (ICS til din kalender) | — | ✅ | ✅ |
-| AI-utkast til høringssvar | — | ✅ | ✅ |
 | E-postvarsel straks ved kritisk sak | — | ✅ | ✅ |
-| Kampanjeverktøy + signaturliste-eksport | — | — | ✅ |
-| Flere brukere / API-tilgang | — | — | ✅ |
+| Organisasjonsverktøy: flere brukere, API, signaturliste-eksport, egen merkevare | — | — | ✅ |
 
-Logikk: **datainnsamlingen er gratis synlig** (bygger tillit og trafikk) — **forståelsen,
-personaliseringen og verktøyene koster** (det er der tidsbesparelsen og verdien ligger).
-Organisasjonsnivået er B2B-sporet: NTO, Creo, kulturhusnettverk, kommuner.
+Tommelfingerregel: **Betaler man for å VITE eller DELTA? → gratis. Betaler man for et VERKTØY
+som gjør en jobb for deg (tolke tall, skrive utkast, eksportere, integrere)? → premium.**
+Organisasjonsnivået er B2B-sporet: NTO, Creo, kulturhusnettverk, kommuner. E5s Stripe-mur er
+bygget — den gjenbrukes på fagverktøyene (E4-budsjett m.m.), ikke på informasjon/geografi/klartekst.
 
 ---
 

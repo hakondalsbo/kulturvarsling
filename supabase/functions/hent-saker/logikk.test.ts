@@ -198,7 +198,7 @@ test("tom saksgang krasjer ikke", () => {
 
 // ─── eInnsyn-adapter (mapEInnsynItem) ─────────────────────────────────────────
 
-test("eInnsyn-møtesak mappes med kanonisk lenke og organnavn", async () => {
+test("eInnsyn-møtesak mappes med kanonisk lenke, organnavn og geografi", async () => {
   const { mapEInnsynItem } = await import("./einnsyn.ts");
   const mappet = mapEInnsynItem(
     {
@@ -209,27 +209,40 @@ test("eInnsyn-møtesak mappes med kanonisk lenke og organnavn", async () => {
       moetesaksaar: 2026,
       moetesakssekvensnummer: 13,
     },
-    "Bydel Søndre Nordstrand",
+    { navn: "Stavanger kommune", kommunenr: "1103", fylkesnr: "11", sted: "Stavanger", niva: "kommune" },
   );
   assert.equal(mappet?.tittel, "Kultur- og miljøprisen 2025");
-  assert.equal(mappet?.instans, "Bydel Søndre Nordstrand");
+  assert.equal(mappet?.instans, "Stavanger kommune");
   assert.equal(
     mappet?.kilde,
     "https://einnsyn.no/moetesak/ms_01kpxnyfghest8sjkpe3dak0ev",
   );
   assert.equal(mappet?.publisert_dato, "2026-04-23");
   assert.equal(mappet?.forhåndsgodkjent, true);
+  assert.equal(mappet?.kommunenr, "1103");
+  assert.equal(mappet?.fylkesnr, "11");
+  assert.equal(mappet?.sted, "Stavanger");
+  assert.equal(mappet?.niva, "kommune");
 });
 
-test("eInnsyn-item uten navn får fallback-organ, uten id/tittel forkastes", async () => {
+test("eInnsyn-item uten geo får fallback-organ og nullfelt, uten id/tittel forkastes", async () => {
   const { mapEInnsynItem } = await import("./einnsyn.ts");
-  const utenNavn = mapEInnsynItem(
-    { id: "ms_1", offentligTittel: "Sak" },
-    undefined,
-  );
-  assert.equal(utenNavn?.instans, "Organ i eInnsyn");
+  const utenGeo = mapEInnsynItem({ id: "ms_1", offentligTittel: "Sak" }, undefined);
+  assert.equal(utenGeo?.instans, "Organ i eInnsyn");
+  assert.equal(utenGeo?.kommunenr, null);
+  assert.equal(utenGeo?.niva, null);
   assert.equal(mapEInnsynItem({ offentligTittel: "Mangler id" }), null);
   assert.equal(mapEInnsynItem({ id: "ms_2" }), null);
+});
+
+test("nivaFraEnhetstype utleder nivå fra eInnsyn-enhetstype", async () => {
+  const { nivaFraEnhetstype } = await import("./einnsyn.ts");
+  assert.equal(nivaFraEnhetstype("BYDEL"), "kommune");
+  assert.equal(nivaFraEnhetstype("KOMMUNE"), "kommune");
+  assert.equal(nivaFraEnhetstype("FYLKESKOMMUNE"), "fylke");
+  assert.equal(nivaFraEnhetstype("DEPARTEMENT"), "nasjonalt");
+  assert.equal(nivaFraEnhetstype("VIRKSOMHET"), null);
+  assert.equal(nivaFraEnhetstype(undefined), null);
 });
 
 // ─── parseRssItems ────────────────────────────────────────────────────────────
