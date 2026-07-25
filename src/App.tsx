@@ -2721,7 +2721,13 @@ function PremiumVerktøy({varslerData=[],user=null}) {
                 <Card style={{borderLeft:`4px solid ${C.purple}`}}>
                   <div style={{fontSize:13,fontWeight:700,color:C.purple,marginBottom:12,display:"flex",alignItems:"center",gap:6}}>⭐ KI-tolkning<Badge color={C.purple}>Premium</Badge></div>
                   <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:12,lineHeight:1.4}}>{resultat.tolkning.overskrift}</div>
-                  {[["💰 Pengene",resultat.tolkning.hovedtall],["📈 Utviklingen",resultat.tolkning.utvikling],["🎯 Hva det betyr",resultat.tolkning.hva_betyr_det]].map(([t,tekst],i)=>(
+                  {resultat.tolkning.skjulte_kutt&&(
+                    <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                      <div style={{fontSize:12,fontWeight:700,color:C.red,marginBottom:3}}>🔍 Skjulte kutt</div>
+                      <div style={{fontSize:14,lineHeight:1.65,color:C.text}}>{resultat.tolkning.skjulte_kutt}</div>
+                    </div>
+                  )}
+                  {[["💰 Pengene",resultat.tolkning.hovedtall],["🎯 Hva det betyr",resultat.tolkning.hva_betyr_det]].map(([t,tekst],i)=>(
                     <div key={i} style={{marginBottom:12}}>
                       <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:3}}>{t}</div>
                       <div style={{fontSize:14,lineHeight:1.65,color:C.text}}>{tekst}</div>

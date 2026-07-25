@@ -18,10 +18,13 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Nøkkeltall vi henter og viser (kode → kort etikett).
+// Nøkkeltall vi henter og viser (kode → kort etikett). Underområdene (allmenn
+// kultur, bibliotek, kulturskole) avslører SKJULTE KUTT: totalen kan stige mens
+// et enkelttilbud squeezes — det er nettopp det brukerne trenger å se.
 const NØKKELTALL: Array<[string, string, string]> = [
-  ["KOSdriftinnb0000", "Kultur per innbygger", "kr"],
+  ["KOSdriftinnb0000", "Kultur totalt per innbygger", "kr"],
   ["KOSdriftkultur0000", "Andel av kommunebudsjettet", "%"],
+  ["KOSdriftallmenni0000", "Allmenn kultur per innbygger", "kr"],
   ["KOSdriftbiblinnb0000", "Bibliotek per innbygger", "kr"],
   ["KOSmusikkandelba0000", "Barn i kulturskole", "%"],
 ];
@@ -102,18 +105,18 @@ async function tolkMedClaude(
         max_tokens: 2000,
         messages: [{
           role: "user",
-          content: `Du forklarer ${kommune} kommunes kulturøkonomi til en travel kulturaktør. Bruk KOSTRA-tall (SSB).
+          content: `Du hjelper en travel kulturaktør å forstå ${kommune} kommunes kulturøkonomi — og å OPPDAGE SKJULTE KUTT. Kommuner fremhever gjerne at «kulturbudsjettet øker», mens enkelttilbud (bibliotek, kulturskole, allmenn kultur) samtidig kuttes. Din jobb er å se forbi totalen og finne hva som faktisk skjer med de konkrete tilbudene. Bruk KOSTRA-tall (SSB), flere år.
 
-${kommune}: ${oppsummer(tall)}
+${kommune} (eldste → nyeste år): ${oppsummer(tall)}
 Landssnittet: ${oppsummer(landssnitt)}
 
 Svar BARE med gyldig JSON, ingen markdown:
 {
-  "overskrift": "kort konklusjon i én setning (f.eks. «Ligger godt over snittet, men flat utvikling»)",
-  "hovedtall": "hva bruker kommunen per innbygger, og hvordan er det mot landssnittet — i klartekst",
-  "utvikling": "går det opp eller ned de siste årene? Er noe verdt å merke seg?",
+  "overskrift": "kort konklusjon i én setning — fremhev spriket hvis totalen og enkelttilbudene spriker",
+  "hovedtall": "hva bruker kommunen totalt per innbygger, mot landssnittet — i klartekst",
+  "skjulte_kutt": "SE ETTER: stiger/er stabil totalen mens bibliotek, kulturskole eller allmenn kultur går ned? Nevn konkret hvilke tilbud som squeezes, med tall. Hvis ingen skjulte kutt: si det ærlig.",
   "hva_betyr_det": "hva dette betyr for kulturfeltet i kommunen, konkret og nøkternt — ikke overdriv",
-  "sporsmaal_til_politikerne": "ett godt, konkret spørsmål en kulturaktør kan stille lokalpolitikerne basert på tallene"
+  "sporsmaal_til_politikerne": "ett skarpt, konkret spørsmål en kulturaktør kan stille lokalpolitikerne — helst om et konkret tilbud som kuttes"
 }`,
         }],
       }),
