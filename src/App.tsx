@@ -69,6 +69,29 @@ async function hentFulgte(brukerId) {
   return (data ?? []).map(r => r.sak_id);
 }
 
+// ─── Premium-gating (E5) ──────────────────────────────────────────────────
+// Prismodellen (docs/VEIKART.md): gratis = nasjonale saker; geografisk filter
+// og ubegrenset klartekst er betalt. plan-feltet i profiler styres av
+// Stripe-webhooken – aldri av frontend.
+//
+// TODO(E2): Når klartekst-knappen («hva betyr dette for deg?») bygges, kall
+// kanBrukeKlartekst() før API-kallet og registrerKlartekstBruk() etter
+// vellykket svar. Telleren bor i localStorage per bruker+måned som stopgap –
+// flyttes til en klartekst_bruk-tabell når E2 bygges, slik at kvoten holder
+// på tvers av enheter.
+const KLARTEKST_GRATIS_PER_MND = 3;
+function klartekstNøkkel(brukerId){ return `klartekst-${brukerId}-${new Date().toISOString().slice(0,7)}`; }
+export function kanBrukeKlartekst(user){
+  if(user?.plan==="premium") return true;
+  if(!user?.id) return false;
+  return Number(localStorage.getItem(klartekstNøkkel(user.id))||0) < KLARTEKST_GRATIS_PER_MND;
+}
+export function registrerKlartekstBruk(user){
+  if(!user?.id||user?.plan==="premium") return;
+  const nøkkel=klartekstNøkkel(user.id);
+  localStorage.setItem(nøkkel, String(Number(localStorage.getItem(nøkkel)||0)+1));
+}
+
 async function loggAktivitetDB(brukerId, entry) {
   await sb.from("aktivitet").insert({
     bruker_id: brukerId,
@@ -966,7 +989,7 @@ function BrukerApp({user,setUser,setScreen}) {
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'DM Sans',sans-serif",color:C.text}}>
       <style>{css}</style>
 
-      {showPremium&&<PremiumModal user={user} setUser={setUser} onClose={()=>setShowPremium(false)} onSuccess={()=>{setUser(u=>({...u,plan:"premium"}));setShowPremium(false);setView("premium");}}/>}
+      {showPremium&&<PremiumModal user={user} onClose={()=>setShowPremium(false)} onLogin={()=>{setShowPremium(false);setScreen("bruker-login");}}/>}
       {showVarselReg&&<VarselRegistreringModal user={user} setUser={setUser} onClose={()=>setShowVarselReg(false)}/>}
       {showOnboarding&&user&&<OnboardingWizard user={user} setUser={setUser} onDone={()=>setShowOnboarding(false)}/>}
       {showPersonvern&&<PersonvernModal onClose={()=>setShowPersonvern(false)}/>}
@@ -1053,7 +1076,7 @@ function BrukerApp({user,setUser,setScreen}) {
           </div>
         )}
         {view==="forside"   &&<BrukerForside setView={setView} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={aktiveVarsler} kampanjerData={kampanjer} dataLastet={dataLastet}/>}
-        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
+        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer} isPremium={isPremium} setShowPremium={setShowPremium}/>}
         {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
         {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
@@ -1254,7 +1277,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
               <Btn variant="secondary" style={{color:"#991B1B",border:"1px solid #FECACA"}}>🗑 Slett min konto</Btn>
             </div>
           </Card>
-          {!user?.plan==="premium"&&(
+          {user?.plan!=="premium"&&(
             <Card style={{background:"linear-gradient(135deg,#EDE9FE,#DDD6FE)",border:"1px solid #C4B5FD"}}>
               <div style={{fontWeight:700,fontSize:14,color:C.purple,marginBottom:6}}>Oppgrader til Premium</div>
               <div style={{fontSize:13,color:C.muted,marginBottom:12}}>Budsjettanalyse, trendrapporter og politikeraktivitet.</div>
@@ -1897,7 +1920,7 @@ function DelMini({sak}) {
 }
 
 // ─── varsler / kampanjer / MOBILISER (forenklet) ──────────────────────────
-function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanjerData=[]}) {
+function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanjerData=[],isPremium=false,setShowPremium=()=>{}}) {
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
   const [katFilter,setKatFilter]=useState([]);
@@ -1940,10 +1963,17 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=varsler,kampanj
 
         <div style={{display:"flex",gap:6,flexWrap:"wrap",paddingTop:8,borderTop:`1px solid ${C.border}`}}>
           <span style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",alignSelf:"center",marginRight:4}}>Nivå</span>
+          {/* Premium-gating (E5): geografisk filtrering er betalt per prismodellen.
+              TODO(E1): når adapterne fyller kommunenr/fylkesnr og profilen vet hvor
+              brukeren holder til, skal gatingen dekke «min kommune / mitt fylke»-
+              filteret – ikke bare nivåknappene her. */}
           {[["nasjonalt","🏛 Nasjonalt"],["fylke","🗺 Fylke"],["kommune","📍 Kommune"]].map(([id,lbl])=>(
-            <button key={id} onClick={()=>setNivåFilter(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])}
-              style={{padding:"4px 10px",borderRadius:99,border:`1.5px solid ${nivåFilter.includes(id)?C.komBlue:C.border}`,background:nivåFilter.includes(id)?C.komBlue:"none",color:nivåFilter.includes(id)?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:nivåFilter.includes(id)?700:400,fontFamily:"inherit"}}>
-              {lbl}
+            <button key={id} onClick={()=>{
+                if(id!=="nasjonalt"&&!isPremium){ setShowPremium(true); return; }
+                setNivåFilter(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+              }}
+              style={{padding:"4px 10px",borderRadius:99,border:`1.5px solid ${nivåFilter.includes(id)?C.komBlue:C.border}`,background:nivåFilter.includes(id)?C.komBlue:"none",color:nivåFilter.includes(id)?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:nivåFilter.includes(id)?700:400,fontFamily:"inherit",opacity:id!=="nasjonalt"&&!isPremium?.65:1}}>
+              {lbl}{id!=="nasjonalt"&&!isPremium?" ⭐":""}
             </button>
           ))}
           <span style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",alignSelf:"center",marginLeft:8,marginRight:4}}>Status</span>
@@ -3024,88 +3054,63 @@ function MinAktivitetSide({user,setUser,aktivitet,setShowVarselReg,setShowPremiu
     </div>
   );
 }
-function PremiumModal({onClose,onSuccess}) {
-  const [step,setStep]=useState("valg"); // valg | betaling | suksess
+function PremiumModal({user,onClose,onLogin}) {
   const [plan,setPlan]=useState("monthly");
-  const [kortNr,setKortNr]=useState("");
-  const [utløp,setUtløp]=useState("");
-  const [cvc,setCvc]=useState("");
-  const [navn,setNavn]=useState("");
   const [loading,setLoading]=useState(false);
+  const [feil,setFeil]=useState("");
 
-  function betal() {
-    setLoading(true);
-    setTimeout(()=>{ setLoading(false); setStep("suksess"); },1600);
+  // Ekte betaling (E5): stripe-checkout-funksjonen lager en Checkout Session
+  // og vi sender brukeren til Stripes sikre betalingsside. Kortdata rører
+  // aldri vår kode. Webhooken setter plan="premium" når Stripe bekrefter.
+  async function tilBetaling() {
+    if(!user?.id){ setFeil("Du må være innlogget for å oppgradere."); return; }
+    setLoading(true); setFeil("");
+    const { data, error } = await sb.functions.invoke("stripe-checkout",{ body:{ interval: plan } });
+    if(error||!data?.url){
+      let msg = data?.error || "Kunne ikke starte betaling. Prøv igjen om litt.";
+      try { const d = await error?.context?.json?.(); if(d?.error) msg = d.error; } catch { /* behold standardmelding */ }
+      setFeil(msg); setLoading(false); return;
+    }
+    window.location.href = data.url;
   }
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
       <div style={{background:C.bgCard,borderRadius:20,width:"100%",maxWidth:480,overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.35)"}} onClick={e=>e.stopPropagation()}>
-
-        {step==="valg"&&(
-          <>
-            <div style={{background:"linear-gradient(135deg,#4C1D95,#6D28D9)",padding:"28px 28px 24px",color:"#fff"}}>
-              <div style={{fontSize:10,fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",opacity:.7,marginBottom:8}}>Kulturvarsling</div>
-              <h2 style={{fontSize:22,fontWeight:800,fontFamily:"'Playfair Display',serif",marginBottom:6}}>⭐ Oppgrader til Premium</h2>
-              <p style={{fontSize:13,opacity:.8,lineHeight:1.55}}>Få tilgang til eksklusive analyseverktøy – og støtt utviklingen av en mer åpen kulturpolitisk debatt.</p>
-            </div>
-            <div style={{padding:"24px 28px"}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
-                {[["monthly","99 kr/mnd","Månedlig"],["yearly","790 kr/år","Årlig – spar 20%"]].map(([id,pris,label])=>(
-                  <button key={id} onClick={()=>setPlan(id)} style={{padding:"14px",borderRadius:12,border:`2px solid ${plan===id?C.purple:C.border}`,background:plan===id?"#F5F3FF":C.bgCard,cursor:"pointer",textAlign:"center",fontFamily:"inherit"}}>
-                    <div style={{fontWeight:800,fontSize:18,color:plan===id?C.purple:C.text}}>{pris}</div>
-                    <div style={{fontSize:12,color:C.muted,marginTop:2}}>{label}</div>
-                  </button>
-                ))}
-              </div>
-              <div style={{marginBottom:20}}>
-                {["📊 Budsjettanalyse – KI tolker kulturbudsjetter","📈 Trendrapporter per fagfelt og geografi","🎤 Politikeraktivitet og engasjementsscore","🔔 Prioriterte varsler med 24t forsprang","📥 Eksport av høringssvar til PDF"].map((f,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,fontSize:13,color:C.text}}>
-                    <span style={{color:C.green,fontWeight:700}}>✓</span>{f}
-                  </div>
-                ))}
-              </div>
-              <Btn variant="premium" size="lg" style={{width:"100%"}} onClick={()=>setStep("betaling")}>Fortsett til betaling →</Btn>
-              <div style={{textAlign:"center",marginTop:10,fontSize:11,color:C.muted}}>Ingen binding. Avslutt når som helst.</div>
-            </div>
-          </>
-        )}
-
-        {step==="betaling"&&(
-          <>
-            <div style={{padding:"20px 24px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <h3 style={{fontSize:16,fontWeight:700}}>Kortbetaling</h3>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <Badge color={C.purple}>{plan==="monthly"?"99 kr/mnd":"790 kr/år"}</Badge>
-                <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,color:C.muted}}>✕</button>
-              </div>
-            </div>
-            <div style={{padding:"20px 24px"}}>
-              <Input label="Navn på kortet" placeholder="Frode Gjerløw" value={navn} onChange={e=>setNavn(e.target.value)}/>
-              <Input label="Kortnummer" placeholder="4242 4242 4242 4242" value={kortNr} onChange={e=>setKortNr(e.target.value)}/>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <Input label="Utløpsdato" placeholder="MM/ÅÅ" value={utløp} onChange={e=>setUtløp(e.target.value)}/>
-                <Input label="CVC" placeholder="123" value={cvc} onChange={e=>setCvc(e.target.value)}/>
-              </div>
-              <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.green,display:"flex",alignItems:"center",gap:6}}>
-                🔒 Sikker betaling – vi lagrer ikke kortinformasjon
-              </div>
-              <Btn variant="premium" size="lg" style={{width:"100%"}} onClick={betal} disabled={loading}>
-                {loading?"Behandler betaling...":"Betal og aktiver Premium →"}
-              </Btn>
-              <button onClick={()=>setStep("valg")} style={{display:"block",width:"100%",marginTop:10,background:"none",border:"none",fontSize:12,color:C.muted,cursor:"pointer"}}>← Tilbake</button>
-            </div>
-          </>
-        )}
-
-        {step==="suksess"&&(
-          <div style={{padding:"48px 32px",textAlign:"center"}}>
-            <div style={{fontSize:52,marginBottom:16}}>🎉</div>
-            <h2 style={{fontSize:22,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark,marginBottom:8}}>Premium aktivert!</h2>
-            <p style={{fontSize:14,color:C.muted,marginBottom:24,lineHeight:1.6}}>Du har nå tilgang til alle premium-verktøy. Gå til Premium-fanen for å starte med budsjettanalyse og trendrapporter.</p>
-            <Btn variant="primary" size="lg" onClick={onSuccess}>Gå til Premium-verktøy →</Btn>
+        <div style={{background:"linear-gradient(135deg,#4C1D95,#6D28D9)",padding:"28px 28px 24px",color:"#fff"}}>
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",opacity:.7,marginBottom:8}}>Kulturvarsling</div>
+          <h2 style={{fontSize:22,fontWeight:800,fontFamily:"'Playfair Display',serif",marginBottom:6}}>⭐ Oppgrader til Premium</h2>
+          <p style={{fontSize:13,opacity:.8,lineHeight:1.55}}>Forstå hva politikken betyr for DEG – og støtt utviklingen av en mer åpen kulturpolitisk debatt.</p>
+        </div>
+        <div style={{padding:"24px 28px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+            {[["monthly","99 kr/mnd","Månedlig"],["yearly","790 kr/år","Årlig – spar 20%"]].map(([id,pris,label])=>(
+              <button key={id} onClick={()=>setPlan(id)} style={{padding:"14px",borderRadius:12,border:`2px solid ${plan===id?C.purple:C.border}`,background:plan===id?"#F5F3FF":C.bgCard,cursor:"pointer",textAlign:"center",fontFamily:"inherit"}}>
+                <div style={{fontWeight:800,fontSize:18,color:plan===id?C.purple:C.text}}>{pris}</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{label}</div>
+              </button>
+            ))}
           </div>
-        )}
+          <div style={{marginBottom:20}}>
+            {["📍 Geografisk filter – saker fra DIN kommune og fylke","💬 Klartekst: «hva betyr dette for deg?» – ubegrenset","🔔 Følg ubegrenset antall saker","📅 Fristkalender rett inn i din kalender (ICS)","✍️ AI-utkast til høringssvar","⚡ E-postvarsel straks ved kritisk sak"].map((f,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,fontSize:13,color:C.text}}>
+                <span style={{color:C.green,fontWeight:700}}>✓</span>{f}
+              </div>
+            ))}
+          </div>
+          {feil&&(
+            <div style={{background:"#FEE2E2",border:"1px solid #FECACA",borderRadius:8,padding:"9px 13px",marginBottom:12,fontSize:13,color:"#991B1B",display:"flex",gap:7,alignItems:"center"}}>
+              ⚠️ {feil}
+              {!user?.id&&onLogin&&(
+                <button onClick={onLogin} style={{background:"none",border:"none",color:"#991B1B",fontWeight:700,fontSize:13,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit",marginLeft:"auto",whiteSpace:"nowrap"}}>Logg inn →</button>
+              )}
+            </div>
+          )}
+          <Btn variant="premium" size="lg" style={{width:"100%"}} onClick={tilBetaling} disabled={loading}>
+            {loading?"Åpner sikker betaling...":"Til sikker betaling hos Stripe →"}
+          </Btn>
+          <div style={{textAlign:"center",marginTop:10,fontSize:11,color:C.muted}}>🔒 Betalingen håndteres av Stripe – vi ser aldri kortet ditt. Ingen binding, avslutt når som helst.</div>
+        </div>
       </div>
     </div>
   );
@@ -3572,6 +3577,38 @@ export default function App() {
       if(event==="SIGNED_OUT" || !session) setUser(null);
     });
     return () => subscription.unsubscribe();
+  },[]);
+
+  useEffect(()=>{
+    // Retur fra Stripe Checkout (E5). Webhooken setter plan="premium" i
+    // databasen – men den kan bruke noen sekunder, så vi poller profilen
+    // til endringen er synlig i stedet for å stole blindt på redirecten.
+    const params = new URLSearchParams(window.location.search);
+    const premium = params.get("premium");
+    if(!premium) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    if(premium==="avbrutt"){ showToast("Betalingen ble avbrutt","info"); return; }
+    if(premium!=="suksess") return;
+    showToast("Betaling mottatt – aktiverer Premium ...","info");
+    let forsøk=0;
+    const intervall=setInterval(async()=>{
+      forsøk++;
+      const {data:{session}}=await sb.auth.getSession();
+      if(session?.user){
+        const profil=await hentProfil(session.user.id);
+        if(profil?.plan==="premium"){
+          clearInterval(intervall);
+          setUser(u=>u?{...u,plan:"premium"}:u);
+          showToast("⭐ Premium aktivert!","ok");
+          return;
+        }
+      }
+      if(forsøk>=10){
+        clearInterval(intervall);
+        showToast("Betalingen er registrert – logg ut og inn hvis Premium ikke vises","info");
+      }
+    },2000);
+    return ()=>clearInterval(intervall);
   },[]);
 
   if(!sessionSjekket) return (
