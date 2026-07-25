@@ -39,6 +39,13 @@ test("store bokstaver spiller ingen rolle", () => {
   assert.equal(erKulturRelevant("KULTURSKOLENS FRAMTID"), true);
 });
 
+test("spillemidler fanges opp (nøkkelordet var feilstavet «spillmidler»)", () => {
+  assert.equal(
+    erKulturRelevant("Fordeling av spillemidler til idretts- og kulturformål"),
+    true,
+  );
+});
+
 test("relevans kan komme fra sammendraget, ikke bare tittelen", () => {
   assert.equal(
     erKulturRelevant(

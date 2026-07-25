@@ -7,7 +7,7 @@ export const KULTUR_NØKKELORD = [
   "bibliotek", "dans", "teater", "kulturliv", "kulturbudsjettet",
   "kulturpolitikk", "kulturmidler", "kulturskole", "kulturbygg",
   "kulturarv", "kulturinstitusjon", "kulturfondet", "kunstner",
-  "stipend", "kulturrådet", "kulturdirektorat", "spillmidler",
+  "stipend", "kulturrådet", "kulturdirektorat", "spillemidler",
   "litteratur", "opera", "ballett", "festival", "konsert", "kino",
   "forfatter", "komponist", "billedkunst", "skulptur", "arkiv",
   "riksteatret", "nationaltheatret", "operaen", "filminstituttet",

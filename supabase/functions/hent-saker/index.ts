@@ -8,6 +8,9 @@ import {
   statusFraFrist,
 } from "./logikk.ts";
 import { hentEInnsynKultursaker } from "./einnsyn.ts";
+import { hentBergenSaker } from "./bergen.ts";
+import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
+import { hentSametingetSaker } from "./sametinget.ts";
 
 // ─── Stortinget: kultursaker med høringsfrister ───────────────────────────────
 // KILDEKART-funn (verifisert juli 2026): det gamle endepunktet
@@ -146,6 +149,13 @@ async function hentRegjeringenRSS(): Promise<any[]> {
     {
       url: "https://www.regjeringen.no/no/dep/kud/rss/",
       instans: "Kulturdepartementet",
+    },
+    // Spillemiddel-sporet (VEIKART E3): fordelingen av Norsk Tipping-overskuddet
+    // vedtas som kgl.res. i statsråd. Ett item per statsrådsmøte; nøkkelordfilteret
+    // slipper gjennom møtene der beskrivelsen nevner kultur/spillemidler.
+    {
+      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=aktuelt/offisieltfrastatsr%C3%A5d",
+      instans: "Regjeringen – statsråd",
     },
   ];
 
@@ -289,11 +299,22 @@ Deno.serve(async (_req: Request) => {
     );
 
     // Hent fra alle kilder parallelt
-    const [stortingssaker, rssItems, ventede, einnsynSaker] = await Promise.all([
+    const [
+      stortingssaker,
+      rssItems,
+      ventede,
+      einnsynSaker,
+      bergenSaker,
+      kulturdirTildelinger,
+      sametingetSaker,
+    ] = await Promise.all([
       hentStortingetSaker(eksKilder),
       hentRegjeringenRSS(),
       hentVentedeSaker(),
       hentEInnsynKultursaker(),
+      hentBergenSaker(),
+      hentKulturdirektoratetTildelinger(),
+      hentSametingetSaker(),
     ]);
 
     const merk = (liste: any[], adapter: string) =>
@@ -303,6 +324,9 @@ Deno.serve(async (_req: Request) => {
       ...merk(rssItems, "regjeringen-rss"),
       ...merk(ventede, "stortinget-ventede"),
       ...merk(einnsynSaker, "einnsyn"),
+      ...merk(bergenSaker, "bergen"),
+      ...merk(kulturdirTildelinger, "kulturdirektoratet"),
+      ...merk(sametingetSaker, "sametinget"),
     ];
 
     // Filtrer bort duplikater og ikke-relevante.
@@ -336,7 +360,7 @@ Deno.serve(async (_req: Request) => {
 
     for (const item of nye) {
       let kategori = "scenekunst";
-      let niva = "nasjonalt";
+      let niva = item.niva ?? "nasjonalt";
       let status = statusFraFrist(item.frist);
       let sammendrag = item.sammendrag_raa?.slice(0, 400) || item.tittel;
 
@@ -379,7 +403,8 @@ Deno.serve(async (_req: Request) => {
           continue;
         }
         kategori = analyse.kategori ?? kategori;
-        niva = analyse.niva ?? niva;
+        // Adaptere som VET nivået sitt (f.eks. Bergen = kommune) overstyres ikke
+        if (!item.niva) niva = analyse.niva ?? niva;
         sammendrag = analyse.sammendrag || sammendrag;
         // Bruk Claude-status kun hvis vi ikke har frist (frist er mer presis)
         if (!item.frist) status = analyse.status ?? status;
@@ -393,9 +418,12 @@ Deno.serve(async (_req: Request) => {
         frist: item.frist ?? null,
         kategori,
         niva,
-        sted: niva === "nasjonalt" ? "Nasjonalt" : "Norge",
+        sted: item.sted ?? (niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
         status,
         publisert: true,
+        sakstype: item.sakstype ?? null,
+        kommunenr: item.kommunenr ?? null,
+        fylkesnr: item.fylkesnr ?? null,
       });
 
       if (error) {
@@ -417,6 +445,9 @@ Deno.serve(async (_req: Request) => {
       ["regjeringen-rss", rssItems.length],
       ["stortinget-ventede", ventede.length],
       ["einnsyn", einnsynSaker.length],
+      ["bergen", bergenSaker.length],
+      ["kulturdirektoratet", kulturdirTildelinger.length],
+      ["sametinget", sametingetSaker.length],
     ];
     for (const [adapter, funnet] of kjøringer) {
       const kildeId = kilderMap.get(adapter);
