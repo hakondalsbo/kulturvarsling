@@ -69,6 +69,13 @@ async function hentFulgte(brukerId) {
   return (data ?? []).map(r => r.sak_id);
 }
 
+async function lastKilder() {
+  const { data } = await sb.from("kilder")
+    .select("navn,niva,organ,adapter,aktiv,sist_hentet,sist_status")
+    .eq("aktiv", true);
+  return data ?? [];
+}
+
 // ─── Gratis demokrati vs. premium fagverktøy ──────────────────────────────
 // GRUNNPRINSIPP (docs/VEIKART.md): Demokratisk informasjon er ALLTID gratis.
 // Å vite hva som skjer, følge saker, delta, mobilisere, filtrere til sitt eget
@@ -336,6 +343,88 @@ function StatusDot({status}) {
 function NivåBadge({nivå,sted}) {
   const cfg={nasjonalt:[C.blue,"#DBEAFE"],fylke:[C.purple,"#EDE9FE"],kommune:[C.green,"#D1FAE5"]}[nivå]||[C.muted,C.bgAlt];
   return <Badge color={cfg[0]} bg={cfg[1]}>{nivå==="nasjonalt"?"🏛":nivå==="fylke"?"🗺":"📍"} {nivå==="nasjonalt"?"Nasjonalt":sted}</Badge>;
+}
+
+// «Sist sjekket»-tekst av et ISO-tidspunkt, i menneskelig form.
+function sidenTekst(iso){
+  if(!iso) return "ikke ennå";
+  const min=Math.floor((Date.now()-new Date(iso).getTime())/60000);
+  if(min<60) return `${Math.max(1,min)} min siden`;
+  const t=Math.floor(min/60); if(t<24) return `${t} ${t===1?"time":"timer"} siden`;
+  const d=Math.floor(t/24); return `${d} ${d===1?"dag":"dager"} siden`;
+}
+
+// Kompakt tillitssignal (forside): «Overvåker N kilder · sist sjekket X siden».
+function KildeTillitsstrip({onÅpne}) {
+  const [kilder,setKilder]=useState(null);
+  useEffect(()=>{ lastKilder().then(setKilder); },[]);
+  if(!kilder||kilder.length===0) return null;
+  const friske=kilder.filter(k=>k.sist_status&&k.sist_status!=="feil").length;
+  const sist=kilder.map(k=>k.sist_hentet).filter(Boolean).sort().slice(-1)[0];
+  return (
+    <button onClick={onÅpne} style={{width:"100%",textAlign:"left",display:"flex",alignItems:"center",gap:10,background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:12,padding:"11px 15px",marginBottom:20,cursor:"pointer",fontFamily:"inherit"}}>
+      <span style={{fontSize:16}}>📡</span>
+      <span style={{flex:1,fontSize:13,color:C.text}}>
+        Overvåker <strong>Stortinget, regjeringen, kommuner og fylker</strong> automatisk
+        <span style={{color:C.muted}}> · {friske}/{kilder.length} kilder friske · sist sjekket {sidenTekst(sist)}</span>
+      </span>
+      <span style={{fontSize:12,color:C.red,fontWeight:700,flexShrink:0}}>Se status →</span>
+    </button>
+  );
+}
+
+// Full kildehelse-side: åpen oversikt over hva som overvåkes, og at det virker.
+function KildeHelseSide({onBack}) {
+  const [kilder,setKilder]=useState([]);
+  const [lastet,setLastet]=useState(false);
+  useEffect(()=>{ lastKilder().then(k=>{setKilder(k);setLastet(true);}); },[]);
+  const friske=kilder.filter(k=>k.sist_status&&k.sist_status!=="feil").length;
+  const sist=kilder.map(k=>k.sist_hentet).filter(Boolean).sort().slice(-1)[0];
+  const nivåNavn={nasjonalt:"🏛 Nasjonalt",fylke:"🗺 Fylkeskommunalt",kommune:"🏘 Kommunalt",tverrgaende:"🔗 Tverrgående"};
+  const grupper=["nasjonalt","fylke","kommune","tverrgaende"].map(n=>[n,kilder.filter(k=>k.niva===n)]).filter(([,ks])=>ks.length>0);
+  return (
+    <div>
+      <button onClick={onBack} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginBottom:14,padding:0}}>← Tilbake</button>
+      <h1 style={{fontSize:24,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark,margin:"0 0 6px"}}>Slik holder vi øye</h1>
+      <p style={{fontSize:14,color:C.muted,lineHeight:1.6,marginBottom:20,maxWidth:560}}>Kulturvarsling henter saker automatisk fra offentlige kilder hver natt. Her ser du nøyaktig hva vi overvåker – og at det faktisk virker. Ingenting er skjult.</p>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:24}}>
+        {[["Kilder overvåket",kilder.length,C.komBlue],["Friske nå",`${friske}/${kilder.length}`,C.green],["Sist sjekket",lastet?sidenTekst(sist):"…",C.amber]].map(([lbl,v,col],i)=>(
+          <div key={i} style={{flex:"1 1 140px",background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",boxShadow:"0 1px 2px rgba(26,18,16,.03),0 6px 20px rgba(26,18,16,.05)"}}>
+            <div style={{fontSize:26,fontWeight:800,color:col,fontFamily:"'Playfair Display',serif"}}>{v}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{lbl}</div>
+          </div>
+        ))}
+      </div>
+      {!lastet
+        ? <div style={{color:C.muted,fontSize:13}}>Henter status…</div>
+        : grupper.map(([nivå,ks])=>(
+          <div key={nivå} style={{marginBottom:22}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>{nivåNavn[nivå]||nivå}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {ks.map((k,i)=>{
+                const ok=k.sist_status&&k.sist_status!=="feil";
+                const tom=k.sist_status==="tom";
+                return (
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:12,background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 15px"}}>
+                    <span style={{width:9,height:9,borderRadius:"50%",background:ok?(tom?C.amber:C.green):C.red,flexShrink:0}}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:C.text}}>{k.navn}</div>
+                      <div style={{fontSize:11,color:C.muted}}>{k.organ}</div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontSize:11,fontWeight:700,color:ok?(tom?C.amber:C.green):C.red}}>{ok?(tom?"Ingen nye sist":"Frisk"):"Feil"}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{sidenTekst(k.sist_hentet)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      }
+      <p style={{fontSize:12,color:C.muted,lineHeight:1.6,marginTop:8}}>«Ingen nye sist» betyr at kilden ble sjekket, men ikke hadde noe nytt – ikke at noe er galt. En kilde som svikter tre netter på rad flagges automatisk.</p>
+    </div>
+  );
 }
 
 // ─── LANDING PAGE ─────────────────────────────────────────────────────────
@@ -1097,6 +1186,7 @@ function BrukerApp({user,setUser,setScreen}) {
         {view==="forside"   &&<BrukerForside setView={setView} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={aktiveVarsler} kampanjerData={kampanjer} dataLastet={dataLastet} user={user} minFylke={user?.fylkesnr} onVelgFylke={(fnr)=>{setUser(u=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}/>}
         {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer} minFylke={user?.fylkesnr}/>}
         {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
+        {view==="kilder"    &&<KildeHelseSide onBack={()=>setView("forside")}/>}
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
         {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
         {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
@@ -1421,6 +1511,9 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
           <button onClick={()=>setFylke("")} style={{marginLeft:"auto",background:"none",border:"none",color:C.komBlue,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Bytt fylke</button>
         </div>
       )}
+
+      {/* Tillitssignal: åpent innsyn i hva vi overvåker og at det virker */}
+      <KildeTillitsstrip onÅpne={()=>setView("kilder")}/>
 
       {/* Stat-strip – alltid meningsfull, aldri en vegg av nuller */}
       <div style={{display:"grid",gridTemplateColumns:`repeat(${statBokser.length},1fr)`,gap:10,marginBottom:aktivBoks?0:20}}>
