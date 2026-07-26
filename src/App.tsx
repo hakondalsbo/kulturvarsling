@@ -1083,7 +1083,7 @@ function BrukerApp({user,setUser,setScreen}) {
             <div style={{height:3,width:40,background:C.red,borderRadius:99}}/>
           </div>
         )}
-        {view==="forside"   &&<BrukerForside setView={setView} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={aktiveVarsler} kampanjerData={kampanjer} dataLastet={dataLastet}/>}
+        {view==="forside"   &&<BrukerForside setView={setView} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} varslerData={aktiveVarsler} kampanjerData={kampanjer} dataLastet={dataLastet} user={user} minFylke={user?.fylkesnr} onVelgFylke={(fnr)=>{setUser(u=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}/>}
         {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer} minFylke={user?.fylkesnr}/>}
         {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
         {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
@@ -1318,145 +1318,101 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
 }
 
 // ─── BRUKER FORSIDE ───────────────────────────────────────────────────────
-function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true}) {
+function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true,minFylke=null,onVelgFylke=()=>{},user=null}) {
   const [valgt,setValgt]=useState(null);
   const [søk,setSøk]=useState("");
-  const [aktivBoks,setAktivBoks]=useState(null); // null | "kritisk" | "saker" | "kampanjer" | "signaturer"
-  const filtered = useMemo(()=>varsler.filter(v=>!søk||v.tittel.toLowerCase().includes(søk.toLowerCase())||v.sammendrag.toLowerCase().includes(søk.toLowerCase())),[søk,varsler]);
+  const [aktivBoks,setAktivBoks]=useState(null);
+  const [fylke,setFylke]=useState(minFylke||"");
+  useEffect(()=>{ if(minFylke) setFylke(minFylke); },[minFylke]);
 
-  const kritiskeVarsler = varsler.filter(v=>v.status==="kritisk");
+  // Geo-personalisering: når et fylke er valgt, er «relevant» = nasjonale saker
+  // + saker i ditt fylke. Alt gratis — dette er kjernen i «dette angår meg».
+  const relevante = useMemo(()=>{
+    const base = fylke
+      ? varsler.filter(v=>v.nivå==="nasjonalt"||String(v.fylkesnr)===String(fylke))
+      : varsler;
+    return base.filter(v=>!søk||v.tittel.toLowerCase().includes(søk.toLowerCase())||v.sammendrag.toLowerCase().includes(søk.toLowerCase()));
+  },[søk,varsler,fylke]);
 
-  const statBokser = [
-    {
-      id:"kritisk",
-      n:kritiskeVarsler.length,
-      label:"Kritiske frister",
-      bg:"#FEE2E2",
-      color:"#991B1B",
-      border:"#FECACA",
-      ikon:"⚠️",
-      innhold: () => (
-        <div>
-          <div style={{fontSize:13,color:"#991B1B",fontWeight:700,marginBottom:12}}>⚠️ Saker med under 10 dager til frist</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {kritiskeVarsler.map(v=>{
-              const ki=KATEGORIER.find(k=>k.id===v.kategori);
-              return (
-                <div key={v.id} onClick={()=>{setValgt(v);setAktivBoks(null);}} style={{background:"#fff",border:"1px solid #FECACA",borderRadius:10,padding:"10px 14px",cursor:"pointer",transition:"box-shadow .12s"}}
-                  onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 10px rgba(0,0,0,.08)"}
-                  onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3}}>{v.tittel}</div>
-                      <div style={{fontSize:11,color:C.muted}}>{v.instans}</div>
-                    </div>
-                    <span style={{background:"#FEE2E2",color:"#991B1B",padding:"2px 8px",borderRadius:99,fontSize:11,fontWeight:800,flexShrink:0,marginLeft:8}}>{v.dager}d igjen</span>
-                  </div>
-                  {ki&&<div style={{marginTop:5}}><Badge color={C.muted} style={{fontSize:10}}>{ki.ikon} {ki.label}</Badge></div>}
-                </div>
-              );
-            })}
-            {kritiskeVarsler.length===0&&<div style={{fontSize:13,color:C.muted,textAlign:"center",padding:"12px 0"}}>Ingen kritiske frister akkurat nå 🎉</div>}
-          </div>
-        </div>
-      )
-    },
-    {
-      id:"saker",
-      n:varsler.length,
-      label:"Aktive saker",
-      bg:"#FEF3C7",
-      color:C.amber,
-      border:"#FDE68A",
-      ikon:"📋",
-      innhold: () => (
-        <div>
-          <div style={{fontSize:13,color:C.amber,fontWeight:700,marginBottom:12}}>📋 Alle aktive saker</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {varsler.map(v=>{
-              const ki=KATEGORIER.find(k=>k.id===v.kategori);
-              const bc={kritisk:"#DC2626",viktig:"#D97706",normal:"#16A34A"}[v.status];
-              return (
-                <div key={v.id} onClick={()=>{setValgt(v);setAktivBoks(null);}} style={{background:"#fff",border:"1px solid #FDE68A",borderLeft:`3px solid ${bc}`,borderRadius:10,padding:"10px 14px",cursor:"pointer",transition:"box-shadow .12s"}}
-                  onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 10px rgba(0,0,0,.08)"}
-                  onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3}}>{v.tittel}</div>
-                      <div style={{fontSize:11,color:C.muted}}>{v.instans}</div>
-                    </div>
-                    <span style={{fontSize:11,fontWeight:700,color:bc,flexShrink:0,marginLeft:8}}>{v.dager}d</span>
-                  </div>
-                  {ki&&<div style={{marginTop:5}}><Badge color={C.muted} style={{fontSize:10}}>{ki.ikon} {ki.label}</Badge></div>}
-                </div>
-              );
-            })}
-          </div>
-          <button onClick={()=>{setView("varsler");setAktivBoks(null);}} style={{width:"100%",marginTop:12,padding:"9px",background:"none",border:`1px solid ${C.border}`,borderRadius:8,fontSize:12,color:C.amber,fontWeight:700,cursor:"pointer"}}>Se alle varsler →</button>
-        </div>
-      )
-    },
-    {
-      id:"kampanjer",
-      n:kampanjer.length,
-      label:"Aktive kampanjer",
-      bg:"#EDE9FE",
-      color:C.purple,
-      border:"#DDD6FE",
-      ikon:"✊",
-      innhold: () => (
-        <div>
-          <div style={{fontSize:13,color:C.purple,fontWeight:700,marginBottom:12}}>✊ Pågående kampanjer</div>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {kampanjer.map(k=>(
-              <div key={k.id} style={{background:"#fff",border:"1px solid #DDD6FE",borderRadius:10,padding:"12px 14px"}}>
-                <div style={{fontWeight:700,fontSize:13,marginBottom:6}}>{k.tittel}</div>
-                <Progress value={k.sig} max={k.mal} color={C.purple}/>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted,marginTop:4}}>
-                  <span><strong style={{color:C.text}}>{k.sig.toLocaleString("no")}</strong> / {k.mal.toLocaleString("no")} signaturer</span>
-                  <span>{k.dager}d igjen</span>
-                </div>
+  const velgFylke=(fnr)=>{ setFylke(fnr); onVelgFylke(fnr); };
+
+  const nå=Date.now();
+  const kritiskeVarsler=varsler.filter(v=>v.status==="kritisk");
+  const nyeDenneUken=varsler.filter(v=>v.opprettet&&(nå-new Date(v.opprettet).getTime())<7*86400000);
+  const kommendeFrister=varsler.filter(v=>v.frist&&new Date(v.frist).getTime()>=nå).sort((a,b)=>new Date(a.frist)-new Date(b.frist));
+  const dagerTilNeste=kommendeFrister[0]?Math.max(0,Math.ceil((new Date(kommendeFrister[0].frist).getTime()-nå)/86400000)):null;
+  const dineSaker=fylke?varsler.filter(v=>String(v.fylkesnr)===String(fylke)):[];
+
+  const listeInnhold=(liste,tomTekst,farge,border)=>(
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {liste.map(v=>{
+        const ki=KATEGORIER.find(k=>k.id===v.kategori);
+        const bc={kritisk:"#DC2626",viktig:"#D97706",normal:"#16A34A"}[v.status];
+        return (
+          <div key={v.id} onClick={()=>{setValgt(v);setAktivBoks(null);}} style={{background:"#fff",border:`1px solid ${border}`,borderLeft:`3px solid ${bc}`,borderRadius:10,padding:"10px 14px",cursor:"pointer",transition:"box-shadow .12s"}}
+            onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 10px rgba(0,0,0,.08)"}
+            onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:13,color:C.text,marginBottom:3}}>{v.tittel}</div>
+                <div style={{fontSize:11,color:C.muted}}>{v.instans}{v.frist?` · frist ${new Date(v.frist).toLocaleDateString("no-NO",{day:"numeric",month:"short"})}`:""}</div>
               </div>
-            ))}
-          </div>
-          <button onClick={()=>{setView("kampanjer");setAktivBoks(null);}} style={{width:"100%",marginTop:12,padding:"9px",background:"none",border:`1px solid ${C.border}`,borderRadius:8,fontSize:12,color:C.purple,fontWeight:700,cursor:"pointer"}}>Se alle kampanjer →</button>
-        </div>
-      )
-    },
-    {
-      id:"signaturer",
-      n:kampanjer.reduce((s,k)=>s+(k.sig||0),0).toLocaleString("no"),
-      label:"Signaturer totalt",
-      bg:"#F0FDF4",
-      color:C.green,
-      border:"#BBF7D0",
-      ikon:"✍️",
-      innhold: () => (
-        <div>
-          <div style={{fontSize:13,color:C.green,fontWeight:700,marginBottom:12}}>✍️ Signaturer per kampanje</div>
-          {kampanjer.map(k=>(
-            <div key={k.id} style={{marginBottom:14}}>
-              <div style={{fontSize:12,fontWeight:600,marginBottom:5,color:C.text}}>{k.tittel}</div>
-              <Progress value={k.sig} max={k.mal} color={C.green}/>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted,marginTop:3}}>
-                <span>{k.sig.toLocaleString("no")} signaturer</span>
-                <span>{Math.round(k.sig/k.mal*100)}% av mål</span>
-              </div>
+              {ki&&<span style={{fontSize:11,flexShrink:0,marginLeft:8}} title={ki.label}>{ki.ikon}</span>}
             </div>
-          ))}
-          <div style={{background:"#D1FAE5",borderRadius:10,padding:"12px",textAlign:"center",marginTop:4}}>
-            <div style={{fontSize:20,fontWeight:800,color:C.green,fontFamily:"'Playfair Display',serif"}}>{kampanjer.reduce((s,k)=>s+(k.sig||0),0).toLocaleString("no")}</div>
-            <div style={{fontSize:11,color:C.muted,marginTop:2}}>totalt på tvers av alle kampanjer</div>
           </div>
-        </div>
-      )
-    },
+        );
+      })}
+      {liste.length===0&&<div style={{fontSize:13,color:C.muted,textAlign:"center",padding:"12px 0"}}>{tomTekst}</div>}
+    </div>
+  );
+
+  // Stat-strip: alltid meningsfull, aldri en vegg av nuller. Boks 1 viser
+  // kritiske frister når de finnes, ellers nedtelling til neste frist.
+  const statBokser = [
+    kritiskeVarsler.length>0
+      ? { id:"kritisk", n:kritiskeVarsler.length, label:"Haster nå", bg:"#FEE2E2", color:"#991B1B", border:"#FECACA", ikon:"⚠️",
+          innhold:()=>listeInnhold(kritiskeVarsler,"Ingen kritiske frister akkurat nå 🎉","#991B1B","#FECACA") }
+      : { id:"nestefrist", n:dagerTilNeste!=null?`${dagerTilNeste}d`:"–", label:dagerTilNeste!=null?"Til neste frist":"Ingen frist nå", bg:"#FEF3C7", color:C.amber, border:"#FDE68A", ikon:"⏰",
+          innhold:()=>listeInnhold(kommendeFrister.slice(0,8),"Ingen kommende frister registrert.",C.amber,"#FDE68A") },
+    { id:"saker", n:fylke?relevante.length:varsler.length, label:fylke?`Angår ${fylkesnavn(fylke)||"deg"}`:"Saker vi følger", bg:"#EEF2FF", color:C.komBlue, border:"#C7D2FE", ikon:"📋",
+      innhold:()=>(<div>{listeInnhold((fylke?relevante:varsler).slice(0,12),"Ingen saker ennå.",C.komBlue,"#C7D2FE")}<button onClick={()=>{setView("varsler");setAktivBoks(null);}} style={{width:"100%",marginTop:12,padding:"9px",background:"none",border:`1px solid ${C.border}`,borderRadius:8,fontSize:12,color:C.komBlue,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Se alle varsler →</button></div>) },
+    { id:"nye", n:nyeDenneUken.length, label:"Nye denne uken", bg:"#F0FDF4", color:C.green, border:"#BBF7D0", ikon:"✨",
+      innhold:()=>listeInnhold(nyeDenneUken.slice(0,12),"Ingen nye saker denne uken.",C.green,"#BBF7D0") },
+    ...(kampanjer.length>0?[{
+      id:"kampanjer", n:kampanjer.length, label:"Kampanjer", bg:"#EDE9FE", color:C.purple, border:"#DDD6FE", ikon:"✊",
+      innhold:()=>(<div><div style={{display:"flex",flexDirection:"column",gap:10}}>{kampanjer.map(k=>(<div key={k.id} style={{background:"#fff",border:"1px solid #DDD6FE",borderRadius:10,padding:"12px 14px"}}><div style={{fontWeight:700,fontSize:13,marginBottom:6}}>{k.tittel}</div><Progress value={k.sig} max={k.mal} color={C.purple}/><div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted,marginTop:4}}><span><strong style={{color:C.text}}>{k.sig.toLocaleString("no")}</strong> / {k.mal.toLocaleString("no")} signaturer</span><span>{k.dager}d igjen</span></div></div>))}</div><button onClick={()=>{setView("kampanjer");setAktivBoks(null);}} style={{width:"100%",marginTop:12,padding:"9px",background:"none",border:`1px solid ${C.border}`,borderRadius:8,fontSize:12,color:C.purple,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Se alle kampanjer →</button></div>)
+    }]:[]),
   ];
 
   return (
     <div>
-      {/* Stat-bokser – kompakt og klikkbare */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:aktivBoks?0:20}}>
+      {/* «Dette angår meg»-øyeblikket: velg fylke → feeden personaliseres straks */}
+      {!fylke ? (
+        <div style={{background:`linear-gradient(135deg, ${C.red}, ${C.redDark})`,borderRadius:16,padding:"20px 22px",marginBottom:20,color:"#fff"}}>
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",opacity:.7,marginBottom:6}}>Din region</div>
+          <h2 style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",margin:"0 0 6px",lineHeight:1.15}}>Hva skjer i kulturlivet der du bor?</h2>
+          <p style={{fontSize:13,opacity:.85,margin:"0 0 14px",lineHeight:1.5}}>Velg fylket ditt, så løfter vi fram sakene som angår deg – nasjonalt og lokalt. Alltid gratis.</p>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+            {FYLKER.map(f=>(
+              <button key={f.nr} onClick={()=>velgFylke(f.nr)}
+                style={{padding:"6px 13px",borderRadius:99,border:"1.5px solid rgba(255,255,255,.35)",background:"rgba(255,255,255,.1)",color:"#fff",fontSize:12.5,cursor:"pointer",fontFamily:"inherit",fontWeight:600,transition:"background .12s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.25)"}
+                onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.1)"}>
+                {f.navn}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,fontSize:13,color:C.text,background:C.komBg,border:`1px solid ${C.komBorder}`,borderRadius:10,padding:"9px 14px"}}>
+          <span style={{fontSize:15}}>📍</span>
+          <span>Viser saker for <strong>{fylkesnavn(fylke)}</strong> og nasjonalt</span>
+          <button onClick={()=>setFylke("")} style={{marginLeft:"auto",background:"none",border:"none",color:C.komBlue,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Bytt fylke</button>
+        </div>
+      )}
+
+      {/* Stat-strip – alltid meningsfull, aldri en vegg av nuller */}
+      <div style={{display:"grid",gridTemplateColumns:`repeat(${statBokser.length},1fr)`,gap:10,marginBottom:aktivBoks?0:20}}>
         {statBokser.map(s=>(
           <div key={s.id}
             onClick={()=>setAktivBoks(aktivBoks===s.id?null:s.id)}
@@ -1518,41 +1474,52 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
         </div>
       )}
 
-      {/* Nyeste varsler */}
+      {/* Feed – personalisert når fylke er valgt */}
       <div style={{marginBottom:32}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Nyeste varsler</h2>
+          <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>{fylke?`Dette angår deg i ${fylkesnavn(fylke)}`:"Nyeste varsler"}</h2>
           <button onClick={()=>setView("varsler")} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Se alle {varsler.length} →</button>
         </div>
+        {fylke&&dineSaker.length>0&&(
+          <div style={{fontSize:12,color:C.muted,marginBottom:12}}>{dineSaker.length} {dineSaker.length===1?"sak":"saker"} spesifikt i {fylkesnavn(fylke)}, pluss nasjonale saker som gjelder alle.</div>
+        )}
         {!dataLastet
           ? <div className="grid-3" style={{gap:14}}>{[0,1,2,3,4,5].map(i=><VarselSkeleton key={i}/>)}</div>
-          : filtered.length===0
-            ? <div style={{fontSize:13,color:C.muted,padding:"20px 0"}}>Ingen saker matcher søket.</div>
+          : relevante.length===0
+            ? <div style={{background:C.bgCard,border:`1px dashed ${C.border}`,borderRadius:12,padding:"28px 20px",textAlign:"center"}}>
+                <div style={{fontSize:14,color:C.text,fontWeight:600,marginBottom:4}}>{søk?"Ingen saker matcher søket":`Ingen saker i ${fylkesnavn(fylke)||"ditt fylke"} akkurat nå`}</div>
+                <div style={{fontSize:13,color:C.muted}}>{søk?"Prøv et annet søkeord.":"Vi overvåker organene her og varsler deg straks noe dukker opp."}</div>
+              </div>
             : <div className="grid-3" style={{gap:14}}>
-                {filtered.slice(0,6).map(v=><VarselKort key={v.id} v={v} compact onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
+                {relevante.slice(0,6).map(v=><VarselKort key={v.id} v={v} compact onClick={setValgt} fulgte={fulgte} toggleFølg={toggleFølg}/>)}
               </div>
         }
-        {filtered.length>6&&(
+        {relevante.length>6&&(
           <div style={{textAlign:"center",marginTop:12}}>
             <button onClick={()=>setView("varsler")} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 18px",fontSize:12,color:C.red,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              Vis alle {filtered.length} varsler →
+              Vis alle {relevante.length} varsler →
             </button>
           </div>
         )}
       </div>
 
-      {/* Aktive kampanjer */}
-      {kampanjer.length>0&&(
-        <div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Aktive kampanjer</h2>
-            <button onClick={()=>setView("kampanjer")} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Se alle →</button>
-          </div>
-          <div className="grid-3" style={{gap:14}}>
-            {kampanjer.slice(0,3).map(k=><KampanjeKort key={k.id} k={k}/>)}
-          </div>
+      {/* Kampanjer – med varm invitasjon når det ikke finnes noen ennå */}
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>Kampanjer</h2>
+          {kampanjer.length>0&&<button onClick={()=>setView("kampanjer")} style={{background:"none",border:"none",color:C.red,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Se alle →</button>}
         </div>
-      )}
+        {kampanjer.length>0
+          ? <div className="grid-3" style={{gap:14}}>{kampanjer.slice(0,3).map(k=><KampanjeKort key={k.id} k={k}/>)}</div>
+          : <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"22px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>✊ Ingen kampanjer ennå – start den første</div>
+                <div style={{fontSize:13,color:C.muted,lineHeight:1.55}}>Ser du en sak som truer kulturlivet? Samle underskrifter og få feltet til å si ifra sammen.</div>
+              </div>
+              <Btn variant="primary" size="sm" onClick={()=>user?.id?setView("kampanjer"):onLogin()}>Start en kampanje</Btn>
+            </div>
+        }
+      </div>
 
       {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjer}/>}
     </div>
