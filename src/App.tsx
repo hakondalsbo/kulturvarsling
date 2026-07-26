@@ -197,13 +197,22 @@ Kulturfeltet bør kreve: (1) real-prisjusterte rammer, (2) gjeninnføring av ør
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap&font-display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
-  button{transition:all .15s;cursor:pointer}
-  button:hover{opacity:.85}
+  ::selection{background:rgba(140,28,19,.16)}
+  button{transition:transform .12s ease,box-shadow .18s ease,filter .18s ease,background .18s ease;cursor:pointer}
+  button:hover:not(:disabled){filter:brightness(1.04)}
+  button:active:not(:disabled){transform:translateY(1px)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button:focus-visible,a:focus-visible{outline:2.5px solid #8C1C13;outline-offset:2px;border-radius:7px}
   input:focus,textarea:focus,select:focus{border-color:#8C1C13!important;box-shadow:0 0 0 3px rgba(140,28,19,.1)!important;outline:none!important}
-  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar{width:6px;height:6px}
   ::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:#D9D0C7;border-radius:99px}
+  ::-webkit-scrollbar-thumb:hover{background:#C4B8AC}
   a{text-decoration:none}
+  h1,h2,h3{letter-spacing:-.015em}
+  .kv-lift{transition:transform .16s ease,box-shadow .16s ease}
+  .kv-lift:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(26,18,16,.10)}
+  @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
   @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
   @keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
   .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
@@ -290,12 +299,14 @@ function Badge({children,color=C.red,bg,style={},className=""}) {
 }
 function Btn({children,variant="primary",size="md",onClick,style={},disabled,className=""}) {
   const base = {border:"none",borderRadius:9,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,transition:"all .15s",...style};
+  const pad = size==="sm"?"7px 14px":size==="lg"?"14px 28px":"10px 20px";
+  const fs = size==="sm"?12:size==="lg"?16:14;
   const variants = {
-    primary:{background:C.red,color:"#fff",padding:size==="sm"?"7px 14px":size==="lg"?"14px 28px":"10px 20px",fontSize:size==="sm"?12:size==="lg"?16:14},
-    secondary:{background:C.bgCard,color:C.text,border:`1.5px solid ${C.border}`,padding:size==="sm"?"7px 14px":size==="lg"?"14px 28px":"10px 20px",fontSize:size==="sm"?12:size==="lg"?16:14},
+    primary:{background:C.red,color:"#fff",padding:pad,fontSize:fs,boxShadow:"0 1px 2px rgba(140,28,19,.18),0 3px 10px rgba(140,28,19,.16)"},
+    secondary:{background:C.bgCard,color:C.text,border:`1.5px solid ${C.border}`,padding:pad,fontSize:fs},
     ghost:{background:"none",color:C.red,border:`1.5px solid ${C.red}`,padding:size==="sm"?"7px 14px":"10px 20px",fontSize:size==="sm"?12:14},
-    kom:{background:C.komBlue,color:"#fff",padding:size==="sm"?"7px 14px":size==="lg"?"14px 28px":"10px 20px",fontSize:size==="sm"?12:size==="lg"?16:14},
-    premium:{background:"linear-gradient(135deg,#7C3AED,#4F46E5)",color:"#fff",padding:size==="sm"?"7px 14px":"10px 20px",fontSize:size==="sm"?12:14},
+    kom:{background:C.komBlue,color:"#fff",padding:pad,fontSize:fs,boxShadow:"0 1px 2px rgba(30,58,138,.18),0 3px 10px rgba(30,58,138,.16)"},
+    premium:{background:"linear-gradient(135deg,#7C3AED,#4F46E5)",color:"#fff",padding:size==="sm"?"7px 14px":"10px 20px",fontSize:size==="sm"?12:14,boxShadow:"0 1px 2px rgba(79,70,229,.2),0 3px 12px rgba(124,58,237,.22)"},
   };
   return <button className={className} style={{...base,...variants[variant],...style}} onClick={onClick} disabled={disabled}>{children}</button>;
 }
@@ -309,7 +320,7 @@ function Input({label,placeholder,value,onChange,type="text",rows}) {
   );
 }
 function Card({children,style={}}) {
-  return <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px",...style}}>{children}</div>;
+  return <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px",boxShadow:"0 1px 2px rgba(26,18,16,.03),0 6px 20px rgba(26,18,16,.05)",...style}}>{children}</div>;
 }
 function Progress({value,max,color=C.red}) {
   return (
