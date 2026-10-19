@@ -4,13 +4,25 @@ import {
   erKulturRelevant,
   erKulturSak,
   finnHøringsfrist,
-  parseRssItems,
   statusFraFrist,
 } from "./logikk.ts";
 import { hentEInnsynKultursaker } from "./einnsyn.ts";
 import { hentBergenSaker } from "./bergen.ts";
 import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
 import { hentSametingetSaker } from "./sametinget.ts";
+import { hentRegjeringenRSS } from "./regjeringen.ts";
+import {
+  feilFraUnntak,
+  feilUtfall,
+  klassifiserKjøring,
+  lesTekstRespons,
+  okUtfall,
+  stortingsesjon,
+  utledKjoertAv,
+  uventetFormat,
+  type AdapterUtfall,
+  type KjoertAv,
+} from "./kildehelse.ts";
 
 // ─── Stortinget: kultursaker med høringsfrister ───────────────────────────────
 // KILDEKART-funn (verifisert juli 2026): det gamle endepunktet
@@ -19,81 +31,108 @@ import { hentSametingetSaker } from "./sametinget.ts";
 // uansett), filtrer klientside med erKulturSak, og slå opp eksport/sak per NY
 // kultursak for å finne HOERFRIST (høringsfrist). Detaljoppslag gjøres kun for
 // saker vi ikke har fra før, så antall kall er lite etter første kjøring.
-async function hentStortingetSaker(eksKilder: Set<string>): Promise<any[]> {
-  const items: any[] = [];
-  const sesjoner = ["2025-2026"];
-
-  for (const sesjon of sesjoner) {
-    try {
-      const res = await fetch(
-        `https://data.stortinget.no/eksport/saker?sesjonid=${sesjon}&format=json`,
-        { headers: { Accept: "application/json" } },
-      );
-      if (!res.ok) {
-        console.error(`Stortinget saker svarte ${res.status}`);
-        continue;
-      }
-      const data = await res.json();
-      const alleSaker: any[] = data?.saker_liste ?? [];
-      const kultursaker = alleSaker.filter(erKulturSak);
-      console.log(
-        `Stortinget (${sesjon}): ${alleSaker.length} saker totalt, ${kultursaker.length} kulturrelevante`,
-      );
-
-      for (const sak of kultursaker) {
-        const tittel = sak.tittel ?? sak.korttittel ?? "";
-        if (!tittel) continue;
-        const kilde =
-          `https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=${sak.id}`;
-        if (eksKilder.has(kilde)) continue; // detaljoppslag kun for nye saker
-
-        let frist: string | null = null;
-        try {
-          const detRes = await fetch(
-            `https://data.stortinget.no/eksport/sak?sakid=${sak.id}&format=json`,
-            { headers: { Accept: "application/json" } },
-          );
-          if (detRes.ok) frist = finnHøringsfrist(await detRes.json());
-        } catch (e) {
-          console.error(`Detaljoppslag for sak ${sak.id} feilet:`, e);
-        }
-
-        items.push({
-          tittel,
-          instans: sak.komite?.navn
-            ? `${sak.komite.navn}, Stortinget`
-            : "Stortinget",
-          kilde,
-          frist,
-          sammendrag_raa: sak.henvisning ?? "",
-          kilde_id: `stortinget-sak-${sak.id}`,
-          forhåndsgodkjent: true, // valgt via komité/emne — skal ikke stoppes av nøkkelordfilteret
-        });
-      }
-    } catch (e) {
-      console.error("Stortinget saker feil:", e);
+async function hentStortingetSaker(
+  eksKilder: Set<string>,
+  nå: Date = new Date(),
+): Promise<AdapterUtfall> {
+  const sesjon = stortingsesjon(nå);
+  const url =
+    `https://data.stortinget.no/eksport/saker?sesjonid=${sesjon}&format=json`;
+  try {
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const lest = await lesTekstRespons(res, url);
+    if ("feil" in lest) {
+      console.error(`Stortinget saker ${url}: ${lest.feil.melding}`);
+      return feilUtfall(lest.feil);
     }
-  }
+    let data: any;
+    try {
+      data = JSON.parse(lest.tekst);
+    } catch (e) {
+      const feil = feilFraUnntak(e, url);
+      console.error(`Stortinget saker parse ${url}:`, e);
+      return feilUtfall(feil);
+    }
+    if (!Array.isArray(data?.saker_liste)) {
+      const feil = uventetFormat(url, "mangler saker_liste");
+      console.error(`Stortinget saker ${url}: ${feil.melding}`);
+      return feilUtfall(feil);
+    }
+    const alleSaker: any[] = data.saker_liste;
+    const kultursaker = alleSaker.filter(erKulturSak);
+    console.log(
+      `Stortinget (${sesjon}): ${alleSaker.length} saker totalt, ${kultursaker.length} kulturrelevante`,
+    );
 
-  return items;
+    const items: any[] = [];
+    let etterFilter = 0;
+    for (const sak of kultursaker) {
+      const tittel = sak.tittel ?? sak.korttittel ?? "";
+      if (!tittel) continue;
+      etterFilter++;
+      const kilde =
+        `https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=${sak.id}`;
+      if (eksKilder.has(kilde)) continue; // detaljoppslag kun for nye saker
+
+      let frist: string | null = null;
+      try {
+        const detRes = await fetch(
+          `https://data.stortinget.no/eksport/sak?sakid=${sak.id}&format=json`,
+          { headers: { Accept: "application/json" } },
+        );
+        if (detRes.ok) frist = finnHøringsfrist(await detRes.json());
+      } catch (e) {
+        console.error(`Detaljoppslag for sak ${sak.id} feilet:`, e);
+      }
+
+      items.push({
+        tittel,
+        instans: sak.komite?.navn
+          ? `${sak.komite.navn}, Stortinget`
+          : "Stortinget",
+        kilde,
+        frist,
+        sammendrag_raa: sak.henvisning ?? "",
+        kilde_id: `stortinget-sak-${sak.id}`,
+        forhåndsgodkjent: true, // valgt via komité/emne — skal ikke stoppes av nøkkelordfilteret
+      });
+    }
+    // raattAntall er HELE sesjonen, før kulturfilter og dedup. Ellers blir
+    // en levende kilde logget «tom» når filteret ikke slipper gjennom noe nytt.
+    return okUtfall(items, alleSaker.length, etterFilter);
+  } catch (e) {
+    console.error("Stortinget saker feil:", e);
+    return feilUtfall(feilFraUnntak(e, url));
+  }
 }
 
 // ─── Stortinget: ventede saker (tidligvarsling) ───────────────────────────────
 // Regjeringens VARSLEDE kommende proposisjoner/meldinger — lar oss varsle
 // kulturfeltet FØR sakene fremmes for Stortinget. (Verifisert i kildekartet.)
-async function hentVentedeSaker(): Promise<any[]> {
-  const items: any[] = [];
+async function hentVentedeSaker(): Promise<AdapterUtfall> {
+  const url = "https://data.stortinget.no/eksport/ventedesaker?format=json";
   try {
-    const res = await fetch(
-      "https://data.stortinget.no/eksport/ventedesaker?format=json",
-      { headers: { Accept: "application/json" } },
-    );
-    if (!res.ok) {
-      console.error(`Ventede saker svarte ${res.status}`);
-      return items;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const lest = await lesTekstRespons(res, url);
+    if ("feil" in lest) {
+      console.error(`Ventede saker ${url}: ${lest.feil.melding}`);
+      return feilUtfall(lest.feil);
     }
-    const data = await res.json();
-    const saker: any[] = data?.saker_liste ?? [];
+    let data: any;
+    try {
+      data = JSON.parse(lest.tekst);
+    } catch (e) {
+      const feil = feilFraUnntak(e, url);
+      console.error(`Ventede saker parse ${url}:`, e);
+      return feilUtfall(feil);
+    }
+    if (!Array.isArray(data?.saker_liste)) {
+      const feil = uventetFormat(url, "mangler saker_liste");
+      console.error(`Ventede saker ${url}: ${feil.melding}`);
+      return feilUtfall(feil);
+    }
+    const saker: any[] = data.saker_liste;
+    const items: any[] = [];
 
     for (const sak of saker) {
       const departement: string = sak.departement ?? "";
@@ -117,67 +156,11 @@ async function hentVentedeSaker(): Promise<any[]> {
     console.log(
       `Ventede saker: ${saker.length} totalt, ${items.length} kulturrelevante`,
     );
+    return okUtfall(items, saker.length, items.length);
   } catch (e) {
     console.error("Ventede saker feil:", e);
+    return feilUtfall(feilFraUnntak(e, url));
   }
-  return items;
-}
-
-// ─── Regjeringen RSS ──────────────────────────────────────────────────────────
-// KILDEKART-oppgradering: RSS-generatoren dekker høringer, NOU-er, meldinger og
-// proposisjoner fra ALLE departement (verifisert, 100 elementer per feed) — ikke
-// bare KUD. Nøkkelord- og Claude-filtrene siler ut det som ikke angår kultur.
-async function hentRegjeringenRSS(): Promise<any[]> {
-  const items: any[] = [];
-  const feeds = [
-    {
-      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=dokumenter/h%C3%B8ringer",
-      instans: "Regjeringen – høring",
-    },
-    {
-      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=dokumenter/nouer",
-      instans: "Regjeringen – NOU",
-    },
-    {
-      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=dokumenter/meldinger",
-      instans: "Regjeringen – stortingsmelding",
-    },
-    {
-      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=dokumenter/proposisjoner",
-      instans: "Regjeringen – proposisjon",
-    },
-    {
-      url: "https://www.regjeringen.no/no/dep/kud/rss/",
-      instans: "Kulturdepartementet",
-    },
-    // Spillemiddel-sporet (VEIKART E3): fordelingen av Norsk Tipping-overskuddet
-    // vedtas som kgl.res. i statsråd. Ett item per statsrådsmøte; nøkkelordfilteret
-    // slipper gjennom møtene der beskrivelsen nevner kultur/spillemidler.
-    {
-      url: "https://www.regjeringen.no/no/rss/Rss/2581966/?documentType=aktuelt/offisieltfrastatsr%C3%A5d",
-      instans: "Regjeringen – statsråd",
-    },
-  ];
-
-  for (const feed of feeds) {
-    try {
-      const res = await fetch(feed.url, {
-        headers: { "User-Agent": "Kulturvarsling/1.0" },
-      });
-      if (!res.ok) {
-        console.error(`RSS ${feed.url} svarte ${res.status}`);
-        continue;
-      }
-      const xml = await res.text();
-      const parsed = parseRssItems(xml, feed.instans);
-      items.push(...parsed);
-      console.log(`RSS ${feed.url}: ${parsed.length} items hentet`);
-    } catch (e) {
-      console.error(`RSS feil for ${feed.url}:`, e);
-    }
-  }
-
-  return items;
 }
 
 // ─── Claude API: kategoriser og sammendrag ────────────────────────────────────
@@ -272,9 +255,45 @@ async function testClaude(apiKey: string | undefined): Promise<string> {
   }
 }
 
-// ─── Hoved-handler ────────────────────────────────────────────────────────────
-Deno.serve(async (_req: Request) => {
+// ─── Hvem trigget kjøringen ───────────────────────────────────────────────────
+// Prod-jobben poster body.utlost_av = "pg_cron" (se docs/teknisk-baseline.md).
+async function lesKjoertAv(req: Request): Promise<KjoertAv> {
+  let utlostAv: unknown;
   try {
+    const tekst = await req.text();
+    if (tekst.trim()) utlostAv = JSON.parse(tekst)?.utlost_av;
+  } catch {
+    utlostAv = undefined;
+  }
+  return utledKjoertAv({
+    utlostAv,
+    headerUtlostAv: req.headers.get("x-utlost-av"),
+    vercelCronHeader: req.headers.get("x-vercel-cron"),
+  });
+}
+
+async function kjørAdapter(
+  navn: string,
+  fn: () => Promise<AdapterUtfall>,
+): Promise<{ navn: string; utfall: AdapterUtfall; varighetMs: number }> {
+  const t = Date.now();
+  try {
+    const utfall = await fn();
+    return { navn, utfall, varighetMs: Date.now() - t };
+  } catch (e) {
+    console.error(`${navn} krasjet utenfor adapteren:`, e);
+    return {
+      navn,
+      utfall: feilUtfall(feilFraUnntak(e)),
+      varighetMs: Date.now() - t,
+    };
+  }
+}
+
+// ─── Hoved-handler ────────────────────────────────────────────────────────────
+Deno.serve(async (req: Request) => {
+  try {
+    const kjoertAv = await lesKjoertAv(req);
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -287,8 +306,6 @@ Deno.serve(async (_req: Request) => {
     const { data: eks } = await supabase.from("varsler").select("kilde");
     const eksKilder = new Set((eks ?? []).map((v: any) => v.kilde));
 
-    const t0 = Date.now();
-
     // Kilderegisteret: kobler kjøringslogg til kilde (ARKITEKTUR §1.4)
     const { data: kilderRows } = await supabase
       .from("kilder")
@@ -298,36 +315,20 @@ Deno.serve(async (_req: Request) => {
       (kilderRows ?? []).map((r: any) => [r.adapter, r.id]),
     );
 
-    // Hent fra alle kilder parallelt
-    const [
-      stortingssaker,
-      rssItems,
-      ventede,
-      einnsynSaker,
-      bergenSaker,
-      kulturdirTildelinger,
-      sametingetSaker,
-    ] = await Promise.all([
-      hentStortingetSaker(eksKilder),
-      hentRegjeringenRSS(),
-      hentVentedeSaker(),
-      hentEInnsynKultursaker(),
-      hentBergenSaker(),
-      hentKulturdirektoratetTildelinger(),
-      hentSametingetSaker(),
+    // Hent fra alle kilder parallelt. Én adapter som kaster, stopper ikke de andre.
+    const kjøringer = await Promise.all([
+      kjørAdapter("stortinget-saker", () => hentStortingetSaker(eksKilder)),
+      kjørAdapter("regjeringen-rss", () => hentRegjeringenRSS()),
+      kjørAdapter("stortinget-ventede", () => hentVentedeSaker()),
+      kjørAdapter("einnsyn", () => hentEInnsynKultursaker()),
+      kjørAdapter("bergen", () => hentBergenSaker()),
+      kjørAdapter("kulturdirektoratet", () => hentKulturdirektoratetTildelinger()),
+      kjørAdapter("sametinget", () => hentSametingetSaker()),
     ]);
 
-    const merk = (liste: any[], adapter: string) =>
-      liste.map((i) => ({ ...i, adapter }));
-    const alle = [
-      ...merk(stortingssaker, "stortinget-saker"),
-      ...merk(rssItems, "regjeringen-rss"),
-      ...merk(ventede, "stortinget-ventede"),
-      ...merk(einnsynSaker, "einnsyn"),
-      ...merk(bergenSaker, "bergen"),
-      ...merk(kulturdirTildelinger, "kulturdirektoratet"),
-      ...merk(sametingetSaker, "sametinget"),
-    ];
+    const alle = kjøringer.flatMap((k) =>
+      k.utfall.items.map((i) => ({ ...i, adapter: k.navn }))
+    );
 
     // Filtrer bort duplikater og ikke-relevante.
     // Saker valgt via komité/emne (forhåndsgodkjent) hopper over nøkkelordfilteret —
@@ -438,36 +439,54 @@ Deno.serve(async (_req: Request) => {
       }
     }
 
-    // Kjøringslogg per kilde — «stillhet er ikke suksess»: en kilde med 0 funn
-    // eller vedvarende «tom»-status skal være synlig i kilde_kjoringer.
-    const kjøringer: Array<[string, number]> = [
-      ["stortinget-saker", stortingssaker.length],
-      ["regjeringen-rss", rssItems.length],
-      ["stortinget-ventede", ventede.length],
-      ["einnsyn", einnsynSaker.length],
-      ["bergen", bergenSaker.length],
-      ["kulturdirektoratet", kulturdirTildelinger.length],
-      ["sametinget", sametingetSaker.length],
-    ];
-    for (const [adapter, funnet] of kjøringer) {
-      const kildeId = kilderMap.get(adapter);
-      if (!kildeId) continue;
-      const status = funnet > 0 ? "ok" : "tom";
-      await supabase.from("kilde_kjoringer").insert({
-        kilde_id: kildeId,
-        status,
-        antall_funnet: funnet,
-        antall_nye: lagretPerAdapter.get(adapter) ?? 0,
-        varighet_ms: Date.now() - t0,
+    // Kjøringslogg per kilde. antall_funnet = råtreff før filter/dedup.
+    // «tom» bare når kilden svarte OK med 0 råtreff. Feil blir aldri «tom».
+    const kildeStatus = [];
+    for (const k of kjøringer) {
+      const antallNye = lagretPerAdapter.get(k.navn) ?? 0;
+      const klass = klassifiserKjøring({
+        raattAntall: k.utfall.raattAntall,
+        antallNye,
+        feil: k.utfall.feil,
+        forsok: k.utfall.forsok,
+        vellykket: k.utfall.vellykket,
       });
+      kildeStatus.push({
+        adapter: k.navn,
+        status: klass.status,
+        raatt_antall: k.utfall.raattAntall,
+        antall_etter_filter: k.utfall.antallEtterFilter,
+        antall_nye: antallNye,
+        http_status: klass.httpStatus,
+        feilmelding: klass.feilmelding,
+        varighet_ms: k.varighetMs,
+      });
+      const kildeId = kilderMap.get(k.navn);
+      if (!kildeId) {
+        console.error(`Ingen rad i kilder for adapter ${k.navn} — kjøring logges ikke`);
+        continue;
+      }
+      const { error: loggFeil } = await supabase.from("kilde_kjoringer").insert({
+        kilde_id: kildeId,
+        status: klass.status,
+        antall_funnet: k.utfall.raattAntall,
+        antall_etter_filter: k.utfall.antallEtterFilter,
+        antall_nye: antallNye,
+        feilmelding: klass.feilmelding,
+        http_status: klass.httpStatus,
+        varighet_ms: k.varighetMs,
+        kjoert_av: kjoertAv,
+      });
+      if (loggFeil) console.error(`kilde_kjoringer ${k.navn}:`, loggFeil.message);
       await supabase
         .from("kilder")
-        .update({ sist_hentet: new Date().toISOString(), sist_status: status })
+        .update({ sist_hentet: new Date().toISOString(), sist_status: klass.status })
         .eq("id", kildeId);
     }
 
     const respons = {
       kjørt: new Date().toISOString(),
+      kjoert_av: kjoertAv,
       claude_status: claudeStatus,
       siste_analyse_feil: sisteAnalyseFeil ?? undefined,
       hentet_totalt: alle.length,
@@ -475,6 +494,7 @@ Deno.serve(async (_req: Request) => {
       lagret: antallLagret,
       avvist_av_filter: antallAvvist,
       feil: feil.length > 0 ? feil.slice(0, 10) : undefined,
+      kilde_status: kildeStatus,
     };
 
     console.log("Ferdig:", respons);

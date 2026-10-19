@@ -91,8 +91,8 @@ supabase/functions/      Edge Functions (Deno):
 supabase/migrations/     Postgres-skjema + RLS + sikkerhetsherding
 tests/                   Node-tester for logikk, flyt og sikkerhet
 docs/                    ARKITEKTUR, KILDEKART, VEIKART, FORSLAG,
-                         FAKTAGRUNNLAG-OG-NORGE, STRIPE-OPPSETT
-api/cron/                Vercel-cron-endepunkt (reserve for Supabase-cron)
+                         FAKTAGRUNNLAG-OG-NORGE, STRIPE-OPPSETT,
+                         teknisk-baseline.md
 ```
 
 ## Utvikling
@@ -125,7 +125,7 @@ settes som Supabase function secrets – aldri i koden.
   appen 0 saker og cronen stopper – **ingen data tapes**, men prosjektet må gjenopptas fra
   Supabase-dashbordet. Varig løsning for en levende tjeneste er Supabase Pro.
 - **Kjøringslogg:** `kilder` + `kilde_kjoringer` viser status per kilde (se kildehelse-siden i
-  appen). «Ingen nye sist» betyr sjekket uten nytt – ikke feil.
+  appen). Statussettet og cron-oppsettet står i [docs/teknisk-baseline.md](docs/teknisk-baseline.md).
 
 ## Dokumentasjon
 
@@ -137,4 +137,5 @@ settes som Supabase function secrets – aldri i koden.
 | [docs/FAKTAGRUNNLAG-OG-NORGE.md](docs/FAKTAGRUNNLAG-OG-NORGE.md) | Faktakrav, personvern, norske forhold |
 | [docs/STRIPE-OPPSETT.md](docs/STRIPE-OPPSETT.md) | Premium-betaling steg for steg |
 | [docs/FORSLAG.md](docs/FORSLAG.md) | Prioriterte funksjonsforslag |
+| [docs/teknisk-baseline.md](docs/teknisk-baseline.md) | Skjema som mangler i repoet, live-funksjoner, cron |
 | [AGENTS.md](AGENTS.md) | Arbeidsregler for videre utvikling |

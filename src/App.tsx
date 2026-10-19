@@ -121,12 +121,13 @@ async function signKampanje(kampanjeId, brukerId, navn, epost) {
 }
 
 async function sendFeedbackDB(brukerId, type, tekst, sakTittel) {
-  await sb.from("feedback").insert({
+  const { error } = await sb.from("feedback").insert({
     bruker_id: brukerId ?? null,
     type,
     tekst,
     sak_tittel: sakTittel ?? null
   });
+  return error;
 }
 
 // ─── Tokens ────────────────────────────────────────────────────────────────
@@ -354,12 +355,24 @@ function sidenTekst(iso){
   const d=Math.floor(t/24); return `${d} ${d===1?"dag":"dager"} siden`;
 }
 
+// Nytt statussett fra hent-saker: ok_nye, ok_ingen_nye, tom, delvis, feil_*.
+// Gamle rader kan fortsatt ha «ok» / «tom» / «feil» til neste kjøring.
+function tolkKildeStatus(status: string | null | undefined){
+  const s=status||"";
+  if(s==="ok"||s==="ok_nye") return {frisk:true, tone:"ok", tekst:"Frisk"};
+  if(s==="ok_ingen_nye") return {frisk:true, tone:"tom", tekst:"Ingen nye sist"};
+  if(s==="tom") return {frisk:true, tone:"tom", tekst:"Tomt svar"};
+  if(s==="delvis") return {frisk:false, tone:"tom", tekst:"Delvis"};
+  if(!s) return {frisk:false, tone:"feil", tekst:"Ukjent"};
+  return {frisk:false, tone:"feil", tekst:"Feil"};
+}
+
 // Kompakt tillitssignal (forside): «Overvåker N kilder · sist sjekket X siden».
 function KildeTillitsstrip({onÅpne}) {
   const [kilder,setKilder]=useState(null);
   useEffect(()=>{ lastKilder().then(setKilder); },[]);
   if(!kilder||kilder.length===0) return null;
-  const friske=kilder.filter(k=>k.sist_status&&k.sist_status!=="feil").length;
+  const friske=kilder.filter(k=>tolkKildeStatus(k.sist_status).frisk).length;
   const sist=kilder.map(k=>k.sist_hentet).filter(Boolean).sort().slice(-1)[0];
   return (
     <button onClick={onÅpne} style={{width:"100%",textAlign:"left",display:"flex",alignItems:"center",gap:10,background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:12,padding:"11px 15px",marginBottom:20,cursor:"pointer",fontFamily:"inherit"}}>
@@ -378,7 +391,7 @@ function KildeHelseSide({onBack}) {
   const [kilder,setKilder]=useState([]);
   const [lastet,setLastet]=useState(false);
   useEffect(()=>{ lastKilder().then(k=>{setKilder(k);setLastet(true);}); },[]);
-  const friske=kilder.filter(k=>k.sist_status&&k.sist_status!=="feil").length;
+  const friske=kilder.filter(k=>tolkKildeStatus(k.sist_status).frisk).length;
   const sist=kilder.map(k=>k.sist_hentet).filter(Boolean).sort().slice(-1)[0];
   const nivåNavn={nasjonalt:"🏛 Nasjonalt",fylke:"🗺 Fylkeskommunalt",kommune:"🏘 Kommunalt",tverrgaende:"🔗 Tverrgående"};
   const grupper=["nasjonalt","fylke","kommune","tverrgaende"].map(n=>[n,kilder.filter(k=>k.niva===n)]).filter(([,ks])=>ks.length>0);
@@ -402,17 +415,17 @@ function KildeHelseSide({onBack}) {
             <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>{nivåNavn[nivå]||nivå}</div>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {ks.map((k,i)=>{
-                const ok=k.sist_status&&k.sist_status!=="feil";
-                const tom=k.sist_status==="tom";
+                const vis=tolkKildeStatus(k.sist_status);
+                const farge=vis.tone==="ok"?C.green:vis.tone==="tom"?C.amber:C.red;
                 return (
                   <div key={i} style={{display:"flex",alignItems:"center",gap:12,background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 15px"}}>
-                    <span style={{width:9,height:9,borderRadius:"50%",background:ok?(tom?C.amber:C.green):C.red,flexShrink:0}}/>
+                    <span style={{width:9,height:9,borderRadius:"50%",background:farge,flexShrink:0}}/>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:600,color:C.text}}>{k.navn}</div>
                       <div style={{fontSize:11,color:C.muted}}>{k.organ}</div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontSize:11,fontWeight:700,color:ok?(tom?C.amber:C.green):C.red}}>{ok?(tom?"Ingen nye sist":"Frisk"):"Feil"}</div>
+                      <div style={{fontSize:11,fontWeight:700,color:farge}}>{vis.tekst}</div>
                       <div style={{fontSize:10,color:C.muted}}>{sidenTekst(k.sist_hentet)}</div>
                     </div>
                   </div>
@@ -422,7 +435,7 @@ function KildeHelseSide({onBack}) {
           </div>
         ))
       }
-      <p style={{fontSize:12,color:C.muted,lineHeight:1.6,marginTop:8}}>«Ingen nye sist» betyr at kilden ble sjekket, men ikke hadde noe nytt – ikke at noe er galt. En kilde som svikter tre netter på rad flagges automatisk.</p>
+      <p style={{fontSize:12,color:C.muted,lineHeight:1.6,marginTop:8}}>«Ingen nye sist» betyr at kilden svarte med treff, men ingenting nytt ble lagt inn etter filter og dedup. «Tomt svar» betyr at kilden svarte OK uten råtreff. «Delvis» betyr at noe svarte og noe feilet. «Feil» er et kall som feilet – ikke et tomt treff.</p>
     </div>
   );
 }
@@ -785,10 +798,32 @@ function OnboardingWizard({user,setUser,onDone}) {
 // ─── BRUKER LOGIN ─────────────────────────────────────────────────────────
 
 // ─── FEEDBACK MODAL ──────────────────────────────────────────────────────────
-function FeedbackModal({onClose, kontekst=null}) {
+function FeedbackModal({onClose, kontekst=null as any}) {
   const [type,setType]=useState(kontekst?.type||"feil");
   const [tekst,setTekst]=useState("");
   const [sendt,setSendt]=useState(false);
+  const [feil,setFeil]=useState("");
+  const [laster,setLaster]=useState(false);
+
+  async function send(){
+    if(!tekst.trim()||laster) return;
+    setLaster(true); setFeil("");
+    let brukerId=null;
+    try {
+      const { data } = await sb.auth.getSession();
+      brukerId = data?.session?.user?.id ?? null;
+    } catch { brukerId = null; }
+    const error = await sendFeedbackDB(brukerId, type, tekst.trim(), kontekst?.sakTittel ?? null);
+    setLaster(false);
+    if(error){
+      console.error("Feedback-feil:", error);
+      setFeil(error.message
+        ? `Kunne ikke lagre tilbakemeldingen: ${error.message}`
+        : "Kunne ikke lagre tilbakemeldingen. Prøv igjen.");
+      return;
+    }
+    setSendt(true);
+  }
 
   if(sendt) return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
@@ -836,9 +871,10 @@ function FeedbackModal({onClose, kontekst=null}) {
             style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1px solid "+C.border,fontSize:13,lineHeight:1.6,resize:"vertical",boxSizing:"border-box",fontFamily:"inherit"}}/>
         </div>
 
+        {feil&&<div style={{marginBottom:12,fontSize:13,color:C.red,lineHeight:1.5}}>{feil}</div>}
         <div style={{display:"flex",gap:8}}>
-          <Btn variant="primary" style={{flex:1}} disabled={!tekst.trim()} onClick={()=>setSendt(true)}>
-            Send tilbakemelding
+          <Btn variant="primary" style={{flex:1}} disabled={!tekst.trim()||laster} onClick={send}>
+            {laster?"Sender…":"Send tilbakemelding"}
           </Btn>
           <Btn variant="secondary" onClick={onClose}>Avbryt</Btn>
         </div>
