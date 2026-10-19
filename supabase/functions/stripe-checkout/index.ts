@@ -12,7 +12,7 @@
 // Secrets: STRIPE_SECRET_KEY (sk_test_... i testmodus, sk_live_... i drift).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -56,8 +56,8 @@ async function stripeKall(
   return data;
 }
 
-// Finn pris-ID i Stripe ut fra intervall + beløp (NOK). Faller tilbake til
-// første aktive pris med riktig intervall hvis beløpet ikke matcher eksakt.
+// Finn pris-ID i Stripe ut fra intervall + beløp (NOK). Faller
+// ikke tilbake til en annen pris: kunden skal betale beløpet appen viser.
 async function finnPris(
   nøkkel: string,
   valg: (typeof PRISER)[keyof typeof PRISER],
@@ -71,8 +71,8 @@ async function finnPris(
   const kandidater = (data.data ?? []).filter((p: any) =>
     p.currency === "nok" && p.recurring?.interval === valg.interval
   );
-  const eksakt = kandidater.find((p: any) => p.unit_amount === valg.beløp);
-  const pris = eksakt ?? kandidater[0];
+  const eksakt = kandidater.find((p: any) => p.unit_amount === valg.beløp && p.recurring?.interval_count === 1);
+  const pris = eksakt;
   if (!pris) {
     throw new Error(
       `Fant ingen aktiv ${valg.label}-pris i Stripe. Sjekk at produktet ` +
@@ -85,6 +85,7 @@ async function finnPris(
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method !== "POST") return new Response("Bruk POST", { status: 405, headers: CORS });
   const svar = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
       status,
@@ -109,7 +110,7 @@ Deno.serve(async (req: Request) => {
       },
     );
     const { data: { user } } = await supa.auth.getUser();
-    if (!user) return svar({ error: "Du må være innlogget for å oppgradere." }, 401);
+    if (!user || user.is_anonymous) return svar({ error: "Du må være innlogget for å oppgradere." }, 401);
 
     const { interval } = await req.json().catch(() => ({}));
     const valg = PRISER[interval as keyof typeof PRISER];
@@ -120,8 +121,10 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const { data: profil } = await admin.from("profiler")
+    const { data: profil, error: profilFeil } = await admin.from("profiler")
       .select("stripe_customer_id").eq("id", user.id).single();
+
+    if (profilFeil || !profil) return svar({ error: "Kunne ikke hente profilen. Fullfør profilen før du oppgraderer." }, 503);
 
     // Gjenbruk Stripe-kunden hvis den finnes — ellers opprett og lagre den.
     let kundeId = profil?.stripe_customer_id;
@@ -136,8 +139,9 @@ Deno.serve(async (req: Request) => {
         }),
       );
       kundeId = kunde.id;
-      await admin.from("profiler")
+      const { error: lagringsFeil } = await admin.from("profiler")
         .update({ stripe_customer_id: kundeId }).eq("id", user.id);
+      if (lagringsFeil) return svar({ error: "Kunne ikke klargjøre betalingen akkurat nå." }, 503);
     }
 
     const prisId = await finnPris(stripeNøkkel, valg);
@@ -167,6 +171,6 @@ Deno.serve(async (req: Request) => {
     return svar({ url: session.url });
   } catch (e) {
     console.error("stripe-checkout-feil:", e);
-    return svar({ error: (e as Error).message }, 500);
+    return svar({ error: "Kunne ikke starte betalingen akkurat nå. Prøv igjen senere." }, 500);
   }
 });

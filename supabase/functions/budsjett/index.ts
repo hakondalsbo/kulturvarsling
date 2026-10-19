@@ -1,3 +1,7 @@
+import { harPremium, reserverAiKvote } from "../_shared/tilgang.ts";
+import { budsjettNokkel, lesBudsjettCache, pakkBudsjettCache, summerTilgjengeligeTall, parseBudsjettTolkning } from "./logikk.ts";
+import { hentBearerToken } from "../klartekst/logikk.ts";
+import { kallClaude } from "../_shared/claude.ts";
 // Budsjettverktøy (VEIKART E4) — premium fagverktøy. Tre nivåer:
 //   POST {kommunenr:"1103"} → SSB KOSTRA 13135 (kommune, per innbygger)
 //   POST {fylkesnr:"11"}     → SSB KOSTRA 12264 (fylkeskommune, per innbygger)
@@ -9,7 +13,7 @@
 // (bibliotek, kulturskole, investering) squeezes. Secrets: ANTHROPIC_API_KEY.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 
 const API = "https://data.ssb.no/api/v0/no/table";
 const CORS = {
@@ -90,14 +94,14 @@ async function hentNasjonalt() {
   const tid = Object.keys(j.dimension.Tid.category.index);
   const cc = Object.keys(j.dimension.ContentsCode.category.index);
   // Verdi per type per år; total = sum over typer.
-  const perType: Record<string, number[]> = {};
-  cc.forEach((c, ci) => { perType[c] = tid.map((_t, ti) => j.value[ci * tid.length + ti] ?? 0); });
-  const total = tid.map((_t, ti) => cc.reduce((s, c) => s + perType[c][ti], 0));
+  const perType: Record<string, Array<number | null>> = {};
+  cc.forEach((c, ci) => { perType[c] = tid.map((_t, ti) => j.value[ci * tid.length + ti] ?? null); });
+  const total = tid.map((_t, ti) => summerTilgjengeligeTall(cc.map((c) => perType[c][ti])));
   const nøkkeltall = [
-    { kode: "total", navn: "Statlige kulturutgifter totalt", enhet: "mill kr", serie: total.map((v) => Math.round(v)), landssnitt: null },
+    { kode: "total", navn: "Statlige kulturutgifter totalt", enhet: "mill kr", serie: total.map((v) => v === null ? null : Math.round(v)), landssnitt: null },
     ...typer.map(([kode, navn]) => ({
       kode, navn: navn + " (av dette)", enhet: "mill kr",
-      serie: perType[kode].map((v) => Math.round(v)), landssnitt: null,
+      serie: perType[kode].map((v) => v === null ? null : Math.round(v)), landssnitt: null,
     })),
   ];
   return { aar: tid, nøkkeltall };
@@ -128,17 +132,16 @@ async function hentKommuneListe(): Promise<Array<{ nr: string; navn: string }>> 
 }
 
 // ─── Claude tolker (nivå-tilpasset prompt) ────────────────────────────────────
-async function tolkMedClaude(navn: string, nivå: string, nøkkeltall: any[], apiKey: string) {
+async function tolkMedClaude(navn: string, nivå: string, aar: string[], nøkkeltall: any[], apiKey: string) {
   const linjer = nøkkeltall.map((n) => {
-    const serie = n.serie.filter((v: any) => v != null);
     const snitt = n.landssnitt != null ? ` (landssnitt ${n.landssnitt})` : "";
-    return `${n.navn}: ${serie.join(" → ")} ${n.enhet}${snitt}`;
+    return `${n.navn}: ${n.serie.map((v: unknown, i: number) => `${aar[i]}: ${v ?? "mangler"}`).join(" → ")} ${n.enhet}${snitt}`;
   }).join("\n");
   const nivåTekst = nivå === "nasjonalt"
-    ? `Dette er STATENS kulturutgifter (COFOG). Tallene er nominelle mill. kr — vurder om veksten holder tritt med pris- og lønnsvekst (~3-5 %/år), ellers er det et REELT kutt selv om tallet stiger.`
+    ? `Dette er STATENS kulturutgifter (COFOG). Tallene er nominelle mill. kr — Inflasjon er ikke oppgitt. Ikke kall en nominell endring et reelt kutt uten dokumentert prisjustering.`
     : `Kommuner/fylker fremhever gjerne at «kulturbudsjettet øker», mens enkelttilbud (bibliotek, museer, kulturskole) samtidig kuttes. Se forbi totalen.`;
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await kallClaude({
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
@@ -146,7 +149,7 @@ async function tolkMedClaude(navn: string, nivå: string, nøkkeltall: any[], ap
         max_tokens: 2000, // Sonnet 5 tenke-tokens teller mot grensen
         messages: [{
           role: "user",
-          content: `Du hjelper en travel kulturaktør å forstå ${navn} sin kulturøkonomi og OPPDAGE SKJULTE KUTT. ${nivåTekst}
+          content: `Du hjelper en travel kulturaktør å forstå ${navn} sin kulturøkonomi. Skill dokumenterte nominelle endringer fra tolkning. Manglende tall er ukjent, aldri null kroner. Inflasjon er ikke oppgitt; ikke konkluder med reelle kutt uten prisjustering. ${nivåTekst}
 
 Tall (eldste → nyeste år):
 ${linjer}
@@ -155,40 +158,59 @@ Svar BARE med gyldig JSON, ingen markdown:
 {
   "overskrift": "kort konklusjon i én setning — fremhev spriket hvis totalen og enkeltdelene spriker",
   "hovedtall": "hva brukes, og hvordan ligger det an (mot landssnitt / mot prisvekst) — i klartekst",
-  "skjulte_kutt": "SE ETTER: stiger totalen mens en enkeltdel går ned eller står stille (reelt kutt)? Nevn konkret hva som squeezes, med tall. Ingen skjulte kutt: si det ærlig.",
+  "skjulte_kutt": "Nevn dokumenterte nominelle reduksjoner i enkeltdeler selv om totalen øker, med år og tall. Stillstand alene dokumenterer ikke et reelt kutt. Manglende tall: si at sammenligning ikke er mulig.",
   "hva_betyr_det": "hva dette betyr for kulturfeltet, konkret og nøkternt — ikke overdriv",
   "sporsmaal_til_politikerne": "ett skarpt, konkret spørsmål basert på tallene — helst om noe som kuttes"
 }`,
         }],
       }),
-    });
-    if (!res.ok) { console.error(`Claude ${res.status}: ${(await res.text()).slice(0, 200)}`); return null; }
+    }, "budsjett");
+    if (!res.ok) { console.error(`Claude HTTP ${res.status}`); return null; }
     const data = await res.json();
     const tekst = (data.content?.find((b: any) => b.type === "text")?.text ?? "{}")
       .replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
-    return JSON.parse(tekst);
+    return parseBudsjettTolkning(JSON.parse(tekst));
   } catch (e) { console.error("Claude-tolkning feil:", e); return null; }
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method !== "POST") return new Response("Bruk POST", { status: 405, headers: CORS });
   const json = (o: any, status = 200) =>
     new Response(JSON.stringify(o), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
   try {
-    const body = await req.json().catch(() => ({}));
-    if (body.list) return json({ kommuner: await hentKommuneListe() });
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return json({ feil: "Ugyldig forespørsel" }, 400);
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+    const token = hentBearerToken(req.headers.get("authorization"));
+    if (!token) return json({ feil: "Du må være innlogget" }, 401);
+    const { data: auth, error: authFeil } = await supabase.auth.getUser(token);
+    if (authFeil || !auth.user || auth.user.is_anonymous) return json({ feil: "Du må være innlogget" }, 401);
+    const { data: profil, error: profilFeil } = await supabase.from("profiler").select("plan").eq("id", auth.user.id).maybeSingle();
+    if (profilFeil) return json({ feil: "Kunne ikke kontrollere abonnementet akkurat nå" }, 503);
+    if (!harPremium(profil)) return json({ feil: "Budsjettanalyse krever Premium" }, 403);
+    if (body.list === true) return json({ kommuner: await hentKommuneListe() });
+    const nøkkel = budsjettNokkel(body);
+    if (!nøkkel) return json({ feil: "Velg et gyldig område" }, 400);
+    const { data: cacheRad, error: cacheFeil } = await supabase.from("budsjett_cache")
+      .select("data").eq("kommunenr", nøkkel).maybeSingle();
+    if (cacheFeil) return json({ feil: "Kunne ikke hente budsjettanalysen akkurat nå" }, 503);
+    const cachet = lesBudsjettCache(cacheRad?.data);
+    if (cachet) return json({ ...cachet, cache: true });
 
+
+    if (apiKey) {
+      const kvote = await reserverAiKvote(supabase, auth.user.id, "budsjett", true);
+      if (kvote !== "ok") return json({ feil: kvote === "grense" ? "Du har nådd grensen på 10 nye budsjettanalyser i dag. Lagrede analyser er fortsatt tilgjengelige." : "Kunne ikke kontrollere analysegrensen akkurat nå" }, kvote === "grense" ? 429 : 503);
+    }
     // Bestem nivå + cache-nøkkel.
     let nivå: string, navn: string, aar: string[], nøkkeltall: any[], cacheKey: string;
 
     if (body.nasjonalt) {
       nivå = "nasjonalt"; navn = "Norge (staten)"; cacheKey = "nasjonalt";
-      const { data: c } = await supabase.from("budsjett_cache").select("data").eq("kommunenr", cacheKey).maybeSingle();
-      if (c?.data) return json({ ...c.data, cache: true });
       const n = await hentNasjonalt(); aar = n.aar; nøkkeltall = n.nøkkeltall;
     } else if (body.fylkesnr) {
       const fnr = String(body.fylkesnr).replace(/\D/g, "").slice(0, 2);
@@ -199,8 +221,6 @@ Deno.serve(async (req: Request) => {
         hentKostra("12264", "KOKfylkesregion0000", region, FYLKE_TALL.map((n) => n[0])),
         hentKostra("12264", "KOKfylkesregion0000", "EAFK", FYLKE_TALL.map((n) => n[0])),
       ]);
-      const { data: c } = await supabase.from("budsjett_cache").select("data").eq("kommunenr", cacheKey).maybeSingle();
-      if (c?.data) return json({ ...c.data, cache: true });
       navn = ({ "03": "Oslo", "11": "Rogaland", "15": "Møre og Romsdal", "18": "Nordland", "31": "Østfold", "32": "Akershus", "33": "Buskerud", "34": "Innlandet", "39": "Vestfold", "40": "Telemark", "42": "Agder", "46": "Vestland", "50": "Trøndelag", "55": "Troms", "56": "Finnmark" } as any)[fnr] ?? `Fylke ${fnr}`;
       navn += " fylkeskommune";
       aar = ÅR; nøkkeltall = byggNøkkeltall(tall, snitt, FYLKE_TALL);
@@ -208,8 +228,6 @@ Deno.serve(async (req: Request) => {
       const knr = String(body.kommunenr ?? "").replace(/\D/g, "");
       if (!/^\d{4}$/.test(knr)) return json({ feil: "Ugyldig kommunenr" }, 400);
       nivå = "kommune"; cacheKey = `kommune-${knr}`;
-      const { data: c } = await supabase.from("budsjett_cache").select("data").eq("kommunenr", cacheKey).maybeSingle();
-      if (c?.data) return json({ ...c.data, cache: true });
       const [tall, snitt] = await Promise.all([
         hentKostra("13135", "KOKkommuneregion0000", knr, KOMMUNE_TALL.map((n) => n[0])),
         hentKostra("13135", "KOKkommuneregion0000", "EAK", KOMMUNE_TALL.map((n) => n[0])),
@@ -219,12 +237,12 @@ Deno.serve(async (req: Request) => {
       aar = ÅR; nøkkeltall = byggNøkkeltall(tall, snitt, KOMMUNE_TALL);
     }
 
-    const tolkning = apiKey ? await tolkMedClaude(navn, nivå, nøkkeltall, apiKey) : null;
+    const tolkning = apiKey ? await tolkMedClaude(navn, nivå, aar, nøkkeltall, apiKey) : null;
     const svar = { nivå, kommune: navn, aar, nøkkeltall, tolkning };
-    await supabase.from("budsjett_cache").upsert({ kommunenr: cacheKey, data: svar }).then(() => {}, () => {});
+    await supabase.from("budsjett_cache").upsert({ kommunenr: cacheKey, data: pakkBudsjettCache(svar) }).then(({ error }) => { if (error) console.error("Budsjett cache-lagring feilet"); });
     return json(svar);
   } catch (e) {
     console.error("Budsjett-feil:", e);
-    return json({ feil: String(e) }, 500);
+    return json({ feil: "Kunne ikke hente budsjettdata akkurat nå" }, 500);
   }
 });

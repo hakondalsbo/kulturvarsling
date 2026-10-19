@@ -1,16 +1,25 @@
+import { harPremium, reserverAiKvote } from "../_shared/tilgang.ts";
+import { kallClaude } from "../_shared/claude.ts";
 // Klartekst (VEIKART E2): «Hva betyr dette for deg?»
-// POST {varsel_id, profil: {fagfelt, org_type, fylke?}} →
+// POST {varsel_id} med innlogget bruker-JWT →
 //   {svar: {hva_skjer, hvem_pavirkes, tall_belop, frist, hva_kan_du_gjore}, cachet}
-// Svaret caches per sak + profiltype i klartekst_cache slik at samme
-// kombinasjon aldri koster to Claude-kall.
+// Profilen hentes alltid server-side fra profiler. Svaret caches per sak +
+// normalisert profiltype i klartekst_cache.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
   byggPrompt,
+  hentBearerToken,
   lagProfilNokkel,
+  lagInnholdsNokkel,
+  lesGyldigCache,
+  normaliserProfil,
+  normaliserVarselId,
   parseKlartekstSvar,
   trekkUtTekst,
+  type KlartekstSvar,
+  type Profil,
 } from "./logikk.ts";
 
 // Kalles fra nettleseren (i motsetning til hent-saker) — trenger CORS.
@@ -27,9 +36,61 @@ function svar(body: unknown, status = 200): Response {
   });
 }
 
+const MAKS_BODY_BYTES = 2048;
+const LOKAL_CACHE_MAKS = 128;
+const MAKS_SAMTIDIGE_GENERERINGER = 8;
+const lokalCache = new Map<string, KlartekstSvar>();
+const pågåendeGenereringer = new Map<string, Promise<KlartekstSvar | null>>();
+
+async function lesJsonBody(req: Request): Promise<
+  | { ok: true; data: Record<string, unknown> }
+  | { ok: false; status: 400 | 413; feil: string }
+> {
+  const oppgittLengde = Number(req.headers.get("content-length"));
+  if (Number.isFinite(oppgittLengde) && oppgittLengde > MAKS_BODY_BYTES) {
+    return { ok: false, status: 413, feil: "Forespørselen er for stor" };
+  }
+
+  if (!req.body) return { ok: false, status: 400, feil: "Ugyldig JSON" };
+  const reader = req.body.getReader();
+  const decoder = new TextDecoder();
+  let tekst = "";
+  let bytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > MAKS_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return { ok: false, status: 413, feil: "Forespørselen er for stor" };
+    }
+    tekst += decoder.decode(value, { stream: true });
+  }
+  tekst += decoder.decode();
+
+  try {
+    const data = JSON.parse(tekst);
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return { ok: false, status: 400, feil: "Ugyldig JSON" };
+    }
+    return { ok: true, data: data as Record<string, unknown> };
+  } catch {
+    return { ok: false, status: 400, feil: "Ugyldig JSON" };
+  }
+}
+
+function leggILokalCache(nøkkel: string, verdi: KlartekstSvar): void {
+  if (!lokalCache.has(nøkkel) && lokalCache.size >= LOKAL_CACHE_MAKS) {
+    const eldste = lokalCache.keys().next().value;
+    if (eldste) lokalCache.delete(eldste);
+  }
+  lokalCache.set(nøkkel, verdi);
+}
+
 async function spørClaude(prompt: string, apiKey: string): Promise<string | null> {
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await kallClaude({
       method: "POST",
       headers: {
         "x-api-key": apiKey,
@@ -43,10 +104,9 @@ async function spørClaude(prompt: string, apiKey: string): Promise<string | nul
         max_tokens: 2000,
         messages: [{ role: "user", content: prompt }],
       }),
-    });
+    }, "klartekst");
     if (!res.ok) {
-      const kropp = await res.text().catch(() => "");
-      console.error(`Claude API HTTP ${res.status}: ${kropp.slice(0, 200)}`);
+      console.error(`Claude API HTTP ${res.status}`);
       return null;
     }
     const data = await res.json();
@@ -57,71 +117,162 @@ async function spørClaude(prompt: string, apiKey: string): Promise<string | nul
   }
 }
 
+async function genererKlartekst(
+  cacheNøkkel: string,
+  sak: {
+    tittel: string;
+    sammendrag?: string | null;
+    instans?: string | null;
+    frist?: string | null;
+    niva?: string | null;
+    sted?: string | null;
+  },
+  profil: Profil,
+  apiKey: string,
+): Promise<KlartekstSvar | null> {
+  const pågår = pågåendeGenereringer.get(cacheNøkkel);
+  if (pågår) return await pågår;
+
+  const generering = (async () => {
+    const prompt = byggPrompt(sak, profil);
+    const tekst = await spørClaude(prompt, apiKey);
+    return tekst ? parseKlartekstSvar(tekst) : null;
+  })();
+
+  pågåendeGenereringer.set(cacheNøkkel, generering);
+  try {
+    return await generering;
+  } finally {
+    if (pågåendeGenereringer.get(cacheNøkkel) === generering) {
+      pågåendeGenereringer.delete(cacheNøkkel);
+    }
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "POST") return svar({ feil: "Bruk POST" }, 405);
 
   try {
-    const { varsel_id, profil } = await req.json().catch(() => ({}));
-    if (!varsel_id || typeof varsel_id !== "string") {
-      return svar({ feil: "varsel_id mangler" }, 400);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error("Klartekst mangler påkrevd Supabase-konfigurasjon");
+      return svar({ feil: "Tjenesten er ikke konfigurert" }, 503);
     }
 
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      supabaseUrl,
+      serviceRoleKey,
+      { auth: { persistSession: false, autoRefreshToken: false } },
     );
-    const nokkel = lagProfilNokkel(profil);
 
-    // 1) Cache-oppslag — samme sak + profiltype skal aldri koste to kall
-    const { data: cachet } = await supabase
-      .from("klartekst_cache")
-      .select("svar")
-      .eq("varsel_id", varsel_id)
-      .eq("profil_nokkel", nokkel)
+    // Håndhev brukerinnlogging også i funksjonen. Gateway-verifisering er et
+    // ekstra lag, men funksjonen skal være sikker selv ved feil deploy-config.
+    const token = hentBearerToken(req.headers.get("authorization"));
+    if (!token) return svar({ feil: "Du må være innlogget" }, 401);
+    const { data: authData, error: authFeil } = await supabase.auth.getUser(token);
+    const bruker = authData.user;
+    if (authFeil || !bruker || bruker.is_anonymous === true || bruker.role === "anon") {
+      return svar({ feil: "Du må være innlogget" }, 401);
+    }
+
+    const body = await lesJsonBody(req);
+    if (!body.ok) return svar({ feil: body.feil }, body.status);
+    const varselId = normaliserVarselId(body.data.varsel_id);
+    if (!varselId) return svar({ feil: "Ugyldig varsel_id" }, 400);
+
+    // Profilen kommer fra canonical database-rad, aldri fra klient-body.
+    const { data: profilRad, error: profilFeil } = await supabase
+      .from("profiler")
+      .select("fagfelt, org_type, fylkesnr, plan")
+      .eq("id", bruker.id)
       .maybeSingle();
-    if (cachet?.svar) return svar({ svar: cachet.svar, cachet: true });
+    if (profilFeil) {
+      console.error("Klartekst profiloppslag feilet");
+      return svar({ feil: "Kunne ikke hente profilen akkurat nå" }, 503);
+    }
+    if (!profilRad) {
+      return svar({ feil: "Fullfør profilen før du ber om klartekst" }, 409);
+    }
+    const profil = normaliserProfil(profilRad);
 
-    // 2) Hent saken. Service role omgår RLS — filtrer selv på publisert
-    //    så upubliserte/avviste rader aldri lekker ut.
+    // Service role omgår RLS. Saken må derfor bekreftes publisert FØR både
+    // lokal og persistent cache leses, ellers kan avpubliserte saker lekke.
     const { data: sak, error: sakFeil } = await supabase
       .from("varsler")
       .select("tittel, sammendrag, instans, frist, niva, sted")
-      .eq("id", varsel_id)
+      .eq("id", varselId)
       .eq("publisert", true)
       .maybeSingle();
     if (sakFeil) {
-      console.error("Oppslag i varsler feilet:", sakFeil.message);
-      return svar({ feil: "Databasefeil ved oppslag" }, 500);
+      console.error("Klartekst saksoppslag feilet");
+      return svar({ feil: "Kunne ikke hente saken akkurat nå" }, 503);
     }
     if (!sak) return svar({ feil: "Fant ikke saken" }, 404);
+
+    const profilNøkkel = lagProfilNokkel(profil);
+    const innhold = await lagInnholdsNokkel(byggPrompt(sak, profil), "claude-sonnet-5");
+    const cacheNøkkel = `${varselId}|${profilNøkkel}|${innhold}`;
+    const lokaltSvar = lokalCache.get(cacheNøkkel);
+    if (lokaltSvar) return svar({ svar: lokaltSvar, cachet: true });
+
+    // Ved cache-feil genererer vi ikke et nytt, betalbart svar. Det forhindrer
+    // en databasefeil fra å bli til en kostnadsløkke.
+    const { data: cachet, error: cacheFeil } = await supabase
+      .from("klartekst_cache")
+      .select("svar")
+      .eq("varsel_id", varselId)
+      .eq("profil_nokkel", profilNøkkel)
+      .maybeSingle();
+    if (cacheFeil) {
+      console.error("Klartekst cache-oppslag feilet");
+      return svar({ feil: "Kunne ikke hente forklaringen akkurat nå" }, 503);
+    }
+    if (cachet?.svar) {
+      const validertCache = lesGyldigCache(cachet.svar, innhold);
+      if (validertCache) {
+        leggILokalCache(cacheNøkkel, validertCache);
+        return svar({ svar: validertCache, cachet: true });
+      }
+      console.error("Klartekst-cache inneholdt ugyldig svar");
+    }
 
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
       console.error("ANTHROPIC_API_KEY mangler");
-      return svar({ feil: "AI-laget er ikke konfigurert" }, 500);
+      return svar({ feil: "AI-laget er ikke konfigurert" }, 503);
     }
 
-    // 3) Claude — ett nytt forsøk ved feil, samme mønster som hent-saker
-    let tekst = await spørClaude(byggPrompt(sak, profil), apiKey);
-    if (!tekst) tekst = await spørClaude(byggPrompt(sak, profil), apiKey);
-    const parsed = tekst ? parseKlartekstSvar(tekst) : null;
+    if (
+      !pågåendeGenereringer.has(cacheNøkkel) &&
+      pågåendeGenereringer.size >= MAKS_SAMTIDIGE_GENERERINGER
+    ) {
+      return svar({ feil: "Tjenesten har høy belastning — prøv igjen om litt" }, 429);
+    }
+
+    // Én pågående generering per cache-nøkkel i samme isolat. Det fjerner den
+    // vanligste samtidighetsdobbeltkostnaden uten å utvide databaseskjemaet.
+    if (!pågåendeGenereringer.has(cacheNøkkel)) {
+      const kvote = await reserverAiKvote(supabase, bruker.id, "klartekst", harPremium(profilRad));
+      if (kvote !== "ok") return svar({ feil: kvote === "grense" ? "Du har nådd grensen for nye forklaringer i dag. Lagrede forklaringer er fortsatt tilgjengelige." : "Kunne ikke kontrollere analysegrensen akkurat nå" }, kvote === "grense" ? 429 : 503);
+    }
+    const parsed = await genererKlartekst(cacheNøkkel, sak, profil, apiKey);
     if (!parsed) {
-      console.error("Uparsbart Claude-svar:", (tekst ?? "").slice(0, 200));
+      console.error("Klartekst fikk ikke et gyldig AI-svar");
       return svar({ feil: "AI-laget er utilgjengelig akkurat nå — prøv igjen om litt" }, 502);
     }
+    leggILokalCache(cacheNøkkel, parsed);
 
-    // 4) Cache svaret. Upsert: to samtidige kall på samme kombinasjon
-    //    skal ikke feile på unique-skranken.
-    const { error: cacheFeil } = await supabase.from("klartekst_cache").upsert(
-      { varsel_id, profil_nokkel: nokkel, svar: parsed },
+    const { error: cacheLagreFeil } = await supabase.from("klartekst_cache").upsert(
+      { varsel_id: varselId, profil_nokkel: profilNøkkel, svar: { ...parsed, _innhold: innhold } },
       { onConflict: "varsel_id,profil_nokkel" },
     );
-    if (cacheFeil) console.error("Cache-lagring feilet:", cacheFeil.message);
+    if (cacheLagreFeil) console.error("Klartekst cache-lagring feilet");
 
     return svar({ svar: parsed, cachet: false });
   } catch (e) {
-    console.error("Kritisk feil:", e);
-    return svar({ feil: String(e) }, 500);
+    console.error("Klartekst uventet feil:", e instanceof Error ? e.name : "ukjent");
+    return svar({ feil: "Uventet feil i klartekst-tjenesten" }, 500);
   }
 });

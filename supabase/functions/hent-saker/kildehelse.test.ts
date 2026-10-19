@@ -10,7 +10,9 @@ import {
   feilFraUnntak,
   klassifiserKjøring,
   samleRssSvar,
+  slåSammenAdapterdeler,
   stortingsesjon,
+  tidligAvslag,
   utledKjoertAv,
   type HenteFeilType,
 } from "./kildehelse.ts";
@@ -118,8 +120,9 @@ test("delvis slår ok_nye når noen feeder feilet selv om noe ble lagret", () =>
   });
   assert.equal(r.status, "delvis");
   assert.equal(r.httpStatus, 404);
-  assert.match(r.feilmelding ?? "", /kud\/rss/);
-  assert.match(r.feilmelding ?? "", /404/);
+  assert.match(r.feilmelding ?? "", /HTTP 404/);
+  assert.doesNotMatch(r.feilmelding ?? "", /https?:\/\//);
+  assert.doesNotMatch(r.feilmelding ?? "", /kud\/rss/);
 });
 
 test("alle kall feilet er feil, ikke delvis og ikke tom", () => {
@@ -135,7 +138,9 @@ test("alle kall feilet er feil, ikke delvis og ikke tom", () => {
   });
   assert.equal(r.status, "feil_http");
   assert.equal(r.httpStatus, 404);
-  assert.match(r.feilmelding ?? "", /https:\/\/b/);
+  assert.match(r.feilmelding ?? "", /HTTP 404/);
+  assert.match(r.feilmelding ?? "", /HTTP 503/);
+  assert.doesNotMatch(r.feilmelding ?? "", /https?:\/\//);
 });
 
 // ─── RSS: én død feed stopper ikke resten ─────────────────────────────────────
@@ -189,6 +194,8 @@ test("én feilende feed stopper ikke senere feeder", async () => {
   });
   assert.equal(klass.status, "delvis");
   assert.match(klass.feilmelding ?? "", /HTTP 404/);
+  assert.doesNotMatch(klass.feilmelding ?? "", /https?:\/\//);
+  assert.doesNotMatch(klass.feilmelding ?? "", /kud/);
 });
 
 test("HTTP 200 med tom kropp eller HTML er feil_parse, ikke tom", () => {
@@ -268,6 +275,81 @@ test("sesjonen skifter ved midnatt UTC 1. oktober", () => {
 });
 
 // ─── hvem som kjørte ──────────────────────────────────────────────────────────
+
+test("feilmelding til kjøringloggen har verken URL eller rå svartekst", () => {
+  const r = klassifiserKjøring({
+    raattAntall: 0,
+    antallNye: 0,
+    feil: [
+      feilFraUnntak(
+        new Error("connect ECONNREFUSED https://api.einnsyn.no/search?query=kultur"),
+        "https://api.einnsyn.no/search?query=kultur",
+      ),
+      {
+        type: "parse",
+        httpStatus: 200,
+        melding: "Unexpected token < in JSON at https://data.stortinget.no/eksport/saker",
+        url: "https://data.stortinget.no/eksport/saker",
+      },
+    ],
+    forsok: 2,
+    vellykket: 0,
+  });
+  assert.equal(r.status, "feil_nett");
+  assert.match(r.feilmelding ?? "", /Innhentingen feilet/);
+  assert.match(r.feilmelding ?? "", /Uventet format/);
+  assert.doesNotMatch(r.feilmelding ?? "", /https?:\/\//);
+  assert.doesNotMatch(r.feilmelding ?? "", /einnsyn|stortinget/i);
+});
+
+test("to stortingssesjoner: én feil er delvis, og treff fra den andre beholdes", () => {
+  const utfall = slåSammenAdapterdeler([
+    { items: [{ id: 1 }], raattAntall: 100, antallEtterFilter: 4, feil: null },
+    {
+      items: [],
+      raattAntall: 0,
+      antallEtterFilter: 0,
+      feil: feilFraStatus(500, "https://data.stortinget.no/eksport/saker?sesjonid=2024-2025"),
+    },
+  ]);
+  assert.equal(utfall.forsok, 2);
+  assert.equal(utfall.vellykket, 1);
+  assert.equal(utfall.items.length, 1);
+  assert.equal(utfall.raattAntall, 100);
+  const klass = klassifiserKjøring({
+    raattAntall: utfall.raattAntall,
+    antallNye: 1,
+    feil: utfall.feil,
+    forsok: utfall.forsok,
+    vellykket: utfall.vellykket,
+  });
+  assert.equal(klass.status, "delvis");
+  assert.match(klass.feilmelding ?? "", /HTTP 500/);
+  assert.doesNotMatch(klass.feilmelding ?? "", /https?:\/\//);
+});
+
+test("x-cron-secret sjekkes før metode: mangler, feil og helsesjekk", () => {
+  const mangler = tidligAvslag("GET", undefined, "hva-som-helst");
+  assert.equal(mangler?.status, 503);
+  assert.equal(mangler?.kind, "json");
+
+  const feil = tidligAvslag("GET", "hemmelig", "feil");
+  assert.equal(feil?.status, 401);
+  if (feil?.kind === "json") assert.equal(feil.body.feil, "Uautorisert");
+
+  const tom = tidligAvslag("POST", "", null);
+  assert.equal(tom?.status, 503);
+
+  const get = tidligAvslag("GET", "hemmelig", "hemmelig");
+  assert.equal(get?.status, 200);
+  if (get?.kind === "json") assert.equal(get.body.status, "ok");
+
+  const annet = tidligAvslag("PUT", "hemmelig", "hemmelig");
+  assert.equal(annet?.status, 405);
+  assert.equal(annet?.kind, "tekst");
+
+  assert.equal(tidligAvslag("POST", "hemmelig", "hemmelig"), null);
+});
 
 test("pg_cron-body utlost_av blir supabase_cron", () => {
   assert.equal(utledKjoertAv({ utlostAv: "pg_cron" }), "supabase_cron");

@@ -12,7 +12,7 @@
 // Secrets: STRIPE_WEBHOOK_SECRET (whsec_... fra webhook-oppsettet i Stripe).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 
 const TOLERANSE_SEK = 300; // avvis signaturer eldre enn 5 min (replay-vern)
 
@@ -28,7 +28,7 @@ async function verifiserSignatur(
   const t = deler.find(([k]) => k === "t")?.[1];
   const signaturer = deler.filter(([k]) => k === "v1").map(([, v]) => v);
   if (!t || signaturer.length === 0) return false;
-  if (Math.abs(Date.now() / 1000 - Number(t)) > TOLERANSE_SEK) return false;
+  if (!/^\d+$/.test(t) || !Number.isSafeInteger(Number(t)) || Math.abs(Date.now() / 1000 - Number(t)) > TOLERANSE_SEK) return false;
 
   const nøkkel = await crypto.subtle.importKey(
     "raw",
@@ -57,6 +57,7 @@ async function verifiserSignatur(
 }
 
 Deno.serve(async (req: Request) => {
+  if (req.method !== "POST") return new Response("Bruk POST", { status: 405 });
   const hemmelighet = Deno.env.get("STRIPE_WEBHOOK_SECRET");
   if (!hemmelighet) {
     console.error("STRIPE_WEBHOOK_SECRET mangler som Supabase-secret");
@@ -71,7 +72,9 @@ Deno.serve(async (req: Request) => {
   );
   if (!gyldig) return new Response("Ugyldig signatur", { status: 400 });
 
-  const event = JSON.parse(payload);
+  let event;
+  try { event = JSON.parse(payload); } catch { return new Response("Ugyldig hendelse", { status: 400 }); }
+  if (!event?.data?.object || typeof event.type !== "string") return new Response("Ugyldig hendelse", { status: 400 });
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -81,7 +84,7 @@ Deno.serve(async (req: Request) => {
     const session = event.data.object;
     const brukerId = session.client_reference_id ??
       session.metadata?.supabase_user_id;
-    if (brukerId) {
+    if (brukerId && session.mode === "subscription" && ["paid", "no_payment_required"].includes(session.payment_status)) {
       const { error } = await admin.from("profiler")
         .update({
           plan: "premium",
@@ -112,9 +115,10 @@ Deno.serve(async (req: Request) => {
     }
     if (!data?.length && sub.metadata?.supabase_user_id) {
       // Reserveløsning hvis kunde-ID-en aldri ble lagret på profilen.
-      await admin.from("profiler")
+      const { error: reserveFeil } = await admin.from("profiler")
         .update({ plan: "gratis", oppdatert: new Date().toISOString() })
         .eq("id", sub.metadata.supabase_user_id);
+      if (reserveFeil) return new Response("DB-feil", { status: 500 });
     }
     console.log(`Abonnement avsluttet for Stripe-kunde ${sub.customer}`);
   }

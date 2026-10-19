@@ -13,9 +13,10 @@ import {
 // ─── lagProfilNokkel ──────────────────────────────────────────────────────────
 
 test("samme profil gir samme nøkkel uansett rekkefølge og casing", () => {
-  const a = lagProfilNokkel({ fagfelt: ["Musikk", "scenekunst"], org_type: "Friteater" });
-  const b = lagProfilNokkel({ fagfelt: ["scenekunst", "musikk "], org_type: "friteater" });
+  const a = lagProfilNokkel({ fagfelt: ["Musikk", "scenekunst"], org_type: "Kunstner" });
+  const b = lagProfilNokkel({ fagfelt: ["scenekunst", "musikk "], org_type: "kunstner" });
   assert.equal(a, b);
+  assert.equal(a, "kunstner|musikk,scenekunst|hele-landet");
 });
 
 test("tom profil gir stabil standardnøkkel", () => {
@@ -23,11 +24,11 @@ test("tom profil gir stabil standardnøkkel", () => {
   assert.equal(lagProfilNokkel({ fagfelt: [], org_type: "", fylke: "" }), "ukjent|alle|hele-landet");
 });
 
-test("fylke inngår i nøkkelen", () => {
-  const uten = lagProfilNokkel({ org_type: "friteater" });
-  const med = lagProfilNokkel({ org_type: "friteater", fylke: "Vestland" });
+test("fylke inngår i nøkkelen som fylkesnummer", () => {
+  const uten = lagProfilNokkel({ org_type: "kunstner" });
+  const med = lagProfilNokkel({ org_type: "kunstner", fylke: "Vestland" });
   assert.notEqual(uten, med);
-  assert.ok(med.endsWith("|vestland"));
+  assert.ok(med.endsWith("|46"));
 });
 
 test("duplikate fagfelt telles én gang", () => {
@@ -85,13 +86,20 @@ test("avviser svar uten hva_skjer eller med ugyldig JSON", () => {
 test("prompten inneholder sak og profil", () => {
   const p = byggPrompt(
     { tittel: "Kutt i Kulturfondet", sammendrag: "Regjeringen foreslår kutt.", instans: "Kulturdepartementet", frist: "2026-09-01", niva: "nasjonalt", sted: "Nasjonalt" },
-    { fagfelt: ["scenekunst"], org_type: "friteater", fylke: "Vestland" },
+    { fagfelt: ["scenekunst"], org_type: "kunstner", fylke: "Vestland" },
   );
   assert.ok(p.includes("Kutt i Kulturfondet"));
   assert.ok(p.includes("scenekunst"));
-  assert.ok(p.includes("friteater"));
+  assert.ok(p.includes("kunstner"));
   assert.ok(p.includes("Vestland"));
   assert.ok(p.includes("gyldig JSON"));
+});
+
+test("fritekst i org_type når ikke prompten", () => {
+  const p = byggPrompt({ tittel: "En sak" }, { org_type: "friteater", fylke: "Vestland" });
+  assert.equal(p.includes("friteater"), false);
+  assert.ok(p.includes("ukjent"));
+  assert.ok(p.includes("Vestland"));
 });
 
 test("prompten håndterer tom profil", () => {
