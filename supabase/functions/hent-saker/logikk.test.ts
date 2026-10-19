@@ -11,6 +11,7 @@ import {
   parseStortingetDato,
   statusFraFrist,
   parseRssItems,
+  stortingsSesjoner,
 } from "./logikk.ts";
 
 // ─── erKulturRelevant ─────────────────────────────────────────────────────────
@@ -233,6 +234,58 @@ test("eInnsyn-item uten geo får fallback-organ og nullfelt, uten id/tittel fork
   assert.equal(utenGeo?.niva, null);
   assert.equal(mapEInnsynItem({ offentligTittel: "Mangler id" }), null);
   assert.equal(mapEInnsynItem({ id: "ms_2" }), null);
+});
+
+test("stortingsSesjoner følger Europe/Oslo og tar med forrige sesjon", () => {
+  // 30. sept 2026 23:59 norsk tid (CEST, UTC+2)
+  assert.deepEqual(
+    stortingsSesjoner(Date.parse("2026-09-30T21:59:00Z")),
+    ["2025-2026", "2024-2025"],
+  );
+  // 1. okt 2026 00:00 norsk tid
+  assert.deepEqual(
+    stortingsSesjoner(Date.parse("2026-09-30T22:00:00Z")),
+    ["2026-2027", "2025-2026"],
+  );
+  // 1. jan 2027 00:30 norsk tid (CET) er fortsatt sesjonen som startet i oktober
+  assert.deepEqual(
+    stortingsSesjoner(Date.parse("2026-12-31T23:30:00Z")),
+    ["2026-2027", "2025-2026"],
+  );
+});
+
+test("Brreg-geo: bare kommuneforvaltning får kommune, fylkeskommune får ikke by", async () => {
+  const { fylkesnrFraKommunenr, geografiFraBrreg } = await import("./einnsyn.ts");
+  assert.equal(fylkesnrFraKommunenr("4601"), "46");
+  assert.equal(fylkesnrFraKommunenr("46"), null);
+  assert.equal(geografiFraBrreg(null).niva, null);
+
+  const stat = geografiFraBrreg({
+    institusjonellSektorkode: { kode: "6100" },
+    forretningsadresse: { kommunenummer: "0301", kommune: "OSLO" },
+  });
+  assert.equal(stat.niva, "nasjonalt");
+  assert.equal(stat.kommunenr, null);
+
+  const kommune = geografiFraBrreg({
+    institusjonellSektorkode: { kode: "6500" },
+    organisasjonsform: { kode: "KOMM" },
+    forretningsadresse: { kommunenummer: "1103", kommune: "STAVANGER" },
+  }, "Stavanger kommune");
+  assert.equal(kommune.niva, "kommune");
+  assert.equal(kommune.kommunenr, "1103");
+  assert.equal(kommune.fylkesnr, "11");
+  assert.equal(kommune.sted, "Stavanger");
+
+  const fylke = geografiFraBrreg({
+    institusjonellSektorkode: { kode: "6500" },
+    organisasjonsform: { kode: "FYLK" },
+    forretningsadresse: { kommunenummer: "4601", kommune: "BERGEN" },
+  }, "VESTLAND FYLKESKOMMUNE");
+  assert.equal(fylke.niva, "fylke");
+  assert.equal(fylke.kommunenr, null);
+  assert.equal(fylke.fylkesnr, "46");
+  assert.equal(fylke.sted, "Vestland fylkeskommune");
 });
 
 test("nivaFraEnhetstype utleder nivå fra eInnsyn-enhetstype", async () => {

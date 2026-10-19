@@ -167,3 +167,16 @@ export function parseRssItems(xml: string, instans: string): RssItem[] {
 
   return items;
 }
+
+/** Følg gjeldende sesjon og behold fjoråret for saker som fortsatt behandles. */
+export function stortingsSesjoner(nå = Date.now()): string[] {
+  const dato = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Oslo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(nå));
+  const [år, måned] = dato.split("-").map(Number);
+  const start = måned >= 10 ? år : år - 1;
+  return [`${start}-${start + 1}`, `${start - 1}-${start}`];
+}

@@ -133,15 +133,87 @@ export async function lesTekstRespons(
   return { tekst };
 }
 
+const URL_I_TEKST = /https?:\/\/|www\.|\b[\w.-]+\.(?:no|com|org|net|sh)\b/i;
+
+function erKortEgenTekst(melding: string): boolean {
+  const m = melding.trim();
+  return m.length > 0 && m.length <= 160 && !URL_I_TEKST.test(m) && !/[<>]/.test(m);
+}
+
+/**
+ * Tekst som kan ligge i kilde_kjoringer. Tabellen er offentlig lesbar, så
+ * eksterne URL-er og vilkårlige svartekster blir aldri med. Detaljer logges
+ * med console.error hos kalleren.
+ */
+export function sanitertFeilmelding(f: HenteFeil): string {
+  if ((f.type === "http" || f.type === "auth") && f.httpStatus != null) {
+    return `HTTP ${f.httpStatus}`;
+  }
+  if (f.type === "timeout") return "Tidsavbrudd";
+  if (f.type === "parse") {
+    const m = f.melding.trim();
+    if (m === "Tom kropp") return m;
+    if (m.startsWith("Uventet format") && erKortEgenTekst(m)) return m;
+    return "Uventet format";
+  }
+  const m = f.melding.trim();
+  if (m === "Ingen kall ble forsøkt" || m === "Kilden svarte ikke") return m;
+  if (/^\d+ av \d+ kall feilet$/.test(m)) return m;
+  if (/^HTTP \d{3}$/.test(m)) return m;
+  return "Innhentingen feilet. Kontroller kilden og adapteren.";
+}
+
 export function formaterFeil(feil: HenteFeil[]): string {
-  return feil
-    .map((f) => {
-      const sted = f.url ?? "kilden";
-      const status = f.httpStatus != null ? ` HTTP ${f.httpStatus}` : "";
-      return `${sted}${status}: ${f.melding}`;
-    })
-    .join("; ")
-    .slice(0, 2000);
+  return feil.map(sanitertFeilmelding).join("; ").slice(0, 2000);
+}
+
+export type AdapterDel = {
+  items: any[];
+  raattAntall: number;
+  antallEtterFilter: number;
+  /** null når delen ble ferdig uten feil. */
+  feil: HenteFeil | null;
+};
+
+/** Slår sammen uavhengige delkall (f.eks. to stortingssesjoner) til ett utfall. */
+export function slåSammenAdapterdeler(deler: AdapterDel[]): AdapterUtfall {
+  const feil = deler.flatMap((d) => (d.feil ? [d.feil] : []));
+  return {
+    items: deler.flatMap((d) => d.items),
+    raattAntall: deler.reduce((s, d) => s + d.raattAntall, 0),
+    antallEtterFilter: deler.reduce((s, d) => s + d.antallEtterFilter, 0),
+    feil,
+    forsok: deler.length,
+    vellykket: deler.length - feil.length,
+  };
+}
+
+export type TidligSvar =
+  | { kind: "json"; status: 503 | 401 | 200; body: Record<string, string> }
+  | { kind: "tekst"; status: 405; body: string };
+
+/**
+ * Første port i hent-saker. Hemmeligheten sjekkes før metode, så en GET uten
+ * riktig x-cron-secret aldri blir helsesjekk.
+ */
+export function tidligAvslag(
+  method: string,
+  secret: string | undefined,
+  header: string | null,
+): TidligSvar | null {
+  if (!secret) {
+    return { kind: "json", status: 503, body: { feil: "Tjenesten er ikke konfigurert" } };
+  }
+  if (header !== secret) {
+    return { kind: "json", status: 401, body: { feil: "Uautorisert" } };
+  }
+  if (method === "GET") {
+    return { kind: "json", status: 200, body: { status: "ok" } };
+  }
+  if (method !== "POST") {
+    return { kind: "tekst", status: 405, body: "Bruk POST" };
+  }
+  return null;
 }
 
 export type KjøringInndata = {
@@ -218,9 +290,8 @@ export function klassifiserKjøring(p: KjøringInndata): KjøringKlassifisering 
 }
 
 /**
- * Stortingssesjonen løper 1. oktober–30. september.
- * Kalenderdagen leses i UTC. Nattlig cron kjører 06:00 UTC, som er morgen
- * i Norge, så UTC-datoen er den norske datoen når jobben går.
+ * Én sesjon etter UTC-dato. Kjøringen bruker stortingsSesjoner() i logikk.ts
+ * (gjeldende + forrige sesjon, Europe/Oslo) og slår dem sammen til ett utfall.
  */
 export function stortingsesjon(dato: Date = new Date()): string {
   const år = dato.getUTCFullYear();
