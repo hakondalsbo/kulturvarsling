@@ -1,0 +1,178 @@
+@import url("https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap");
+
+/* Samme papir som Kulturavisen v2 (src/index.css). Bakgrunn #FBF8F2. */
+
+:root {
+  --papir: #fbf8f2;
+  --flate: #ffffff;
+  --tekst: #1c1b19;
+  --brod: #45413b;
+  --dempet: #6b665c;
+  --linje: #e6e0d4;
+  --linje-myk: #cfc8ba;
+  --linje-mork: #2a2824;
+  --tegl: #9e2a1e;
+  --granitt: #2b4a3f;
+  --serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --sans: "Libre Franklin", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--papir);
+  color: var(--tekst);
+  font: 400 17px/1.65 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--granitt); }
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--tekst);
+  outline-offset: 3px;
+}
+
+.ark {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 64px 32px 96px;
+}
+
+.ark.smal { max-width: 560px; }
+
+.versal {
+  font: 600 11.5px/1 var(--sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dempet);
+  margin: 0 0 18px;
+}
+
+h1 {
+  font: 500 48px/1.05 var(--serif);
+  font-variation-settings: "opsz" 72;
+  letter-spacing: -0.03em;
+  margin: 0 0 12px;
+}
+
+h2 {
+  font: 500 28px/1.25 var(--serif);
+  margin: 40px 0 10px;
+}
+
+p, li { color: var(--brod); }
+
+.meta {
+  font: italic 400 18px/1.4 var(--serif);
+  color: var(--dempet);
+  margin: 0 0 28px;
+}
+
+.plassholder {
+  border: 1px solid var(--tegl);
+  background: var(--flate);
+  padding: 18px 20px;
+  margin: 0 0 36px;
+}
+
+.plassholder p { margin: 0 0 8px; color: var(--tekst); }
+.plassholder p:last-child { margin: 0; }
+.plassholder strong { font-weight: 600; }
+
+.felt { margin: 0 0 14px; }
+
+label.feltnavn,
+.feltnavn {
+  display: block;
+  font: 600 12px/1 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dempet);
+  margin-bottom: 6px;
+}
+
+input[type="text"],
+input[type="email"] {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--linje-myk);
+  border-radius: 2px;
+  background: var(--flate);
+  font: 400 16px/1 var(--sans);
+  color: var(--tekst);
+}
+
+.samtykke {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 8px 0 18px;
+  font: 400 15px/1.5 var(--sans);
+  color: var(--tekst);
+}
+
+.samtykke input {
+  width: 20px;
+  height: 20px;
+  margin-top: 3px;
+  flex: none;
+  accent-color: var(--granitt);
+}
+
+button,
+.knapp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--tegl);
+  color: #fff;
+  font: 600 15px/1 var(--sans);
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+button.stille {
+  background: transparent;
+  color: var(--granitt);
+  border-bottom: 1px solid rgba(43, 74, 63, 0.35);
+  border-radius: 0;
+  min-height: 44px;
+  padding: 0;
+}
+
+.status { margin-top: 18px; }
+.status[data-tilstand="feil"] { color: var(--tegl); }
+.status[data-tilstand="ok"] { color: var(--granitt); }
+
+.hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.bunn {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--linje-mork);
+  font-size: 14px;
+  color: var(--dempet);
+}
+
+@media (max-width: 720px) {
+  .ark { padding: 32px 20px 72px; }
+  h1 { font-size: 34px; }
+  h2 { font-size: 24px; }
+  button, .knapp { width: 100%; }
+}
