@@ -157,10 +157,13 @@ p {
   position: relative;
 }
 
-.avis-tittel {
-  font: 500 68px/1 var(--serif);
+button.avis-tittel {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 52px;
+  line-height: 0.95;
   font-variation-settings: "opsz" 72;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
   background: none;
   border: 0;
   padding: 0;
@@ -917,6 +920,10 @@ p {
   width: 150px;
 }
 
+.avis-frist-uten {
+  display: none;
+}
+
 /* Slik jobber vi */
 .avis-metode {
   border-top: 1px solid var(--linje);
@@ -1123,7 +1130,8 @@ p {
 @media (max-width: 860px) {
   .avis-forside {
     grid-template-columns: 1fr;
-    padding: 48px 0 32px;
+    padding-top: 48px;
+    padding-bottom: 32px;
   }
   .avis-lead h1 {
     font-size: 40px;
@@ -1157,11 +1165,17 @@ p {
   .avis-dato-rad {
     flex-direction: column;
     gap: 4px;
-    padding: 16px 0;
+    padding-top: 16px;
+    padding-bottom: 16px;
   }
 
   .avis-dato-hoyre {
-    gap: 20px;
+    display: none;
+  }
+
+  .avis-dato .avis-wrap {
+    padding-left: 24px;
+    padding-right: 24px;
   }
 
   .avis-mast {
@@ -1173,8 +1187,8 @@ p {
     border-bottom: 1px solid var(--linje);
   }
 
-  .avis-tittel {
-    font-size: 30px;
+  button.avis-tittel {
+    font-size: 28px;
     letter-spacing: -0.02em;
   }
 
@@ -1224,8 +1238,21 @@ p {
   }
 
   .avis-forside {
-    padding: 36px 0 16px;
+    padding-top: 36px;
+    padding-bottom: 16px;
     gap: 8px;
+  }
+
+  .avis-forside > * {
+    min-width: 0;
+  }
+
+  .avis-lead h1,
+  .avis-ingress,
+  .avis-uka h3,
+  .avis-sak h4,
+  .avis-tabell td.t button {
+    overflow-wrap: break-word;
   }
 
   .avis-lead h1 {
@@ -1403,49 +1430,85 @@ p {
   }
 
   .avis-tabell,
-  .avis-tabell tbody,
-  .avis-tabell tr,
-  .avis-tabell td {
+  .avis-tabell tbody {
     display: block;
-    width: auto;
+    width: 100%;
   }
 
   .avis-tabell tr {
     display: grid;
-    grid-template-columns: 72px minmax(0, 1fr) auto;
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "frist frist"
+      "tittel tittel"
+      "instans handling";
+    column-gap: 16px;
+    row-gap: 2px;
     align-items: center;
-    padding: 16px 0;
+    padding: 18px 0;
     border-bottom: 1px solid var(--linje);
   }
 
   .avis-tabell td {
+    display: block;
     border: 0;
     padding: 0;
     width: auto;
+    min-width: 0;
   }
 
   .avis-tabell td.f {
-    font-size: 16px;
+    grid-area: frist;
+    width: auto;
+    margin-bottom: 6px;
+    font: 500 12.5px/1.3 var(--sans);
+    letter-spacing: 0.02em;
+    color: var(--dempet);
+    white-space: normal;
+  }
+
+  .avis-tabell td.f.haster {
+    color: var(--tegl);
+  }
+
+  .avis-tabell td.t {
+    grid-area: tittel;
   }
 
   .avis-tabell td.t button {
-    font-size: 16px;
+    display: block;
+    width: 100%;
+    font-size: 18px;
+    line-height: 1.3;
   }
 
   .avis-tabell td.i {
-    grid-column: 2;
-    font-size: 13px;
+    grid-area: instans;
+    width: auto;
+    font-size: 14px;
   }
 
   .avis-tabell td.h {
-    grid-row: 1 / span 2;
-    grid-column: 3;
+    grid-area: handling;
+    width: auto;
     text-align: right;
+    align-self: center;
   }
 
   .avis-tabell td.h .avis-gjor {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 44px;
     min-height: 44px;
+  }
+
+  .avis-frist-strek {
+    display: none;
+  }
+
+  .avis-frist-uten {
+    display: inline;
   }
 
   .avis-metode {

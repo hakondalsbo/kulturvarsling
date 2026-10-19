@@ -135,6 +135,12 @@ function erHaster(s: Sak, nå: Date) {
   return s.status === "kritisk";
 }
 
+function harNærFrist(s: Sak, nå: Date, dager: number) {
+  if (!s.frist) return false;
+  const d = dagerTil(s.frist, nå);
+  return d >= 0 && d <= dager;
+}
+
 function erSnart(s: Sak, nå: Date) {
   if (!s.frist || erHaster(s, nå)) return false;
   const d = dagerTil(s.frist, nå);
@@ -386,8 +392,8 @@ export function ForsideAvis({
           ) : (
             <>
               <div className="avis-kicker avis-versal">
-                {erHaster(lead, nå) ? <b>Haster</b> : erSnart(lead, nå) ? <b className="snart">Snart</b> : null}
-                {(erHaster(lead, nå) || erSnart(lead, nå)) ? " · " : null}
+                {harNærFrist(lead, nå, 14) ? <b>Haster</b> : erSnart(lead, nå) ? <b className="snart">Snart</b> : null}
+                {(harNærFrist(lead, nå, 14) || erSnart(lead, nå)) ? " · " : null}
                 {fagLabel(lead.kategori)} · {nivaaTekst(lead)}
               </div>
               <h1>{lead.tittel}</h1>
@@ -886,7 +892,7 @@ export function VarselArkiv({
                 {(utvidet ? sortert : sortert.slice(0, 12)).map((s) => (
                   <tr key={s.id}>
                     <td className={`f${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}`}>
-                      {s.frist ? kortDato(s.frist) : "–"}
+                      {s.frist ? kortDato(s.frist) : <><span className="avis-frist-strek">–</span><span className="avis-frist-uten">Uten frist</span></>}
                     </td>
                     <td className="t">
                       <button type="button" onClick={() => onÅpne(s, "info")}>
