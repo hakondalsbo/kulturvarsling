@@ -792,7 +792,7 @@ export function VarselArkiv({
           ) : null}
 
           <div className="avis-setning">
-            <p>
+            <div className="avis-setning-tekst">
               <strong>{setning}</strong>
               {fagNavn ? ` i ${fagNavn}` : ""}
               <span className="avis-geo" ref={geoWrap}>
@@ -847,7 +847,7 @@ export function VarselArkiv({
                   </>
                 ) : null}
               </span>
-            </p>
+            </div>
             <div className="avis-bytte" role="tablist" aria-label="Visning" onKeyDown={visTaster}>
               <button type="button" role="tab" id="vis-notiser" aria-selected={visning === "notiser"} tabIndex={visning === "notiser" ? 0 : -1} className={visning === "notiser" ? "aktiv" : undefined} onClick={() => setVisning("notiser")}>Notiser</button>
               <button type="button" role="tab" id="vis-tabell" aria-selected={visning === "tabell"} tabIndex={visning === "tabell" ? 0 : -1} className={visning === "tabell" ? "aktiv" : undefined} onClick={() => setVisning("tabell")}>Alle frister</button>

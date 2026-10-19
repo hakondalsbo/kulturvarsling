@@ -553,12 +553,12 @@ p {
   flex-wrap: wrap;
 }
 
-.avis-setning p {
+.avis-setning-tekst {
   font: 400 20px/1.45 var(--serif);
   color: var(--brod);
 }
 
-.avis-setning p strong {
+.avis-setning-tekst strong {
   font-weight: 500;
   color: var(--tekst);
 }
@@ -1331,7 +1331,7 @@ p {
     padding-top: 16px;
   }
 
-  .avis-setning p {
+  .avis-setning-tekst {
     font-size: 17px;
   }
 
@@ -1381,7 +1381,7 @@ p {
     overflow: auto;
     border-radius: 16px 16px 0 0;
     z-index: 70;
-    padding: 18px 24px calc(28px + env(safe-area-inset-bottom, 0px));
+    padding: 18px 24px calc(56px + env(safe-area-inset-bottom, 0px));
   }
 
   .avis-valg {
