@@ -11,6 +11,15 @@
 // aggregeres det til ÉN varsel per tildelingsrunde (ordning + søknadsfrist),
 // med stabil fragment-URL som dedup-nøkkel. ~105 runder siste halvår.
 
+import {
+  feilFraUnntak,
+  feilUtfall,
+  lesTekstRespons,
+  okUtfall,
+  uventetFormat,
+  type AdapterUtfall,
+} from "./kildehelse.ts";
+
 const BASE = "https://www.kulturdirektoratet.no";
 
 export type VedtakRad = Record<string, string>;
@@ -166,7 +175,8 @@ function samleCookies(jar: Map<string, string>, res: Response) {
   }
 }
 
-export async function hentKulturdirektoratetTildelinger(): Promise<any[]> {
+export async function hentKulturdirektoratetTildelinger(): Promise<AdapterUtfall> {
+  const vedtakUrl = `${BASE}/vedtak`;
   try {
     const jar = new Map<string, string>();
     const headers = () => ({
@@ -175,69 +185,71 @@ export async function hentKulturdirektoratetTildelinger(): Promise<any[]> {
     });
 
     // Steg 1: /vedtak-siden — cookies + sprig:config (hx-vals er HTML-escapet JSON)
-    const side = await fetch(`${BASE}/vedtak`, { headers: headers() });
-    if (!side.ok) {
-      console.error(`Kulturdirektoratet /vedtak svarte ${side.status}`);
-      return [];
+    const side = await fetch(vedtakUrl, { headers: headers() });
+    const sideLest = await lesTekstRespons(side, vedtakUrl);
+    if ("feil" in sideLest) {
+      console.error(`Kulturdirektoratet ${vedtakUrl}: ${sideLest.feil.melding}`);
+      return feilUtfall(sideLest.feil);
     }
     samleCookies(jar, side);
-    const html = await side.text();
+    const html = sideLest.tekst;
     const attr = html.match(/data-hx-vals="([^"]*sprig:config[^"]*)"/)?.[1];
     if (!attr) {
-      console.error("Kulturdirektoratet: fant ikke sprig:config på /vedtak");
-      return [];
+      const feil = uventetFormat(vedtakUrl, "fant ikke sprig:config");
+      console.error(`Kulturdirektoratet: ${feil.melding}`);
+      return feilUtfall(feil);
     }
     const config = JSON.parse(attr.replaceAll("&quot;", '"'))["sprig:config"];
 
     // Steg 2: sprig-fragmentet med fersk CSRF-token
-    const frag = await fetch(
-      `${BASE}/actions/sprig-core/components/render?${
-        new URLSearchParams({ "sprig:config": config })
-      }`,
-      { headers: headers() },
-    );
-    if (!frag.ok) {
-      console.error(`Kulturdirektoratet sprig-render svarte ${frag.status}`);
-      return [];
+    const fragUrl = `${BASE}/actions/sprig-core/components/render?${
+      new URLSearchParams({ "sprig:config": config })
+    }`;
+    const frag = await fetch(fragUrl, { headers: headers() });
+    const fragLest = await lesTekstRespons(frag, fragUrl);
+    if ("feil" in fragLest) {
+      console.error(`Kulturdirektoratet sprig-render: ${fragLest.feil.melding}`);
+      return feilUtfall(fragLest.feil);
     }
     samleCookies(jar, frag);
-    const token = (await frag.text()).match(
+    const token = fragLest.tekst.match(
       /name="CRAFT_CSRF_TOKEN" value="([^"]+)"/,
     )?.[1];
     if (!token) {
-      console.error("Kulturdirektoratet: fant ikke CRAFT_CSRF_TOKEN i fragmentet");
-      return [];
+      const feil = uventetFormat(fragUrl, "fant ikke CRAFT_CSRF_TOKEN");
+      console.error(`Kulturdirektoratet: ${feil.melding}`);
+      return feilUtfall(feil);
     }
 
     // Steg 3: CSV-nedlasting (hele datasettet — aar-parameter ignoreres av serveren)
-    const csvRes = await fetch(
-      `${BASE}/actions/download-determination-csv/determination-download/csv`,
-      {
-        method: "POST",
-        headers: {
-          ...headers(),
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({ CRAFT_CSRF_TOKEN: token }),
+    const csvUrl = `${BASE}/actions/download-determination-csv/determination-download/csv`;
+    const csvRes = await fetch(csvUrl, {
+      method: "POST",
+      headers: {
+        ...headers(),
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-    );
-    if (!csvRes.ok) {
-      console.error(`Kulturdirektoratet CSV svarte ${csvRes.status}`);
-      return [];
+      body: new URLSearchParams({ CRAFT_CSRF_TOKEN: token }),
+    });
+    const csvLest = await lesTekstRespons(csvRes, csvUrl);
+    if ("feil" in csvLest) {
+      console.error(`Kulturdirektoratet CSV: ${csvLest.feil.melding}`);
+      return feilUtfall(csvLest.feil);
     }
     // Forfilteret dropper ~80 % av radene (Avslått/Ubesluttet) før feltparsing —
     // permissivt med vilje: falske positive lukes ut av grupperTildelinger.
+    // raatt_antall er radene som slapp forfilteret (før vindu/aggregering og dedup).
     const rader = parseVedtakCsv(
-      await csvRes.text(),
+      csvLest.tekst,
       (linje) => linje.includes("Innvilget"),
     );
     const items = grupperTildelinger(rader);
     console.log(
       `Kulturdirektoratet: ${rader.length} vedtaksrader, ${items.length} tildelingsrunder siste halvår`,
     );
-    return items;
+    return okUtfall(items, rader.length, items.length);
   } catch (e) {
     console.error("Kulturdirektoratet feil:", e);
-    return [];
+    return feilUtfall(feilFraUnntak(e, vedtakUrl));
   }
 }

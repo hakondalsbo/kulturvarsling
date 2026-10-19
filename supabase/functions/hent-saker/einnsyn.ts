@@ -2,6 +2,15 @@
 // Verifisert juli 2026: api.einnsyn.no er åpent for lesing uten API-nøkkel.
 // VIKTIG: datofiltrene heter moetedatoFrom/moetedatoTo — moetedatoAfter ignoreres STILLE.
 
+import {
+  feilFraUnntak,
+  feilUtfall,
+  lesTekstRespons,
+  okUtfall,
+  uventetFormat,
+  type AdapterUtfall,
+} from "./kildehelse.ts";
+
 const API = "https://api.einnsyn.no";
 
 export type EInnsynMoetesak = {
@@ -120,19 +129,30 @@ async function slåOppGeo(enhetId: string): Promise<OrganGeo> {
 }
 
 // Henter kultursaker fra politiske møter i hele landet (alle organ i eInnsyn).
-export async function hentEInnsynKultursaker(): Promise<any[]> {
-  const items: any[] = [];
+export async function hentEInnsynKultursaker(): Promise<AdapterUtfall> {
+  const url = `${API}/search?query=kultur&entity=Moetesak&limit=50`;
   try {
-    const res = await fetch(
-      `${API}/search?query=kultur&entity=Moetesak&limit=50`,
-      { headers: { Accept: "application/json" } },
-    );
-    if (!res.ok) {
-      console.error(`eInnsyn search svarte ${res.status}`);
-      return items;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const lest = await lesTekstRespons(res, url);
+    if ("feil" in lest) {
+      console.error(`eInnsyn search ${url}: ${lest.feil.melding}`);
+      return feilUtfall(lest.feil);
     }
-    const data = await res.json();
-    const rå: EInnsynMoetesak[] = data?.items ?? [];
+    let data: any;
+    try {
+      data = JSON.parse(lest.tekst);
+    } catch (e) {
+      const feil = feilFraUnntak(e, url);
+      console.error(`eInnsyn parse ${url}:`, e);
+      return feilUtfall(feil);
+    }
+    if (!Array.isArray(data?.items)) {
+      const feil = uventetFormat(url, "mangler items");
+      console.error(`eInnsyn ${url}: ${feil.melding}`);
+      return feilUtfall(feil);
+    }
+    const rå: EInnsynMoetesak[] = data.items;
+    const items: any[] = [];
 
     // Slå opp geografi per unik journalenhet (navn + kommunenr), maks 25 oppslag.
     const geoMap = new Map<string, OrganGeo>();
@@ -151,8 +171,9 @@ export async function hentEInnsynKultursaker(): Promise<any[]> {
     console.log(
       `eInnsyn: ${rå.length} møtesaker, ${unike.length} organ, ${medKommune} geo-tagget`,
     );
+    return okUtfall(items, rå.length, items.length);
   } catch (e) {
     console.error("eInnsyn feil:", e);
+    return feilUtfall(feilFraUnntak(e, url));
   }
-  return items;
 }

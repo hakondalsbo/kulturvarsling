@@ -4,6 +4,15 @@
 // Klikkbar lenke bruker Angular-appens rute (lest ut av produksjonsbundelen):
 //   /politikk/politiskeutvalg/:utvalgId/mote/:moteId/sak/:kildeId
 
+import {
+  feilFraUnntak,
+  feilUtfall,
+  lesTekstRespons,
+  okUtfall,
+  uventetFormat,
+  type AdapterUtfall,
+} from "./kildehelse.ts";
+
 const API = "https://www.bergen.kommune.no/politikere-utvalg/api";
 
 export type BergenAgendapunkt = {
@@ -64,29 +73,46 @@ export function mapBergenAgendapunkt(punkt: BergenAgendapunkt): {
 }
 
 // Henter kultursaker fra alle politiske utvalg i Bergen for inneværende år.
-export async function hentBergenSaker(): Promise<any[]> {
-  const items: any[] = [];
+// Paginering utover rows=150 er ikke implementert. numTotal logges så et kutt
+// (numTotal > items.length) er synlig; oppfølging, ikke denne endringen.
+export async function hentBergenSaker(): Promise<AdapterUtfall> {
+  const år = new Date().getFullYear();
+  const url = `${API}/agendapunkter?tittel=kultur&year=${år}&rows=150`;
   try {
-    const år = new Date().getFullYear();
-    const res = await fetch(
-      `${API}/agendapunkter?tittel=kultur&year=${år}&rows=150`,
-      { headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" } },
-    );
-    if (!res.ok) {
-      console.error(`Bergen agendapunkter svarte ${res.status}`);
-      return items;
+    const res = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" },
+    });
+    const lest = await lesTekstRespons(res, url);
+    if ("feil" in lest) {
+      console.error(`Bergen agendapunkter ${url}: ${lest.feil.melding}`);
+      return feilUtfall(lest.feil);
     }
-    const data = await res.json();
-    const rå: BergenAgendapunkt[] = data?.items ?? [];
+    let data: any;
+    try {
+      data = JSON.parse(lest.tekst);
+    } catch (e) {
+      const feil = feilFraUnntak(e, url);
+      console.error(`Bergen parse ${url}:`, e);
+      return feilUtfall(feil);
+    }
+    if (!Array.isArray(data?.items)) {
+      const feil = uventetFormat(url, "mangler items");
+      console.error(`Bergen ${url}: ${feil.melding}`);
+      return feilUtfall(feil);
+    }
+    const rå: BergenAgendapunkt[] = data.items;
+    const items: any[] = [];
     for (const punkt of rå) {
       const mappet = mapBergenAgendapunkt(punkt);
       if (mappet) items.push(mappet);
     }
+    const numTotal = typeof data.numTotal === "number" ? data.numTotal : null;
     console.log(
-      `Bergen: ${rå.length} agendapunkter (${år}), ${items.length} etter rutinesak-filter`,
+      `Bergen: numTotal=${numTotal ?? "mangler"}, rå=${rå.length}, etter rutinesak-filter=${items.length} (${år})`,
     );
+    return okUtfall(items, rå.length, items.length);
   } catch (e) {
     console.error("Bergen feil:", e);
+    return feilUtfall(feilFraUnntak(e, url));
   }
-  return items;
 }

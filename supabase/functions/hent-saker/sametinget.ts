@@ -3,7 +3,15 @@
 // 5 nyeste artiklene, så den daglige kjøringen må ikke hoppes over i travle uker.
 // «Innvilgede saker DD.MM.ÅÅ-DD.MM.ÅÅ» er sametingsrådets tildelingslister.
 
-import { parseRssItems, type RssItem } from "./logikk.ts";
+import { type RssItem } from "./logikk.ts";
+import {
+  feilFraUnntak,
+  feilUtfall,
+  lesTekstRespons,
+  okUtfall,
+  samleRssSvar,
+  type AdapterUtfall,
+} from "./kildehelse.ts";
 
 const FEED = "https://sametinget.no/ArtikkelRSS.ashx?NyhetsKategoriId=9&Spraak=Norsk";
 
@@ -26,23 +34,29 @@ export function mapSametingetItem(item: RssItem): RssItem & {
   };
 }
 
-export async function hentSametingetSaker(): Promise<any[]> {
-  const items: any[] = [];
+export async function hentSametingetSaker(): Promise<AdapterUtfall> {
   try {
     const res = await fetch(FEED, {
       headers: { "User-Agent": "Kulturvarsling/1.0" },
     });
-    if (!res.ok) {
-      console.error(`Sametinget RSS svarte ${res.status}`);
-      return items;
+    const lest = await lesTekstRespons(res, FEED);
+    if ("feil" in lest) {
+      console.error(`Sametinget RSS ${FEED}: ${lest.feil.melding}`);
+      return feilUtfall(lest.feil);
     }
-    const xml = await res.text();
-    for (const item of parseRssItems(xml, "Sametinget")) {
-      items.push(mapSametingetItem(item));
+    const samlet = samleRssSvar(
+      [{ url: FEED, instans: "Sametinget", status: res.status, kropp: lest.tekst }],
+      { forhandsGodkjent: true },
+    );
+    if (samlet.vellykket === 0) {
+      console.error(`Sametinget RSS ${FEED}: ${samlet.feil[0]?.melding ?? "ukjent"}`);
+      return samlet;
     }
+    const items = samlet.items.map((item) => mapSametingetItem(item));
     console.log(`Sametinget: ${items.length} nyheter hentet`);
+    return okUtfall(items, samlet.raattAntall, items.length);
   } catch (e) {
     console.error("Sametinget feil:", e);
+    return feilUtfall(feilFraUnntak(e, FEED));
   }
-  return items;
 }
