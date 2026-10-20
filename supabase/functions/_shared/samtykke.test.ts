@@ -15,20 +15,26 @@ import {
   hemmeligheterStemmer,
   lagEpost,
   lesToken,
+  loggNarResendMangler,
+  MELDING_VENTENDE_BEKREFTELSE,
   listUnsubscribeHeaders,
   opphavTillatt,
   oppsummerHopp,
   planleggUtsendelse,
   skalSkriveAvmelding,
+  svarAlleredeRegistrert,
+  svarEtterLagretPamelding,
   svarEtterSkriving,
+  velgVentendeBekreftelser,
   utsendingErAktiv,
   utsendelsesModus,
   validerPamelding,
 } from "./samtykke.ts";
 import { join } from "node:path";
-import { avsender, behandlingsansvarlig, bunntekst, orgnr, poststed } from "./organisasjon.ts";
+import { avsender, behandlingsansvarlig, bunntekst, lesAvsender, orgnr, poststed } from "./organisasjon.ts";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
+const LEVERT = "delivered@resend.dev";
 
 test("samtykke krever avkrysning, kjent versjon og ekte e-post", () => {
   assert.equal(validerPamelding({ samtykke: false, epost: "a@b.no", samtykke_tekst_versjon: SAMTYKKE_VERSJON }).ok, false);
@@ -37,12 +43,12 @@ test("samtykke krever avkrysning, kjent versjon og ekte e-post", () => {
   assert.equal(utdatert.ok, false);
   const ok = validerPamelding({
     samtykke: true,
-    epost: "  Ada@Example.NO ",
+    epost: "  Delivered@Resend.DEV ",
     fornavn: "Ada",
     etternavn: "Lovelace",
     samtykke_tekst_versjon: SAMTYKKE_VERSJON,
   });
-  assert.equal(ok.ok && !ok.bot && ok.verdi.epost, "ada@example.no");
+  assert.equal(ok.ok && !ok.bot && ok.verdi.epost, LEVERT);
   assert.equal(erGyldigEpost("ikke-en-epost"), false);
 });
 
@@ -110,18 +116,18 @@ test("utsendelse krever hemmelighet og når bare kvalifiserte adresser", () => {
   assert.equal(hemmeligheterStemmer("hemmelig", "hemmelig"), true);
   assert.equal(utsendelsesModus({}), "avvist");
   assert.equal(utsendelsesModus({ test: true }), "test");
-  assert.equal(utsendelsesModus({ til: "meg@example.no" }), "en");
+  assert.equal(utsendelsesModus({ til: LEVERT }), "en");
   assert.equal(utsendelsesModus({ til: "ikke-epost" }), "avvist");
   assert.equal(utsendelsesModus({ bekreft: "send" }), "alle");
 
   const mottakere = filtrerMottakere([
-    { id: 2, epost: "Ada@Example.no", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
-    { id: 1, epost: " ada@example.no ", avmeldings_token: "22222222-2222-4222-8222-222222222222", samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
+    { id: 2, epost: "Delivered@Resend.dev", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
+    { id: 1, epost: " delivered@resend.dev ", avmeldings_token: "22222222-2222-4222-8222-222222222222", samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
     { id: 3, epost: "gammel@example.no", avmeldings_token: null, samtykke_gitt_at: null, bekreftet_at: null, avmeldt_at: null },
     { id: 4, epost: "av@example.no", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: "t" },
     { id: 5, epost: "venter@example.no", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: null, avmeldt_at: null },
   ]);
-  assert.deepEqual(mottakere.map((rad) => rad.epost), ["ada@example.no"]);
+  assert.deepEqual(mottakere.map((rad) => rad.epost), [LEVERT]);
   assert.equal(mottakere[0].id, 1);
 });
 
@@ -163,17 +169,29 @@ test("one-click krever akkurat List-Unsubscribe=One-Click", () => {
   assert.equal(erOneClick("{}", "application/json"), false);
 });
 
-test("behandlingsansvarlig styres av én linje og brukes i e-post", () => {
+function lesOrgKonstanter(kilde: string): Record<string, string> {
+  const ut: Record<string, string> = {};
+  for (const navn of ["behandlingsansvarlig", "orgnr", "poststed"]) {
+    const treff = kilde.match(new RegExp(`^export const ${navn} = "([^"]*)";`, "m"));
+    assert.ok(treff, navn);
+    ut[navn] = treff[1];
+  }
+  return ut;
+}
+
+test("organisasjon er lik i funksjoner og nettleser", () => {
   const js = readFileSync("public/organisasjon.js", "utf8");
+  const ts = readFileSync("supabase/functions/_shared/organisasjon.ts", "utf8");
   const html = readFileSync("public/personvern.html", "utf8");
   const meldPa = readFileSync("supabase/functions/meld-pa/index.ts", "utf8");
   const nyhetsbrev = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
-  const navnelinjer = js.split("\n").filter((linje) => linje.startsWith("export const behandlingsansvarlig"));
-  assert.equal(navnelinjer.length, 1);
+  assert.deepEqual(lesOrgKonstanter(js), lesOrgKonstanter(ts));
+  assert.equal(lesOrgKonstanter(js).behandlingsansvarlig, behandlingsansvarlig);
   assert.equal(behandlingsansvarlig, "KULTURVARSLING AS");
   assert.equal(orgnr, "936 282 881");
   assert.equal(poststed, "Oslo");
   assert.doesNotMatch(js, /PLASSHOLDER/);
+  assert.doesNotMatch(ts, /from\s+["'][^"']*public\//);
   assert.doesNotMatch(html, /PLASSHOLDER/);
   assert.match(html, /data-org="behandlingsansvarlig"/);
   assert.match(html, /data-org="poststed"/);
@@ -184,14 +202,28 @@ test("behandlingsansvarlig styres av én linje og brukes i e-post", () => {
     '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
   );
   assert.equal(
+    lesAvsender(behandlingsansvarlig, { get: () => undefined }),
+    '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
+  );
+  assert.equal(
+    lesAvsender(behandlingsansvarlig, { get: () => "  " }),
+    '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
+  );
+  assert.equal(
+    lesAvsender(behandlingsansvarlig, { get: () => LEVERT }),
+    `"KULTURVARSLING AS" <${LEVERT}>`,
+  );
+  assert.equal(
     avsender("Åndsverkstedet AS", "Kulturvarsling <post@example.com>"),
     '"Åndsverkstedet AS" <post@example.com>',
   );
   assert.equal(bunntekst("Kulturvarsling AS"), "Behandlingsansvarlig: Kulturvarsling AS.");
-  assert.match(meldPa, /fraAdresse\(\)/);
+  assert.match(meldPa, /lesAvsender\(behandlingsansvarlig, Deno\.env\)/);
   assert.match(meldPa, /bunntekst\(behandlingsansvarlig\)/);
   assert.match(nyhetsbrev, /bunntekst\(behandlingsansvarlig\)/);
-  assert.match(nyhetsbrev, /fraAdresse\(\)/);
+  assert.match(nyhetsbrev, /lesAvsender\(behandlingsansvarlig, Deno\.env\)/);
+  assert.match(loggNarResendMangler("nyhetsbrev"), /RESEND_API_KEY mangler/);
+  assert.match(loggNarResendMangler("meld-pa"), /bekreftelse_sendt_at null/);
 });
 
 test("personvernsiden dekker pliktene og navngir behandlingsansvarlig", () => {
@@ -219,13 +251,13 @@ test("dry-run er standard og logger uten å sende", () => {
   assert.equal(utsendingErAktiv(" TRUE "), true);
 
   const plan = planleggUtsendelse([
-    { id: 2, epost: "Ada@Example.no", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
-    { id: 1, epost: " ada@example.no ", avmeldings_token: "22222222-2222-4222-8222-222222222222", samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
+    { id: 2, epost: "Delivered@Resend.dev", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
+    { id: 1, epost: " delivered@resend.dev ", avmeldings_token: "22222222-2222-4222-8222-222222222222", samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
     { id: 3, epost: "gammel@example.no", avmeldings_token: null, samtykke_gitt_at: null, bekreftet_at: null, avmeldt_at: null },
     { id: 4, epost: "av@example.no", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: "t" },
     { id: 5, epost: "venter@example.no", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: null, avmeldt_at: null },
   ]);
-  assert.deepEqual(plan.mottakere.map((rad) => rad.epost), ["ada@example.no"]);
+  assert.deepEqual(plan.mottakere.map((rad) => rad.epost), [LEVERT]);
   assert.equal(plan.mottakere[0].id, 1);
   const hopp = oppsummerHopp(plan.hoppetOver);
   assert.equal(hopp.duplikat, 1);
@@ -267,7 +299,7 @@ test("alle utgående e-poster har avmeldingslenke og List-Unsubscribe", () => {
   for (const emne of ["Bekreft påmelding til Kulturvarsling", "Ukens kulturbrev", "Nytt varsel"]) {
     const brev = lagEpost({
       fra: avsender(behandlingsansvarlig),
-      til: "a@example.no",
+      til: LEVERT,
       emne,
       html: "<p>Innhold</p>",
       tekst: "Innhold",
@@ -278,6 +310,7 @@ test("alle utgående e-poster har avmeldingslenke og List-Unsubscribe", () => {
     assert.match(brev.html, new RegExp(TOKEN));
     assert.match(brev.text, /Meld deg av:/);
     assert.match(brev.headers["List-Unsubscribe"], /<https:\/\/example\.test\/functions\/v1\/avmeld\?t=/);
+    assert.equal(brev.to, LEVERT);
     assert.equal(brev.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
   }
   assert.throws(() => lagEpost({
@@ -307,6 +340,7 @@ test("alle utgående e-poster har avmeldingslenke og List-Unsubscribe", () => {
   assert.deepEqual(sendere.sort(), [
     "supabase/functions/meld-pa/index.ts",
     "supabase/functions/nyhetsbrev/index.ts",
+    "supabase/functions/send-bekreftelser/index.ts",
   ]);
   for (const sti of sendere) {
     const kilde = readFileSync(sti, "utf8");
@@ -322,6 +356,162 @@ test("avmelding og bekreftelse viser ikke suksess før svaret er ok", () => {
     assert.doesNotMatch(html, /Du er meldt av/);
     assert.match(html, /Ingenting er endret/);
   }
+});
+
+test("funksjoner importerer ikke utenfor supabase/functions", () => {
+  const stack = ["supabase/functions"];
+  while (stack.length) {
+    const katalog = stack.pop()!;
+    for (const navn of readdirSync(katalog)) {
+      const sti = join(katalog, navn);
+      if (statSync(sti).isDirectory()) {
+        stack.push(sti);
+        continue;
+      }
+      if (!navn.endsWith(".ts")) continue;
+      const importlinjer = readFileSync(sti, "utf8")
+        .split("\n")
+        .filter((linje) => /^\s*import\b/.test(linje) || /\bfrom\s+["']/.test(linje));
+      const tekst = importlinjer.join("\n");
+      assert.doesNotMatch(tekst, /public\/organisasjon/, sti);
+      assert.doesNotMatch(tekst, /\.\.\/\.\.\//, sti);
+    }
+  }
+});
+
+test("lagret påmelding er suksess selv om e-posten ikke går", () => {
+  const uten = svarEtterLagretPamelding(false);
+  assert.equal(uten.ok, true);
+  assert.equal(uten.status, 200);
+  assert.equal(uten.melding, MELDING_VENTENDE_BEKREFTELSE);
+  const med = svarEtterLagretPamelding(true);
+  assert.equal(med.status, 200);
+  assert.notEqual(med.melding, MELDING_VENTENDE_BEKREFTELSE);
+  const allerede = svarAlleredeRegistrert(false);
+  assert.equal(allerede.ok, true);
+  assert.equal(allerede.status, 200);
+  assert.doesNotMatch(allerede.melding, /utsendingen er klar/);
+  assert.match(svarAlleredeRegistrert(true).melding, /allerede bekreftet/);
+
+  const meldPa = readFileSync("supabase/functions/meld-pa/index.ts", "utf8");
+  assert.match(meldPa, /svarEtterLagretPamelding\(/);
+  assert.match(meldPa, /svarAlleredeRegistrert\(/);
+  assert.match(meldPa, /bekreftelse_sendt_at:\s*null/);
+  assert.match(meldPa, /loggNarResendMangler\("meld-pa"\)/);
+  assert.doesNotMatch(meldPa, /\b502\b/);
+  assert.match(meldPa, /samtykke_gitt_at: naa/);
+  assert.match(meldPa, /samtykke_tekst_versjon: SAMTYKKE_VERSJON/);
+  assert.match(meldPa, /kilde: KILDE_VENTESIDE/);
+});
+
+test("manuell bekreftelse tar bare ventende nye rader og er ikke en tidsplan", () => {
+  const avToken = "22222222-2222-4222-8222-222222222222";
+  const valgt = velgVentendeBekreftelser([
+    {
+      id: 2,
+      epost: "Delivered@Resend.dev",
+      avmeldings_token: avToken,
+      bekreftelses_token: TOKEN,
+      samtykke_gitt_at: "t",
+      samtykke_tekst_versjon: SAMTYKKE_VERSJON,
+      bekreftet_at: null,
+      avmeldt_at: null,
+      bekreftelse_sendt_at: null,
+    },
+    {
+      id: 1,
+      epost: ` ${LEVERT} `,
+      avmeldings_token: avToken,
+      bekreftelses_token: "33333333-3333-4333-8333-333333333333",
+      samtykke_gitt_at: "t",
+      samtykke_tekst_versjon: SAMTYKKE_VERSJON,
+      bekreftet_at: null,
+      avmeldt_at: null,
+      bekreftelse_sendt_at: null,
+    },
+    {
+      id: 3,
+      epost: "gammel@example.no",
+      avmeldings_token: null,
+      bekreftelses_token: null,
+      samtykke_gitt_at: null,
+      samtykke_tekst_versjon: "venteside-2026-03-15",
+      bekreftet_at: null,
+      avmeldt_at: null,
+      bekreftelse_sendt_at: null,
+    },
+    {
+      id: 4,
+      epost: "av@example.no",
+      avmeldings_token: avToken,
+      bekreftelses_token: TOKEN,
+      samtykke_gitt_at: "t",
+      samtykke_tekst_versjon: SAMTYKKE_VERSJON,
+      bekreftet_at: null,
+      avmeldt_at: "t",
+      bekreftelse_sendt_at: null,
+    },
+    {
+      id: 5,
+      epost: "sendt@example.no",
+      avmeldings_token: avToken,
+      bekreftelses_token: TOKEN,
+      samtykke_gitt_at: "t",
+      samtykke_tekst_versjon: SAMTYKKE_VERSJON,
+      bekreftet_at: null,
+      avmeldt_at: null,
+      bekreftelse_sendt_at: null,
+    },
+    {
+      id: 6,
+      epost: "bekreftet@example.no",
+      avmeldings_token: avToken,
+      bekreftelses_token: TOKEN,
+      samtykke_gitt_at: "t",
+      samtykke_tekst_versjon: SAMTYKKE_VERSJON,
+      bekreftet_at: "t",
+      avmeldt_at: null,
+      bekreftelse_sendt_at: null,
+    },
+  ], { eposter: ["Sendt@Example.no"] });
+  assert.deepEqual(valgt.map((rad) => rad.epost), [LEVERT]);
+  assert.equal(valgt[0].id, 1);
+  assert.deepEqual(valgt[0].ovrigeIder, [2]);
+  assert.equal(velgVentendeBekreftelser([{
+    id: 1,
+    epost: LEVERT,
+    avmeldings_token: avToken,
+    bekreftelses_token: TOKEN,
+    samtykke_gitt_at: "t",
+    samtykke_tekst_versjon: SAMTYKKE_VERSJON,
+    bekreftet_at: null,
+    avmeldt_at: null,
+    bekreftelse_sendt_at: null,
+  }], { ids: new Set([1]) }).length, 0);
+
+  const kilde = readFileSync("supabase/functions/send-bekreftelser/index.ts", "utf8");
+  const config = readFileSync("supabase/config.toml", "utf8");
+  const sql = readFileSync("supabase/migrations/20261020193000_bekreftelse_venter.sql", "utf8");
+  const stopp = kilde.indexOf("Ventende rader er uendret");
+  const stempel = kilde.indexOf("bekreftelse_sendt_at:");
+  assert.ok(stopp > 0 && stempel > stopp);
+  assert.match(kilde, /x-bekreftelse-nokkel/);
+  assert.match(kilde, /hemmeligheterStemmer/);
+  assert.match(kilde, /velgVentendeBekreftelser/);
+  assert.match(kilde, /lagEpost\(/);
+  assert.match(kilde, /bekreftelse_utsendelser/);
+  assert.match(kilde, /Aldri cron/);
+  assert.match(kilde, /loggNarResendMangler\("send-bekreftelser"\)/);
+  assert.doesNotMatch(kilde, /cron\.schedule/);
+  assert.match(config, /\[functions\.send-bekreftelser\]\s+verify_jwt = true/);
+  assert.match(sql, /bekreftelse_sendt_at timestamptz/);
+  assert.match(sql, /bekreftelse_utsendelser/);
+  assert.match(sql, /enable row level security/);
+  assert.match(sql, /revoke all on table public\.bekreftelse_utsendelser from anon, authenticated/);
+  assert.match(sql, /'ikke_konfigurert'/);
+  assert.doesNotMatch(sql, /cron\.schedule/);
+  assert.doesNotMatch(sql, /bekreftelse_sendt_at\s*=\s*now\(\)/i);
+  assert.doesNotMatch(sql, /update\s+(public\.)?pamelding/i);
 });
 
 test("appen lagrer samtykket og sletter via funksjonen", () => {

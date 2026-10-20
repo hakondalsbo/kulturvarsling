@@ -1,4 +1,6 @@
-// Behandlingsansvarlig, verifisert i Enhetsregisteret. Én linje å endre.
+// Behandlingsansvarlig, verifisert i Enhetsregisteret.
+// Samme tre verdier som supabase/functions/_shared/organisasjon.ts.
+// Testen i samtykke.test.ts holder dem like. Endre begge steder.
 export const behandlingsansvarlig = "KULTURVARSLING AS";
 
 export const orgnr = "936 282 881";

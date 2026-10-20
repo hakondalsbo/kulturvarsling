@@ -328,6 +328,129 @@ export function lagEpost(input: {
   };
 }
 
+export const MELDING_VENTENDE_BEKREFTELSE =
+  "Takk! Du er registrert. Du får en e-post for å bekrefte påmeldingen så snart utsendingen er klar.";
+
+/**
+ * Lagringen har lyktes. Brukeren får aldri en feil av at e-posten ikke gikk.
+ * Uten sendt e-post forblir bekreftelse_sendt_at null.
+ */
+export function svarEtterLagretPamelding(epostSendt: boolean): {
+  ok: true;
+  status: 200;
+  melding: string;
+} {
+  return {
+    ok: true,
+    status: 200,
+    melding: epostSendt
+      ? "Sjekk e-posten din og klikk på bekreftelseslenken. Du er ikke på listen før den er bekreftet."
+      : MELDING_VENTENDE_BEKREFTELSE,
+  };
+}
+
+/** Allerede bekreftet rad. Ikke lov en bekreftelses-e-post som ikke ble sendt. */
+export function svarAlleredeRegistrert(epostSendt: boolean): {
+  ok: true;
+  status: 200;
+  melding: string;
+} {
+  return {
+    ok: true,
+    status: 200,
+    melding: epostSendt
+      ? "Sjekk e-posten din. Adressen er allerede bekreftet."
+      : "Takk! Du er allerede registrert og bekreftet.",
+  };
+}
+
+export function loggNarResendMangler(kontekst: "meld-pa" | "send-bekreftelser" | "nyhetsbrev"): string {
+  if (kontekst === "nyhetsbrev") {
+    return "nyhetsbrev: RESEND_API_KEY mangler. Ingenting er sendt.";
+  }
+  return `${kontekst}: RESEND_API_KEY mangler. E-post sendes ikke. Påmeldingen blir liggende med bekreftelse_sendt_at null.`;
+}
+
+export function bekreftelsesBrev(lenke: string, bunn: string): { emne: string; html: string; tekst: string } {
+  const href = escapeHtml(lenke);
+  const bunnHtml = escapeHtml(bunn);
+  return {
+    emne: "Bekreft påmelding til Kulturvarsling",
+    html: `<!doctype html><html lang="no"><body style="font-family:Georgia,serif;background:#FBF8F2;color:#1C1B19;padding:32px;">
+    <p>Bekreft at du vil motta nyhetsbrev fra Kulturvarsling.</p>
+    <p><a href="${href}">Bekreft påmeldingen</a></p>
+    <p style="color:#6B665C;font-size:14px;">Hvis du ikke ba om dette, kan du se bort fra e-posten. Ingenting sendes før lenken er bekreftet.</p>
+    <p style="color:#6B665C;font-size:14px;">${bunnHtml}</p>
+  </body></html>`,
+    tekst: `Bekreft påmeldingen ved å åpne lenken:\n${lenke}\n\nIngenting sendes før lenken er bekreftet.\n\n${bunn}`,
+  };
+}
+
+export type Bekreftelsesrad = {
+  id: number;
+  epost: string | null;
+  avmeldings_token: string | null;
+  bekreftelses_token: string | null;
+  samtykke_gitt_at: string | null;
+  samtykke_tekst_versjon: string | null;
+  bekreftet_at: string | null;
+  avmeldt_at: string | null;
+  bekreftelse_sendt_at: string | null;
+};
+
+export type VentendeBekreftelse = {
+  id: number;
+  epost: string;
+  avmeldings_token: string;
+  bekreftelses_token: string;
+  ovrigeIder: number[];
+};
+
+/**
+ * Rader som venter på bekreftelses-e-post. Historisk tekstversjon,
+ * ubekreftet samtykke, avmeldte og allerede sendte tas ikke med.
+ * Én e-post per adresse, laveste id. Øvrige id-er stemples sammen med den.
+ */
+export function velgVentendeBekreftelser(
+  rader: Bekreftelsesrad[],
+  allerede: { ids?: ReadonlySet<number>; eposter?: ReadonlySet<string> } = {},
+): VentendeBekreftelse[] {
+  const blokkertId = allerede.ids ?? new Set<number>();
+  const blokkertEpost = new Set<string>();
+  for (const adresse of allerede.eposter ?? []) {
+    const epost = normaliserEpost(adresse);
+    if (erGyldigEpost(epost)) blokkertEpost.add(epost);
+  }
+  for (const rad of rader) {
+    const epost = normaliserEpost(rad.epost ?? "");
+    if (!erGyldigEpost(epost)) continue;
+    if (rad.bekreftelse_sendt_at || blokkertId.has(rad.id)) blokkertEpost.add(epost);
+  }
+  const grupper = new Map<string, VentendeBekreftelse>();
+  const sortert = [...rader].sort((a, b) => a.id - b.id);
+  for (const rad of sortert) {
+    const epost = normaliserEpost(rad.epost ?? "");
+    if (!erGyldigEpost(epost) || blokkertEpost.has(epost)) continue;
+    if (!rad.samtykke_gitt_at) continue;
+    if (rad.samtykke_tekst_versjon !== SAMTYKKE_VERSJON) continue;
+    if (rad.bekreftet_at || rad.avmeldt_at || rad.bekreftelse_sendt_at) continue;
+    if (!erUuid(rad.bekreftelses_token) || !erUuid(rad.avmeldings_token)) continue;
+    const finnes = grupper.get(epost);
+    if (finnes) {
+      finnes.ovrigeIder.push(rad.id);
+      continue;
+    }
+    grupper.set(epost, {
+      id: rad.id,
+      epost,
+      avmeldings_token: rad.avmeldings_token,
+      bekreftelses_token: rad.bekreftelses_token,
+      ovrigeIder: [],
+    });
+  }
+  return [...grupper.values()];
+}
+
 /** Suksess bare når skrivingen faktisk gikk gjennom. */
 export function svarEtterSkriving(
   feil: string | null,

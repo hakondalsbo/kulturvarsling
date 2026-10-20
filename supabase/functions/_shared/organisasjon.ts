@@ -1,9 +1,12 @@
-// Verdien styres av én linje i public/organisasjon.js.
-import { behandlingsansvarlig, orgnr, poststed } from "../../../public/organisasjon.js";
+// Samme tre verdier som public/organisasjon.js.
+// Testen «organisasjon er lik i funksjoner og nettleser» holder dem like.
+// Funksjonene importerer ikke filer utenfor supabase/functions.
+export const behandlingsansvarlig = "KULTURVARSLING AS";
 
-export { behandlingsansvarlig, orgnr, poststed };
+export const orgnr = "936 282 881";
+export const poststed = "Oslo";
 
-const POSTKASSE = "nyhetsbrev@kulturvarsling.no";
+export const STANDARD_AVSENDER_EPOST = "nyhetsbrev@kulturvarsling.no";
 
 /** Avsender med visningsnavnet fra konfigurasjonen. E-postdelen kan komme fra AVSENDER. */
 export function avsender(navn: string, eksisterende?: string | null): string {
@@ -11,9 +14,17 @@ export function avsender(navn: string, eksisterende?: string | null): string {
     ?? (eksisterende && /^[^\s<>]+@[^\s<>]+$/.test(eksisterende.trim())
       ? eksisterende.trim()
       : null);
-  const epost = fraHemmelighet ?? POSTKASSE;
+  const epost = fraHemmelighet ?? STANDARD_AVSENDER_EPOST;
   const trygg = navn.replace(/["\r\n]/g, "").trim() || behandlingsansvarlig;
   return `"${trygg}" <${epost}>`;
+}
+
+/** Leser AVSENDER. Tom eller manglende verdi blir nyhetsbrev@kulturvarsling.no. */
+export function lesAvsender(
+  navn: string,
+  miljo: { get(nokkel: string): string | undefined } | null | undefined,
+): string {
+  return avsender(navn, miljo?.get("AVSENDER"));
 }
 
 export function bunntekst(navn: string): string {

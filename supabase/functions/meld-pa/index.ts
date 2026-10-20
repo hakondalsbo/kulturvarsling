@@ -4,24 +4,31 @@
 // Misbruk stanses med validering, honeypot og rate limit – ikke med en
 // hemmelighet i frontend.
 //
+// Lagringen er suksess for brukeren selv om Resend mangler eller avviser.
+// Raden blir liggende med bekreftelse_sendt_at null til e-posten er sendt.
+//
 // POST { fornavn, etternavn, epost, samtykke: true, samtykke_tekst_versjon }
 // POST { handling: "bekreft", token }
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { avsender, behandlingsansvarlig, bunntekst } from "../_shared/organisasjon.ts";
+import { behandlingsansvarlig, bunntekst, lesAvsender } from "../_shared/organisasjon.ts";
 import {
   KILDE_VENTESIDE,
   SAMTYKKE_VERSJON,
   avmeldingsFunksjon,
   avmeldingsSide,
+  bekreftelsesBrev,
   bekreftelsesSide,
   bekreftelsesutfall,
   erBlokkert,
   erUuid,
   escapeHtml,
   lagEpost,
+  loggNarResendMangler,
   opphavTillatt,
+  svarAlleredeRegistrert,
+  svarEtterLagretPamelding,
   svarEtterSkriving,
   validerPamelding,
 } from "../_shared/samtykke.ts";
@@ -33,7 +40,7 @@ const CORS = {
 };
 
 function fraAdresse(): string {
-  return avsender(behandlingsansvarlig, Deno.env.get("AVSENDER"));
+  return lesAvsender(behandlingsansvarlig, Deno.env);
 }
 
 function svar(body: unknown, status = 200): Response {
@@ -79,26 +86,63 @@ async function antallSiden(
   return count ?? 0;
 }
 
-async function sendEpost(brev: ReturnType<typeof lagEpost>): Promise<boolean> {
+type SendResultat = {
+  ok: boolean;
+  grunn: "sendt" | "mangler" | "avvist" | "feil";
+  resendId: string | null;
+};
+
+async function sendEpost(
+  brev: ReturnType<typeof lagEpost>,
+  spor: "ny" | "allerede",
+): Promise<SendResultat> {
   const key = Deno.env.get("RESEND_API_KEY");
-  if (!key) return false;
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: brev.from,
-      to: brev.to,
-      subject: brev.subject,
-      html: brev.html,
-      text: brev.text,
-      headers: brev.headers,
-    }),
-  });
-  if (!res.ok) console.error("Resend feilet", res.status);
-  return res.ok;
+  if (!key) {
+    console.error(loggNarResendMangler("meld-pa"));
+    if (spor === "allerede") {
+      console.error("meld-pa: allerede bekreftet adresse får ingen e-post. Raden er uendret.");
+    }
+    return { ok: false, grunn: "mangler", resendId: null };
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: brev.from,
+        to: brev.to,
+        subject: brev.subject,
+        html: brev.html,
+        text: brev.text,
+        headers: brev.headers,
+      }),
+    });
+    const tekst = await res.text();
+    let resendId: string | null = null;
+    try { resendId = JSON.parse(tekst).id ?? null; } catch { /* tomt svar */ }
+    if (!res.ok) {
+      console.error(
+        `meld-pa: Resend avslo e-posten (${res.status}). ${
+          spor === "ny"
+            ? "Påmeldingen er lagret. bekreftelse_sendt_at forblir null."
+            : "Adressen er allerede bekreftet."
+        }`,
+      );
+      return { ok: false, grunn: "avvist", resendId: null };
+    }
+    return { ok: true, grunn: "sendt", resendId };
+  } catch (e) {
+    console.error(
+      spor === "ny"
+        ? "meld-pa: kall til Resend feilet. Påmeldingen er lagret. bekreftelse_sendt_at forblir null."
+        : "meld-pa: kall til Resend feilet. Adressen er allerede bekreftet.",
+      e,
+    );
+    return { ok: false, grunn: "feil", resendId: null };
+  }
 }
 
 function brevMedAvmelding(
@@ -125,14 +169,17 @@ function medBunn(html: string): string {
   return `${html}<p style="color:#6B665C;font-size:14px;">${bunn}</p>`;
 }
 
-function bekreftHtml(lenke: string): string {
-  const href = escapeHtml(lenke);
-  return `<!doctype html><html lang="no"><body style="font-family:Georgia,serif;background:#FBF8F2;color:#1C1B19;padding:32px;">
-    <p>Bekreft at du vil motta nyhetsbrev fra Kulturvarsling.</p>
-    <p><a href="${href}">Bekreft påmeldingen</a></p>
-    <p style="color:#6B665C;font-size:14px;">Hvis du ikke ba om dette, kan du se bort fra e-posten. Ingenting sendes før lenken er bekreftet.</p>
-    ${medBunn("")}
-  </body></html>`;
+async function loggBekreftelse(
+  db: ReturnType<typeof admin>,
+  rad: { pameldingId: number | null; epost: string; status: string; resendId: string | null },
+): Promise<void> {
+  const { error } = await db.from("bekreftelse_utsendelser").insert({
+    pamelding_id: rad.pameldingId,
+    epost_normalisert: rad.epost,
+    resend_id: rad.resendId,
+    status: rad.status,
+  });
+  if (error) console.error("bekreftelse-logg", error.message);
 }
 
 Deno.serve(async (req: Request) => {
@@ -230,21 +277,20 @@ Deno.serve(async (req: Request) => {
         .update({ avmeldings_token: avToken })
         .eq("id", rader[0].id);
       if (tokenFeil) {
-        console.error("token", tokenFeil.message);
-        return svar({ ok: false, feil: "Kunne ikke sende e-posten. Ingenting er endret." }, 500);
+        console.error("meld-pa: allerede bekreftet, men token ble ikke lagret.", tokenFeil.message);
+        const kropp = svarAlleredeRegistrert(false);
+        return svar({ ok: true, melding: kropp.melding }, kropp.status);
       }
     }
-    const sendt = await sendEpost(brevMedAvmelding(
+    const resultat = await sendEpost(brevMedAvmelding(
       validert.verdi.epost,
       "Du er allerede påmeldt Kulturvarsling",
       medBunn("<p>Adressen er allerede bekreftet. Du trenger ikke gjøre noe mer.</p>"),
       `Adressen er allerede bekreftet. Du trenger ikke gjøre noe mer.\n\n${bunntekst(behandlingsansvarlig)}`,
       avToken,
-    ));
-    if (!sendt) {
-      return svar({ ok: false, feil: "Du er allerede påmeldt, men e-posten kom ikke fram. Prøv igjen." }, 502);
-    }
-    return svar({ ok: true, melding: "Sjekk e-posten din. Adressen er allerede bekreftet." });
+    ), "allerede");
+    const kropp = svarAlleredeRegistrert(resultat.ok);
+    return svar({ ok: true, melding: kropp.melding }, kropp.status);
   }
 
   const token = crypto.randomUUID();
@@ -256,27 +302,33 @@ Deno.serve(async (req: Request) => {
     samtykke_tekst_versjon: SAMTYKKE_VERSJON,
     kilde: KILDE_VENTESIDE,
     bekreftet_at: null,
+    bekreftelse_sendt_at: null,
     bekreftelses_token: token,
   };
 
   if (!avToken) avToken = crypto.randomUUID();
 
+  let ids: number[] = [];
   if (rader.length === 0) {
-    const { error } = await db.from("pamelding").insert({
+    const { data: opprettet, error } = await db.from("pamelding").insert({
       ...felles,
       epost: validert.verdi.epost,
       avmeldings_token: avToken,
-    });
-    if (error) {
-      console.error("pamelding insert", error.message);
+    }).select("id").single();
+    if (error || opprettet?.id == null) {
+      console.error("pamelding insert", error?.message ?? "mangler id");
       return svar({ ok: false, feil: "Kunne ikke lagre påmeldingen. Ingenting er registrert." }, 500);
     }
+    ids = [opprettet.id];
   } else {
     const { error } = await db.from("pamelding").update(felles).in("id", rader.map((rad) => rad.id));
     if (error) {
       console.error("pamelding update", error.message);
       return svar({ ok: false, feil: "Kunne ikke lagre påmeldingen. Ingenting er bekreftet." }, 500);
     }
+    ids = rader.map((rad) => rad.id);
+    const { error: slettLoggFeil } = await db.from("bekreftelse_utsendelser").delete().in("pamelding_id", ids);
+    if (slettLoggFeil) console.error("bekreftelse-logg slett", slettLoggFeil.message);
     let skrevAvToken = rader.some((rad) => rad.avmeldings_token === avToken);
     for (const rad of rader) {
       if (rad.avmeldings_token) continue;
@@ -286,25 +338,38 @@ Deno.serve(async (req: Request) => {
         .update({ avmeldings_token: neste })
         .eq("id", rad.id);
       if (tokenFeil) {
-        console.error("token", tokenFeil.message);
-        return svar({ ok: false, feil: "Kunne ikke lagre påmeldingen. Prøv igjen." }, 500);
+        console.error("meld-pa: påmeldingen er lagret, men avmeldingstoken ble ikke skrevet.", tokenFeil.message);
+        const kropp = svarEtterLagretPamelding(false);
+        return svar({ ok: true, melding: kropp.melding }, kropp.status);
       }
     }
   }
 
   const lenke = bekreftelsesSide(offentligUrl(), token);
-  const sendt = await sendEpost(brevMedAvmelding(
+  const innhold = bekreftelsesBrev(lenke, bunntekst(behandlingsansvarlig));
+  const resultat = await sendEpost(brevMedAvmelding(
     validert.verdi.epost,
-    "Bekreft påmelding til Kulturvarsling",
-    bekreftHtml(lenke),
-    `Bekreft påmeldingen ved å åpne lenken:\n${lenke}\n\nIngenting sendes før lenken er bekreftet.\n\n${bunntekst(behandlingsansvarlig)}`,
+    innhold.emne,
+    innhold.html,
+    innhold.tekst,
     avToken,
-  ));
-  if (!sendt) {
-    return svar({ ok: false, feil: "Vi fikk ikke sendt bekreftelses-e-posten. Prøv igjen." }, 502);
-  }
-  return svar({
-    ok: true,
-    melding: "Sjekk e-posten din og klikk på bekreftelseslenken. Du er ikke på listen før den er bekreftet.",
+  ), "ny");
+  const status = resultat.ok ? "sendt" : resultat.grunn === "mangler" ? "ikke_konfigurert" : "feilet";
+  await loggBekreftelse(db, {
+    pameldingId: ids[0] ?? null,
+    epost: validert.verdi.epost,
+    status,
+    resendId: resultat.resendId,
   });
+  if (resultat.ok) {
+    const { error: stempelFeil } = await db.from("pamelding")
+      .update({ bekreftelse_sendt_at: new Date().toISOString() })
+      .in("id", ids)
+      .is("bekreftelse_sendt_at", null);
+    if (stempelFeil) {
+      console.error("meld-pa: e-posten ble sendt, men bekreftelse_sendt_at ble ikke satt.", stempelFeil.message);
+    }
+  }
+  const kropp = svarEtterLagretPamelding(resultat.ok);
+  return svar({ ok: true, melding: kropp.melding }, kropp.status);
 });

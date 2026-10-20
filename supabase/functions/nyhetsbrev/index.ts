@@ -19,14 +19,13 @@
 //
 // Secrets: NYHETSBREV_NOKKEL, RESEND_API_KEY, ANTHROPIC_API_KEY,
 // valgfritt UTSENDING_AKTIV, AVSENDER og OFFENTLIG_URL.
-// Avsenderens visningsnavn kommer fra public/organisasjon.js.
+// Avsender leses fra AVSENDER, med standard nyhetsbrev@kulturvarsling.no.
+// Visningsnavnet kommer fra supabase/functions/_shared/organisasjon.ts.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { avsender, behandlingsansvarlig, bunntekst } from "../_shared/organisasjon.ts";
+import { behandlingsansvarlig, bunntekst, lesAvsender } from "../_shared/organisasjon.ts";
 import {
-  avmeldingsFunksjon,
-  avmeldingsSide,
   avmeldingsFunksjon,
   avmeldingsSide,
   dryRunLogg,
@@ -34,6 +33,7 @@ import {
   escapeHtml,
   hemmeligheterStemmer,
   lagEpost,
+  loggNarResendMangler,
   normaliserEpost,
   oppsummerHopp,
   planleggUtsendelse,
@@ -43,7 +43,7 @@ import {
 } from "../_shared/samtykke.ts";
 
 function fraAdresse(): string {
-  return avsender(behandlingsansvarlig, Deno.env.get("AVSENDER"));
+  return lesAvsender(behandlingsansvarlig, Deno.env);
 }
 
 function json(body: unknown, status = 200): Response {
@@ -276,7 +276,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const resendKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendKey) return json({ feil: "mangler RESEND_API_KEY. Ingenting er sendt." }, 500);
+    if (!resendKey) {
+      console.error(loggNarResendMangler("nyhetsbrev"));
+      return json({ feil: "mangler RESEND_API_KEY. Ingenting er sendt." }, 500);
+    }
 
     const utsendelseId = crypto.randomUUID();
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
