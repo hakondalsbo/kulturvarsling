@@ -7,17 +7,21 @@ import {
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
+  byggSammendragPrompt,
   byggVarselRad,
   dedupEtterInnhold,
   dedupEtterKilde,
   erKulturRelevant,
   erKulturSak,
   erPortefoljesak,
+  erRegjeringenHoring,
   erRegjeringenRelevant,
   finnHøringsfrist,
   innholdDedupNokkel,
   kategoriFraTittel,
   kildeNokkel,
+  planleggEmneDedup,
+  sakstypeFraSak,
   statusForSak,
   stortingsSesjoner,
 } from "./logikk.ts";
@@ -26,7 +30,7 @@ import { hentBergenSaker } from "./bergen.ts";
 import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
 import { hentSametingetSaker } from "./sametinget.ts";
 import { hentRegjeringenRSS, parseOgBerik } from "./regjeringen.ts";
-import { BACKFILL_KODE, kjorRegjeringenBackfill } from "./backfill.ts";
+import { BACKFILL_KODE, kjorRegjeringenBackfill, planleggTommeHoringsfrister } from "./backfill.ts";
 import {
   feilFraStatus,
   feilFraUnntak,
@@ -272,24 +276,7 @@ async function analyserMedClaude(
         messages: [
           {
             role: "user",
-            content: `Du er ekspert på norsk kulturpolitikk. Vurder om denne saken er DIREKTE relevant for profesjonelle aktører i norsk kultursektor (kunstnere, kulturinstitusjoner, kulturorganisasjoner).
-
-Tittel: ${item.tittel}
-${item.sammendrag_raa ? `Beskrivelse: ${item.sammendrag_raa.slice(0, 400)}` : ""}
-Instans: ${item.instans}
-
-RELEVANT = ja BARE hvis saken direkte berører: finansiering av kunst/kultur, kulturinstitusjoner, kunstnerstipend, kulturbygg, scenekunst, musikk, film, museer, bibliotek, kulturarv, opphavsrett, kulturpolitikk, kulturskoler, kulturfond, dataspill, mediepolitikk, kringkasting, pengespill (herunder nettpoker) eller statsbudsjettet til Kultur- og likestillingsdepartementet.
-
-IKKE RELEVANT = saker om: forsvar, beredskap, helse, skole (unntatt kulturskole), justis, samferdsel, AI i utdanning generelt, helikopter, redning, eller andre saker som bare nevner "kultur" i forbifarten (for eksempel fordi Kultur- og likestillingsdepartementet står som avsender uten at innholdet gjelder kultur, medier, spill eller stipend).
-
-Svar BARE med gyldig JSON, ingen markdown:
-{
-  "relevant": true eller false,
-  "kategori": "scenekunst" | "musikk" | "dans" | "opera" | "litteratur" | "film" | "visuell" | "museer" | "spill" | "kulturarv",
-  "niva": "nasjonalt" | "fylke" | "kommune",
-  "status": "kritisk" | "viktig" | "normal",
-  "sammendrag": "1-2 konkrete setninger om hva saken betyr for kulturfeltet"
-}`,
+            content: byggSammendragPrompt(item),
           },
         ],
       }),
@@ -362,6 +349,35 @@ async function lesJobb(req: Request): Promise<{ kjoertAv: KjoertAv; backfill: st
   };
 }
 
+async function fyllTommeHoringsfrister(
+  supabase: { from: (t: string) => any },
+  frister: ReadonlyMap<string, string> | undefined,
+): Promise<number> {
+  if (!frister || frister.size === 0) return 0;
+  const { data, error } = await supabase
+    .from("varsler")
+    .select("id, kilde, tittel, instans, sammendrag, frist, manuelt_redigert")
+    .is("frist", null)
+    .eq("manuelt_redigert", false)
+    .ilike("kilde", "%regjeringen.no%");
+  if (error) {
+    console.error("Kunne ikke lese høringer uten frist");
+    return 0;
+  }
+  const plan = planleggTommeHoringsfrister({ eksisterende: data ?? [], frister });
+  let n = 0;
+  for (const op of plan) {
+    const { error: u } = await supabase
+      .from("varsler")
+      .update(op.felt)
+      .eq("id", op.id)
+      .eq("manuelt_redigert", false);
+    if (u) console.error("Fristoppdatering feilet");
+    else n++;
+  }
+  return n;
+}
+
 async function kjørAdapter(
   navn: string,
   fn: () => Promise<AdapterUtfall>,
@@ -403,8 +419,9 @@ async function lagreVarsel(
   };
 }
 
-// Klartekst etter innsetting. Feil her skal ikke velte resten av kjøringen.
-// Over taket blir raden liggende uten generell klartekst til backfill-klartekst.
+// Klartekst etter innsetting, som på main etter #6. Feil her skal ikke velte
+// resten av kjøringen. Over taket blir raden liggende uten generell klartekst
+// til backfill-klartekst. Upubliserte koblinger kaller ikke denne.
 async function skrivKlartekst(
   supabase: { from: (t: string) => any },
   varselId: string,
@@ -470,10 +487,10 @@ Deno.serve(async (req: Request) => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     // Hent eksisterende kilder for deduplicering. Feil her avbryter før innhenting.
-    // Innholdsnøkkelen (instans, tittel, frist, sak-id) fanger samme sak på ny URL.
+    // id og sammendrag trengs av emne-dedup. frist trengs av innholdsnøkkelen.
     const { data: eks, error: eksFeil } = await supabase
       .from("varsler")
-      .select("kilde, instans, tittel, frist");
+      .select("id, kilde, instans, tittel, frist, sammendrag");
     if (eksFeil) {
       return jsonSvar({ feil: "Eksisterende saker kunne ikke hentes. Ingen innhenting startet." }, 503);
     }
@@ -538,18 +555,22 @@ Deno.serve(async (req: Request) => {
     });
     // Samme normaliserte URL to ganger i én kjøring (to sesjoner, eller samme
     // sak to ganger) blir én rad. Det var slik p=200362 og p=200367 ble doblet.
-    // Deretter samme instans, normalisert tittel og frist: møtesaken som
-    // ligger på flere URL-er settes inn én gang. Vi oppdaterer ikke eksisterende
-    // rader, så manuelt redigert tittel, sammendrag og kategori blir stående.
+    // URL først, deretter samme instans, tittel og frist. Emne-laget kobler
+    // nyhet og tale til høringen når titlene er ulike. Eksisterende rader
+    // oppdateres ikke her.
     const etterUrl = dedupEtterKilde(kandidater, eksKilder);
-    const nye = dedupEtterInnhold(etterUrl, eksInnhold);
+    const etterInnhold = dedupEtterInnhold(etterUrl, eksInnhold);
+    const emnePlan = planleggEmneDedup(etterInnhold, eks ?? []);
+    const nye = emnePlan.behold;
 
     console.log(
-      `Totalt hentet: ${alle.length}, nye og relevante: ${nye.length}`,
+      `Totalt hentet: ${alle.length}, nye og relevante: ${nye.length}, samme sak: ${emnePlan.koblinger.length}`,
     );
 
     let antallLagret = 0;
     const lagretPerAdapter = new Map<string, number>();
+    const horingUtenFrist = new Map<string, number>();
+    const idEtterKilde = new Map<string, string>();
     const driftFeil: string[] = [];
     const varsletManglendeKilde = new Set<string>();
     const merkManglendeKilde = (adapter: string | undefined, kildeId: unknown) => {
@@ -557,6 +578,13 @@ Deno.serve(async (req: Request) => {
       varsletManglendeKilde.add(adapter);
       driftFeil.push(`${adapter}: ingen kilde_id i kilderegisteret`);
     };
+
+    const regjeringen = kjøringer.find((k) => k.navn === "regjeringen-rss");
+    const fyltFrist = await fyllTommeHoringsfrister(
+      supabase,
+      regjeringen?.utfall.horingsfrister,
+    );
+    if (fyltFrist > 0) console.log(`Satte manglende høringsfrist på ${fyltFrist} saker`);
 
     // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
     // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke
@@ -640,6 +668,7 @@ Deno.serve(async (req: Request) => {
         status = statusForSak(item.frist, item.motedato);
       }
 
+      item.sakstype = item.sakstype ?? sakstypeFraSak(item);
       const rad = byggVarselRad(item, {
         publisert: true,
         kategori,
@@ -664,10 +693,21 @@ Deno.serve(async (req: Request) => {
           (lagretPerAdapter.get(item.adapter) ?? 0) + 1,
         );
         const nokkel = kildeNokkel(item.kilde);
-        if (nokkel) eksKilder.add(nokkel);
+        if (nokkel) {
+          eksKilder.add(nokkel);
+          if (lagret.id) idEtterKilde.set(nokkel, lagret.id);
+        }
         const innhold = innholdDedupNokkel(item);
         if (innhold) eksInnhold.add(innhold);
-        // Relevans er Haiku. Klartekst er Sonnet, samme modell som klartekst-funksjonen.
+        if (
+          item.adapter === "regjeringen-rss" &&
+          erRegjeringenHoring(item) &&
+          !item.frist
+        ) {
+          horingUtenFrist.set(item.adapter, (horingUtenFrist.get(item.adapter) ?? 0) + 1);
+        }
+        // Klartekst fra #6, bare på publisert innsetting. Upubliserte koblinger
+        // under bruker ikke Sonnet-kvoten.
         if (anthropicKey && lagret.id) {
           if (klartekstForsok >= MAKS_KLARTEKST_PER_KJORING) {
             klartekstUtsatt++;
@@ -692,6 +732,36 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    for (const kobling of emnePlan.koblinger) {
+      const item = kobling.item;
+      const hovedNokkel = kildeNokkel(kobling.hovedKilde);
+      const hovedsakId = kobling.hovedsakId ?? (hovedNokkel ? idEtterKilde.get(hovedNokkel) ?? null : null);
+      item.sakstype = item.sakstype ?? sakstypeFraSak(item);
+      const rad = byggVarselRad(item, {
+        publisert: false,
+        kategori: kategoriFraTittel(item.tittel, item.sammendrag_raa ?? ""),
+        niva: item.niva ?? "nasjonalt",
+        status: statusForSak(item.frist, item.motedato),
+        sammendrag: "Samme sak som en allerede registrert høring eller pressemelding.",
+        sted: item.sted ?? "Nasjonalt",
+      }, kilderMap);
+      if (!rad) {
+        driftFeil.push(`${item.tittel.slice(0, 60)}: mangler kilde-URL`);
+        continue;
+      }
+      rad.hovedsak_id = hovedsakId;
+      rad.sakstype = item.sakstype;
+      merkManglendeKilde(item.adapter, rad.kilde_id);
+      const koblet = await lagreVarsel(supabase, rad);
+      if (koblet.error) driftFeil.push(`${item.tittel}: ${koblet.error.message}`);
+      else {
+        const nokkel = kildeNokkel(item.kilde);
+        if (nokkel) eksKilder.add(nokkel);
+        const innhold = innholdDedupNokkel(item);
+        if (innhold) eksInnhold.add(innhold);
+      }
+    }
+
     // Kjøringslogg per kilde. antall_funnet = råtreff før filter/dedup.
     // «tom» bare når en kilde som kan være tom svarte OK med 0 råtreff.
     // Kilder med forventer_treff får feil_tomt_svar i stedet. http_status
@@ -709,6 +779,7 @@ Deno.serve(async (req: Request) => {
         vellykket: k.utfall.vellykket,
         httpStatus: k.utfall.httpStatus,
         forventerTreff: meta?.forventerTreff ?? false,
+        manglendeFrist: horingUtenFrist.get(k.navn) ?? 0,
       });
       kildeStatus.push({
         adapter: k.navn,

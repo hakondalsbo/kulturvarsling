@@ -15,9 +15,10 @@ import {
   STATSBUDSJETT_VARSEL_ID,
   backfillFeeds,
   planleggBackfill,
+  planleggTommeHoringsfrister,
   type EksisterendeVarsel,
 } from "./backfill.ts";
-import { filtrerRegjeringenItems } from "./regjeringen.ts";
+import { filtrerRegjeringenItems, hentHoringsliste } from "./regjeringen.ts";
 import type { RssItem } from "./logikk.ts";
 
 const NÅ = Date.parse("2026-10-20T12:00:00Z");
@@ -29,7 +30,6 @@ const BUDSJETT = [
   "Statsbudsjettet 2027: Æresløn til Mari Boine",
   "Statsbudsjettet 2027: Regjeringa gir stønad til fem nye prosjekt i ordninga Nasjonale kulturbygg",
   "Statsbudsjettet 2027: Meir til kunstnarane i Statens kunstnarstipend",
-  "Statsbudsjettet 2027: Regjeringa vil ha nytt nasjonalt toppidrettssenter",
   "Statsbudsjettet 2027: Arbeidarparti-regjeringa styrker filmfeltet med 75 millionar kroner",
   "Statsbudsjettet 2027: Full momskompensasjon for frivilligheit og idrett også i 2027",
 ];
@@ -121,7 +121,10 @@ test("backfill setter inn de manglende sakene én gang, og hopper over støy", (
   assert.equal(titler.some((t) => String(t).includes("nynorskkommune")), false);
   assert.equal(titler.some((t) => String(t).includes("besøker Kina")), false);
   assert.equal(titler.some((t) => String(t).includes("barnevernet")), false);
-  assert.equal(første.nye.length, 14);
+  assert.equal(første.nye.length, 13);
+  assert.equal(første.koblinger.length, 0);
+  const innspill = første.nye.find((r) => String(r.tittel).includes("kunstnerstipendmidlene"));
+  assert.equal(innspill?.sakstype, "horing");
 
   const eksisterende: EksisterendeVarsel[] = første.nye.map((r, i) => rad({
     id: `ny-${i}`,
@@ -132,6 +135,27 @@ test("backfill setter inn de manglende sakene én gang, og hopper over støy", (
   }));
   const andre = planleggBackfill({ items: HULL, eksisterende, nå: NÅ });
   assert.deepEqual(andre.nye, []);
+});
+
+test("nettpoker-nyheten kobles til eksisterende høring og publiseres ikke", () => {
+  const plan = planleggBackfill({
+    items: [
+      item("Foreslår å tillate nettpoker hos Norsk Tipping", { instans: "KUD – nyhet" }),
+      item("Høring - forslag til endringer i pengespillforskriften", {
+        instans: "KUD – høring",
+        frist: "2026-11-29",
+        sammendrag_raa: "Forslaget gjelder nettpoker.",
+      }),
+    ],
+    eksisterende: [],
+    nå: NÅ,
+  });
+  assert.equal(plan.nye.length, 1);
+  assert.match(String(plan.nye[0].tittel), /pengespillforskriften/);
+  assert.equal(plan.nye[0].sakstype, "horing");
+  assert.equal(plan.koblinger.length, 1);
+  assert.equal(plan.koblinger[0].rad.publisert, false);
+  assert.match(String(plan.koblinger[0].rad.tittel), /nettpoker/);
 });
 
 test("lagret &amp;-URL blokkerer nytt innlegg med dekodet lenke", () => {
@@ -254,6 +278,57 @@ test("dataspillhøringen 90a26730 overskrives ikke", () => {
   });
   assert.deepEqual(rettet.oppdateringer, []);
   assert.deepEqual(rettet.nye, []);
+});
+
+test("høringslisten som ikke svarer gir ingen frist og en tydelig feil", async () => {
+  const tom = await hentHoringsliste(async () => null);
+  assert.equal(tom.feil, "Høringslisten svarte ikke");
+  assert.equal(tom.treff.length, 0);
+  const utfordring = await hentHoringsliste(async () =>
+    "<html><title>Just a moment...</title></html>"
+  );
+  assert.equal(utfordring.feil, "Høringslisten manglet treff");
+});
+
+test("tom høringsfrist settes fra listen bare når raden ikke er manuelt redigert", () => {
+  const horing = rad({
+    id: "horing-1",
+    tittel: "Høring - forslag til endringer i kringkastingsforskriften",
+    instans: "KUD – høring",
+    kilde: "https://www.regjeringen.no/no/dokumenter/kringkasting/id3173432/",
+    frist: null,
+    manuelt_redigert: true,
+    sammendrag: "Redaktørens tekst",
+    kategori: "film",
+  });
+  const åpen = rad({
+    id: "horing-apen",
+    tittel: "Høring - pengespillforskriften",
+    instans: "KUD – høring",
+    kilde: "https://www.regjeringen.no/no/dokumenter/pengespill/id3171815/",
+    frist: null,
+    manuelt_redigert: false,
+  });
+  const plan = planleggTommeHoringsfrister({
+    eksisterende: [
+      horing,
+      åpen,
+      { ...åpen, id: "har-frist", frist: "2026-11-01" },
+      rad({
+        id: "nyhet",
+        tittel: "Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap",
+        instans: "KUD – nyhet",
+        kilde: "https://www.regjeringen.no/no/aktuelt/budsjett/id8/",
+        frist: null,
+      }),
+    ],
+    frister: new Map([["3173432", "2026-11-12"], ["3171815", "2026-11-29"], ["8", "2026-12-01"]]),
+    nå: NÅ,
+  });
+  assert.deepEqual(plan, [{
+    id: "horing-apen",
+    felt: { frist: "2026-11-29", status: "normal" },
+  }]);
 });
 
 test("KUD-tillegg eldre enn vinduet droppes, globale dokumenter beholdes", () => {

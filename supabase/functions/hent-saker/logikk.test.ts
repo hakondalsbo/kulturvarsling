@@ -13,7 +13,14 @@ import {
   erKulturRelevant,
   erKulturSak,
   erPortefoljesak,
+  byggSammendragPrompt,
+  erRegjeringenHoring,
+  erRenIdrett,
   ekstraFristside,
+  leggPaHoringsfrist,
+  parseHoringsliste,
+  planleggEmneDedup,
+  sakstypeFraSak,
   erRegjeringenRelevant,
   finnHøringsfrist,
   innholdDedupNokkel,
@@ -433,7 +440,6 @@ const BUDSJETT_TITLER = [
   "Statsbudsjettet 2027: Æresløn til Mari Boine",
   "Statsbudsjettet 2027: Regjeringa gir stønad til fem nye prosjekt i ordninga Nasjonale kulturbygg",
   "Statsbudsjettet 2027: Meir til kunstnarane i Statens kunstnarstipend",
-  "Statsbudsjettet 2027: Regjeringa vil ha nytt nasjonalt toppidrettssenter",
   "Statsbudsjettet 2027: Arbeidarparti-regjeringa styrker filmfeltet med 75 millionar kroner",
   "Statsbudsjettet 2027: Full momskompensasjon for frivilligheit og idrett også i 2027",
 ];
@@ -472,6 +478,16 @@ test("KUD-porteføljen fra oktober 2026 er relevant, også uten kulturord i brø
   }
 });
 
+test("toppidrettssenter er idrett og slipper ikke gjennom, momskompensasjon med frivillighet gjør", () => {
+  const toppidrett = "Statsbudsjettet 2027: Regjeringa vil ha nytt nasjonalt toppidrettssenter";
+  assert.equal(erRenIdrett(toppidrett), true);
+  assert.equal(erPortefoljesak(toppidrett), false);
+  assert.equal(erRegjeringenRelevant(toppidrett), false);
+  const moms = "Statsbudsjettet 2027: Full momskompensasjon for frivilligheit og idrett også i 2027";
+  assert.equal(erRenIdrett(moms), false);
+  assert.equal(erRegjeringenRelevant(moms), true);
+});
+
 test("presseinvitasjon, nynorskkommune, ministerbesøk og barnevern-redegjørelse er ikke portefølje", () => {
   assert.equal(
     erRegjeringenRelevant(
@@ -491,6 +507,93 @@ test("presseinvitasjon, nynorskkommune, ministerbesøk og barnevern-redegjørels
   const barnevern = "Redegjørelse av barne- og familieministeren om situasjonen i barnevernet";
   assert.equal(erPortefoljesak(barnevern), false);
   assert.equal(erRegjeringenRelevant(barnevern), false);
+});
+
+test("innspill og regjeringshøring får sakstype horing", () => {
+  assert.equal(sakstypeFraSak({
+    tittel: "Innspill til kvotefordelingen av kunstnerstipendmidlene for 2027",
+    instans: "KUD – nyhet",
+  }), "horing");
+  assert.equal(sakstypeFraSak({
+    tittel: "Høring av Lotteri- og stiftelsestilsynets utredning om regulering av pengespill-lignende elementer i dataspill",
+    instans: "Regjeringen – høring",
+  }), "horing");
+  assert.equal(sakstypeFraSak({
+    tittel: "Statsbudsjettet 2027: Arbeidarparti-regjeringa styrker filmfeltet med 75 millionar kroner",
+    instans: "KUD – nyhet",
+  }), "budsjett");
+});
+
+test("nyhet om samme sak kobles til høringen, og talen til hovedpressemeldingen", () => {
+  const horingPoker = {
+    id: "d3938f34",
+    tittel: "Høring - forslag til endringer i pengespillforskriften",
+    instans: "KUD – høring",
+    kilde: "https://www.regjeringen.no/no/dokumenter/pengespill/id3171815/",
+    sammendrag: "Forslaget gjelder nettpoker.",
+  };
+  const nyhetPoker = {
+    tittel: "Foreslår å tillate nettpoker hos Norsk Tipping",
+    instans: "KUD – nyhet",
+    kilde: "https://www.regjeringen.no/no/aktuelt/nettpoker/id3173410/",
+    sammendrag_raa: "Pressemelding om nettpoker.",
+  };
+  const motHoring = planleggEmneDedup([nyhetPoker], [horingPoker]);
+  assert.deepEqual(motHoring.behold, []);
+  assert.equal(motHoring.koblinger[0].hovedsakId, "d3938f34");
+
+  const horingSpill = {
+    id: "90a26730",
+    tittel: "Høring av Lotteri- og stiftelsestilsynets utredning om regulering av pengespill-lignende elementer i dataspill",
+    instans: "Regjeringen – høring",
+    kilde: "https://www.regjeringen.no/no/dokumenter/dataspill/id3176704/",
+  };
+  const nyhetSpill = {
+    tittel: "Vurderer strengere regulering av lootbokser i dataspill",
+    instans: "KUD – nyhet",
+    kilde: "https://www.regjeringen.no/no/aktuelt/lootbokser/id3177013/",
+  };
+  const loot = planleggEmneDedup([nyhetSpill, horingSpill], []);
+  assert.equal(loot.behold.length, 1);
+  assert.equal(loot.behold[0].tittel, horingSpill.tittel);
+  assert.equal(loot.koblinger[0].item.tittel, nyhetSpill.tittel);
+
+  const hoved = {
+    id: "89ee020f",
+    tittel: "Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap",
+    instans: "KUD – nyhet",
+    kilde: "https://www.regjeringen.no/no/aktuelt/kulturbudsjett/id3174117/",
+  };
+  const tale = {
+    tittel: "Tale ved fremleggelse av Kultur- og likestillingsbudsjettet 2027",
+    instans: "KUD – statsbudsjett",
+    kilde: "https://www.regjeringen.no/no/aktuelt/tale/id3176653/",
+  };
+  const film = {
+    tittel: "Statsbudsjettet 2027: Arbeidarparti-regjeringa styrker filmfeltet med 75 millionar kroner",
+    instans: "KUD – nyhet",
+    kilde: "https://www.regjeringen.no/no/aktuelt/film/id3174115/",
+  };
+  const budsjett = planleggEmneDedup([tale, film], [hoved]);
+  assert.equal(budsjett.behold.length, 1);
+  assert.equal(budsjett.behold[0].tittel, film.tittel);
+  assert.equal(budsjett.koblinger.length, 1);
+  assert.equal(budsjett.koblinger[0].hovedsakId, "89ee020f");
+});
+
+test("sammendragsprompten krever nøytral bokmål og avviser pressemeldingsspråk", () => {
+  const prompt = byggSammendragPrompt({
+    tittel: "Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap",
+    sammendrag_raa: "Arbeidarparti-regjeringa foreslår ei løyving på rekordstore 28,1 milliardar kroner.",
+    instans: "KUD – nyhet",
+    frist: null,
+  });
+  assert.match(prompt, /nøytral bokmål/);
+  assert.match(prompt, /nynorsk/);
+  assert.match(prompt, /partimerkelapp/);
+  assert.match(prompt, /rekordstor/);
+  assert.match(prompt, /innfrir lovnaden/);
+  assert.match(prompt, /Ikke gjett/);
 });
 
 test("hørings- og tilskuddsfrister leses, og seneste merkede dato vinner", () => {
@@ -520,6 +623,60 @@ test("hørings- og tilskuddsfrister leses, og seneste merkede dato vinner", () =
     "https://www.regjeringen.no/no/dep/kud/tilskudd/tilskudd-til-nasjonale-kulturbygg-og-tus/id86015/",
   );
   assert.equal(ekstraFristside("Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap"), null);
+});
+
+test("høringslisten gir frist per sak, og publiseringsdatoen blir ikke frist", () => {
+  const html = `
+<ul>
+<li class="listItem">
+  <a href="/no/dokumenter/horing-dataspill/id3176704/">Høring av Lotteri- og stiftelsestilsynets utredning om regulering av pengespill-lignende elementer i dataspill</a>
+  <span class="date">12.10.2026</span>
+  <span class="event-details">H&#xF8;ringsfrist: 12.01.2027</span>
+</li>
+<li class="listItem">
+  <a href="/no/dokumenter/kringkasting/id3173432/?utm_source=regjeringen.no&amp;utm_medium=rss">Høring - forslag til endringer i kringkastingsforskriften</a>
+  <span class="date">30.09.2026</span>
+  <span class="event-details">Høringsfrist: 12.11.2026</span>
+</li>
+<li class="listItem">
+  <a href="/no/dokumenter/pengespill/id3171815/">Høring - forslag til endringer i pengespillforskriften</a>
+  <span class="date">29.09.2026</span>
+  <span class="event-details">Høringsfrist: 29.11.2026</span>
+</li>
+<li class="listItem">
+  <a href="/no/dokumenter/arkiv/id9/">Høyring - arkivforskrifta</a>
+  <span class="date">05.09.2025</span>
+  <span class="event-details">Høyringsfrist: 01.11.2025</span>
+</li>
+</ul>`;
+  const liste = parseHoringsliste(html);
+  assert.deepEqual(liste, [
+    { id: "3176704", frist: "2027-01-12" },
+    { id: "3173432", frist: "2026-11-12" },
+    { id: "3171815", frist: "2026-11-29" },
+    { id: "9", frist: "2025-11-01" },
+  ]);
+  const med = leggPaHoringsfrist(
+    [
+      {
+        tittel: "dataspill",
+        kilde: "https://www.regjeringen.no/no/dokumenter/horing-dataspill/id3176704/?utm_source=regjeringen.no&amp;utm_medium=rss",
+        frist: null,
+      },
+      {
+        tittel: "allerede",
+        kilde: "https://www.regjeringen.no/no/dokumenter/kringkasting/id3173432/",
+        frist: "2026-11-01",
+      },
+      { tittel: "nyhet", kilde: "https://www.regjeringen.no/no/aktuelt/noe/id1/", frist: null },
+    ],
+    liste,
+  );
+  assert.equal(med[0].frist, "2027-01-12");
+  assert.equal(med[1].frist, "2026-11-01");
+  assert.equal(med[2].frist, null);
+  assert.equal(erRegjeringenHoring({ instans: "KUD – høring", tittel: "Forslag" }), true);
+  assert.equal(erRegjeringenHoring({ instans: "KUD – nyhet", tittel: "Statsbudsjettet 2027: kulturbudsjett" }), false);
 });
 
 test("RSS dekoder &amp; og dedup treffer rader som fortsatt har entiteten", () => {

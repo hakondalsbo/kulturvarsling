@@ -384,6 +384,47 @@ test("vellykket kall beholder http-status, også når ingenting er nytt", () => 
   assert.equal(ingen.httpStatus, 200);
 });
 
+test("ny høring uten frist gjør grønn kjøring til feil_manglende_frist", () => {
+  const r = klassifiserKjøring({
+    raattAntall: 20,
+    antallNye: 1,
+    feil: [],
+    forsok: 1,
+    vellykket: 1,
+    httpStatus: 200,
+    manglendeFrist: 1,
+  });
+  assertLovligStatus(r.status);
+  assert.equal(r.status, "feil_manglende_frist");
+  assert.equal(r.feilmelding, "1 høring uten frist");
+  assert.equal(r.httpStatus, 200);
+});
+
+test("flere høringer uten frist, og delvis kjøring beholder feilen", () => {
+  const flere = klassifiserKjøring({
+    raattAntall: 20,
+    antallNye: 3,
+    feil: [],
+    forsok: 1,
+    vellykket: 1,
+    manglendeFrist: 3,
+  });
+  assert.equal(flere.status, "feil_manglende_frist");
+  assert.equal(flere.feilmelding, "3 høringer uten frist");
+
+  const delvis = klassifiserKjøring({
+    raattAntall: 10,
+    antallNye: 1,
+    feil: [{ type: "http", httpStatus: 404, melding: "HTTP 404", url: "https://a" }],
+    forsok: 2,
+    vellykket: 1,
+    manglendeFrist: 1,
+  });
+  assert.equal(delvis.status, "delvis");
+  assert.match(delvis.feilmelding ?? "", /HTTP 404/);
+  assert.match(delvis.feilmelding ?? "", /1 høring uten frist/);
+});
+
 test("0 rå fra en kilde som normalt har treff er feil_tomt_svar, ikke ok_ingen_nye", () => {
   const r = klassifiserKjøring({
     raattAntall: 0,
