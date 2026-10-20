@@ -10,7 +10,10 @@ import {
   erKulturRelevant,
   erKulturSak,
   erPortefoljesak,
+  erRegjeringenHoring,
   ekstraFristside,
+  leggPaHoringsfrist,
+  parseHoringsliste,
   erRegjeringenRelevant,
   finnHøringsfrist,
   kildeNokkel,
@@ -500,6 +503,60 @@ test("hørings- og tilskuddsfrister leses, og seneste merkede dato vinner", () =
     "https://www.regjeringen.no/no/dep/kud/tilskudd/tilskudd-til-nasjonale-kulturbygg-og-tus/id86015/",
   );
   assert.equal(ekstraFristside("Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap"), null);
+});
+
+test("høringslisten gir frist per sak, og publiseringsdatoen blir ikke frist", () => {
+  const html = `
+<ul>
+<li class="listItem">
+  <a href="/no/dokumenter/horing-dataspill/id3176704/">Høring av Lotteri- og stiftelsestilsynets utredning om regulering av pengespill-lignende elementer i dataspill</a>
+  <span class="date">12.10.2026</span>
+  <span class="event-details">H&#xF8;ringsfrist: 12.01.2027</span>
+</li>
+<li class="listItem">
+  <a href="/no/dokumenter/kringkasting/id3173432/?utm_source=regjeringen.no&amp;utm_medium=rss">Høring - forslag til endringer i kringkastingsforskriften</a>
+  <span class="date">30.09.2026</span>
+  <span class="event-details">Høringsfrist: 12.11.2026</span>
+</li>
+<li class="listItem">
+  <a href="/no/dokumenter/pengespill/id3171815/">Høring - forslag til endringer i pengespillforskriften</a>
+  <span class="date">29.09.2026</span>
+  <span class="event-details">Høringsfrist: 29.11.2026</span>
+</li>
+<li class="listItem">
+  <a href="/no/dokumenter/arkiv/id9/">Høyring - arkivforskrifta</a>
+  <span class="date">05.09.2025</span>
+  <span class="event-details">Høyringsfrist: 01.11.2025</span>
+</li>
+</ul>`;
+  const liste = parseHoringsliste(html);
+  assert.deepEqual(liste, [
+    { id: "3176704", frist: "2027-01-12" },
+    { id: "3173432", frist: "2026-11-12" },
+    { id: "3171815", frist: "2026-11-29" },
+    { id: "9", frist: "2025-11-01" },
+  ]);
+  const med = leggPaHoringsfrist(
+    [
+      {
+        tittel: "dataspill",
+        kilde: "https://www.regjeringen.no/no/dokumenter/horing-dataspill/id3176704/?utm_source=regjeringen.no&amp;utm_medium=rss",
+        frist: null,
+      },
+      {
+        tittel: "allerede",
+        kilde: "https://www.regjeringen.no/no/dokumenter/kringkasting/id3173432/",
+        frist: "2026-11-01",
+      },
+      { tittel: "nyhet", kilde: "https://www.regjeringen.no/no/aktuelt/noe/id1/", frist: null },
+    ],
+    liste,
+  );
+  assert.equal(med[0].frist, "2027-01-12");
+  assert.equal(med[1].frist, "2026-11-01");
+  assert.equal(med[2].frist, null);
+  assert.equal(erRegjeringenHoring({ instans: "KUD – høring", tittel: "Forslag" }), true);
+  assert.equal(erRegjeringenHoring({ instans: "KUD – nyhet", tittel: "Statsbudsjettet 2027: kulturbudsjett" }), false);
 });
 
 test("RSS dekoder &amp; og dedup treffer rader som fortsatt har entiteten", () => {

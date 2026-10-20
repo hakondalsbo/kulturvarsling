@@ -1,0 +1,39 @@
+name: Probe regjeringen høringsfrist
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/horingsfrist-kilde-d2cf
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hent høringsliste og RSS med ærlig User-Agent
+        run: |
+          set -u
+          UA='Kulturvarsling/1.0 (+https://kulturvarsling.no)'
+          URL='https://www.regjeringen.no/no/dokument/id2000006/?documenttype=dokumenter/h%C3%B8ringer&ownerid=545&sortby=1&page=1'
+          code=$(curl -sS -D /tmp/liste.hdr -o /tmp/liste.html -w '%{http_code}' -A "$UA" -H 'Accept: text/html' --max-time 25 "$URL" || echo curl_fail)
+          echo "listing_http=$code"
+          echo "listing_cf=$(grep -i '^cf-mitigated:' /tmp/liste.hdr | tr -d '\r' || true)"
+          python3 - <<'PY'
+          from pathlib import Path
+          t = Path("/tmp/liste.html").read_text(errors="replace")
+          low = t.lower()
+          print("listing_bytes", len(t))
+          print("listing_challenge", "just a moment" in low)
+          print("listing_frist_treff", low.count("ringsfrist"))
+          print("listing_listitem", low.count("listitem"))
+          PY
+          RSS='https://www.regjeringen.no/no/rss/Rss/2581966/?documenttype=dokumenter/h%C3%B8ringer&owner=545'
+          rcode=$(curl -sS -o /tmp/rss.xml -w '%{http_code}' -A "$UA" -H 'Accept: application/rss+xml' --max-time 25 "$RSS" || echo curl_fail)
+          echo "rss_http=$rcode"
+          python3 - <<'PY'
+          from pathlib import Path
+          t = Path("/tmp/rss.xml").read_text(errors="replace")
+          print("rss_bytes", len(t))
+          print("rss_items", t.count("<item>"))
+          print("rss_frist", t.lower().count("frist"))
+          PY

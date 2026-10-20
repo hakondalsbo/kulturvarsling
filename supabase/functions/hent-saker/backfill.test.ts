@@ -15,9 +15,10 @@ import {
   STATSBUDSJETT_VARSEL_ID,
   backfillFeeds,
   planleggBackfill,
+  planleggTommeHoringsfrister,
   type EksisterendeVarsel,
 } from "./backfill.ts";
-import { filtrerRegjeringenItems } from "./regjeringen.ts";
+import { filtrerRegjeringenItems, hentHoringsliste } from "./regjeringen.ts";
 import type { RssItem } from "./logikk.ts";
 
 const NÅ = Date.parse("2026-10-20T12:00:00Z");
@@ -241,6 +242,48 @@ test("dataspillhøringen får sammendrag, frist og publisering, og er deretter i
   });
   assert.deepEqual(rettet.oppdateringer, []);
   assert.deepEqual(rettet.nye, []);
+});
+
+test("høringslisten som ikke svarer gir ingen frist og en tydelig feil", async () => {
+  const tom = await hentHoringsliste(async () => null);
+  assert.equal(tom.feil, "Høringslisten svarte ikke");
+  assert.equal(tom.treff.length, 0);
+  const utfordring = await hentHoringsliste(async () =>
+    "<html><title>Just a moment...</title></html>"
+  );
+  assert.equal(utfordring.feil, "Høringslisten manglet treff");
+});
+
+test("tom høringsfrist settes fra listen, også når manuelt_redigert, og en satt frist blir stående", () => {
+  const horing = rad({
+    id: "horing-1",
+    tittel: "Høring - forslag til endringer i kringkastingsforskriften",
+    instans: "KUD – høring",
+    kilde: "https://www.regjeringen.no/no/dokumenter/kringkasting/id3173432/",
+    frist: null,
+    manuelt_redigert: true,
+    sammendrag: "Redaktørens tekst",
+    kategori: "film",
+  });
+  const plan = planleggTommeHoringsfrister({
+    eksisterende: [
+      horing,
+      { ...horing, id: "har-frist", frist: "2026-11-01" },
+      rad({
+        id: "nyhet",
+        tittel: "Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap",
+        instans: "KUD – nyhet",
+        kilde: "https://www.regjeringen.no/no/aktuelt/budsjett/id8/",
+        frist: null,
+      }),
+    ],
+    frister: new Map([["3173432", "2026-11-12"], ["8", "2026-12-01"]]),
+    nå: NÅ,
+  });
+  assert.deepEqual(plan, [{
+    id: "horing-1",
+    felt: { frist: "2026-11-12", status: "normal" },
+  }]);
 });
 
 test("KUD-tillegg eldre enn vinduet droppes, globale dokumenter beholdes", () => {

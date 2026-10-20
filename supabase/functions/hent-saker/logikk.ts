@@ -140,6 +140,72 @@ export function parseRegjeringenFrist(kilde: string): string | null {
 const KULTURBYGG_TILSKUDD =
   "https://www.regjeringen.no/no/dep/kud/tilskudd/tilskudd-til-nasjonale-kulturbygg-og-tus/id86015/";
 
+export type HoringslisteTreff = { id: string; frist: string | null };
+
+function dekodHtml(verdi: string): string {
+  return dekodXml(verdi)
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => tegnFraKode(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => tegnFraKode(Number(dec)));
+}
+
+function tegnFraKode(kode: number): string {
+  if (!Number.isInteger(kode) || kode < 32 || kode > 0x10ffff) return "";
+  try {
+    return String.fromCodePoint(kode);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Høringslisten er server-rendret HTML. Hvert listItem har innholds-id i lenken
+ * og merket «Høringsfrist» / «Høyringsfrist». Publiseringsdatoen i span.date
+ * er ikke en frist. RSS-itemet har ikke feltet.
+ */
+export function parseHoringsliste(html: string): HoringslisteTreff[] {
+  const tekst = dekodHtml(html);
+  const blokker = tekst.match(/<li\b[^>]*\blistItem\b[^>]*>[\s\S]*?<\/li>/gi) ?? [];
+  const ut: HoringslisteTreff[] = [];
+  const sett = new Set<string>();
+  for (const blokk of blokker) {
+    const id = blokk.match(/\/id(\d+)/i)?.[1];
+    if (!id || sett.has(id)) continue;
+    sett.add(id);
+    ut.push({ id, frist: parseRegjeringenFrist(blokk) });
+  }
+  return ut;
+}
+
+export function innholdsidFraKilde(kilde: string | null | undefined): string | null {
+  if (!kilde) return null;
+  return dekodHtml(kilde).match(/\/id(\d+)/i)?.[1] ?? null;
+}
+
+/** Setter frist fra høringslisten bare der den mangler. Eksisterende frist beholdes. */
+export function leggPaHoringsfrist<T extends { kilde?: string | null; frist?: string | null }>(
+  items: T[],
+  liste: HoringslisteTreff[],
+): T[] {
+  const frist = new Map(
+    liste.filter((t) => t.frist).map((t) => [t.id, t.frist as string]),
+  );
+  return items.map((item) => {
+    if (item.frist) return item;
+    const id = innholdsidFraKilde(item.kilde);
+    const funnet = id ? frist.get(id) : undefined;
+    return funnet ? { ...item, frist: funnet } : item;
+  });
+}
+
+export function erRegjeringenHoring(item: {
+  instans?: string | null;
+  tittel?: string | null;
+}): boolean {
+  const instans = (item.instans ?? "").toLowerCase();
+  if (/høring|høyring|horing/.test(instans)) return true;
+  return /^\s*høy?ring\b|^\s*høyring\b/i.test(item.tittel ?? "");
+}
+
 export function ekstraFristside(tittel: string): string | null {
   if (/nasjonale kulturbygg/i.test(tittel)) return KULTURBYGG_TILSKUDD;
   return null;

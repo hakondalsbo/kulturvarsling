@@ -6,13 +6,24 @@
 
 import {
   dedupEtterKilde,
+  erRegjeringenHoring,
   erRegjeringenRelevant,
+  innholdsidFraKilde,
   kategoriFraTittel,
+  leggPaHoringsfrist,
   kildeNokkel,
   statusFraFrist,
   type RssItem,
 } from "./logikk.ts";
-import { hentFeeder, hentRegjeringenSide, parseOgBerik, REGJERINGEN_FEEDS } from "./regjeringen.ts";
+import { klassifiserKjøring } from "./kildehelse.ts";
+import {
+  fristkart,
+  hentFeeder,
+  hentHoringsliste,
+  hentRegjeringenSide,
+  parseOgBerik,
+  REGJERINGEN_FEEDS,
+} from "./regjeringen.ts";
 import {
   AVVIST_SAMMENDRAG,
   DATASPILL_VARSEL_ID,
@@ -39,6 +50,7 @@ export type EksisterendeVarsel = VarselVern & {
   id: string;
   kilde: string | null;
   tittel?: string | null;
+  instans?: string | null;
   kategori?: string | null;
   frist?: string | null;
   publisert?: boolean | null;
@@ -161,32 +173,115 @@ export function planleggBackfill(input: {
   return { nye, oppdateringer };
 }
 
+/** Eksisterende høringer med tom frist. Tekstfelt på manuelt_redigert røres ikke. */
+export function planleggTommeHoringsfrister(input: {
+  eksisterende: EksisterendeVarsel[];
+  frister: ReadonlyMap<string, string>;
+  nå?: number;
+}): Array<{ id: string; felt: Record<string, unknown> }> {
+  const nå = input.nå ?? Date.now();
+  const ut: Array<{ id: string; felt: Record<string, unknown> }> = [];
+  for (const rad of input.eksisterende) {
+    if (rad.frist || !erRegjeringenHoring(rad)) continue;
+    const id = innholdsidFraKilde(rad.kilde);
+    const frist = id ? input.frister.get(id) : undefined;
+    if (!frist) continue;
+    const felt = oppdaterVarsel(rad, {
+      frist,
+      status: statusFraFrist(frist, nå),
+    });
+    if (felt.frist) ut.push({ id: rad.id, felt });
+  }
+  return ut;
+}
+
 type Db = {
   from: (t: string) => any;
 };
+
+async function loggRegjeringenKjoring(
+  supabase: Db,
+  rad: {
+    status: string;
+    antallFunnet: number;
+    antallEtterFilter: number;
+    antallNye: number;
+    feilmelding: string | null;
+    httpStatus: number | null;
+    varighetMs: number;
+  },
+) {
+  const { data, error } = await supabase
+    .from("kilder")
+    .select("id")
+    .eq("adapter", "regjeringen-rss")
+    .limit(1);
+  const kildeId = data?.[0]?.id as string | undefined;
+  if (error || !kildeId) {
+    console.error("kilde_kjoringer backfill: fant ikke regjeringen-rss");
+    return;
+  }
+  const { error: loggFeil } = await supabase.from("kilde_kjoringer").insert({
+    kilde_id: kildeId,
+    status: rad.status,
+    antall_funnet: rad.antallFunnet,
+    antall_etter_filter: rad.antallEtterFilter,
+    antall_nye: rad.antallNye,
+    feilmelding: rad.feilmelding,
+    http_status: rad.httpStatus,
+    varighet_ms: rad.varighetMs,
+    kjoert_av: "manuell",
+  });
+  if (loggFeil) console.error("kilde_kjoringer backfill:", loggFeil.message);
+  await supabase
+    .from("kilder")
+    .update({ sist_hentet: new Date().toISOString(), sist_status: rad.status })
+    .eq("id", kildeId);
+}
 
 export async function kjorRegjeringenBackfill(
   supabase: Db,
   hentSide: (url: string) => Promise<string | null> = hentRegjeringenSide,
 ): Promise<Record<string, unknown>> {
+  const start = Date.now();
   const utfall = await hentFeeder(backfillFeeds(), async (url) => {
     const res = await fetch(url, { headers: { "User-Agent": "Kulturvarsling/1.0" } });
     const kropp = res.ok ? await res.text() : "";
     return { status: res.status, kropp };
   });
-  const beriket = await parseOgBerik(utfall.items, hentSide);
+  const liste = await hentHoringsliste(hentSide);
+  if (liste.feil) console.error(`Høringsliste: ${liste.feil}`);
+  const medListe = leggPaHoringsfrist(utfall.items, liste.treff);
+  const beriket = await parseOgBerik(medListe, hentSide);
   const { data, error } = await supabase
     .from("varsler")
-    .select("id, kilde, tittel, sammendrag, kategori, frist, publisert, manuelt_redigert");
+    .select("id, kilde, tittel, instans, sammendrag, kategori, frist, publisert, manuelt_redigert");
   if (error) {
+    await loggRegjeringenKjoring(supabase, {
+      status: "feil_nett",
+      antallFunnet: utfall.raattAntall,
+      antallEtterFilter: 0,
+      antallNye: 0,
+      feilmelding: "Eksisterende saker kunne ikke hentes",
+      httpStatus: utfall.httpStatus,
+      varighetMs: Date.now() - start,
+    });
     return { feil: "Eksisterende saker kunne ikke hentes. Backfill er ikke kjørt.", detalj: error.message };
   }
+  const eksisterende = (data ?? []) as EksisterendeVarsel[];
   const plan = planleggBackfill({
     items: beriket,
-    eksisterende: (data ?? []) as EksisterendeVarsel[],
+    eksisterende,
   });
+  const frister = fristkart(liste.treff);
+  for (const op of planleggTommeHoringsfrister({ eksisterende, frister })) {
+    const finnes = plan.oppdateringer.find((o) => o.id === op.id);
+    if (!finnes) plan.oppdateringer.push(op);
+    else if (!finnes.felt.frist) Object.assign(finnes.felt, op.felt);
+  }
 
   let lagret = 0;
+  let horingerUtenFrist = 0;
   const feil: string[] = [];
   for (const rad of plan.nye) {
     const { error: ins } = await supabase.from("varsler").upsert(rad, {
@@ -194,7 +289,12 @@ export async function kjorRegjeringenBackfill(
       ignoreDuplicates: true,
     });
     if (ins) feil.push(`${String(rad.tittel).slice(0, 80)}: ${ins.message}`);
-    else lagret++;
+    else {
+      lagret++;
+      if (erRegjeringenHoring({ instans: String(rad.instans ?? ""), tittel: String(rad.tittel ?? "") }) && !rad.frist) {
+        horingerUtenFrist++;
+      }
+    }
   }
   let oppdatert = 0;
   for (const op of plan.oppdateringer) {
@@ -203,15 +303,37 @@ export async function kjorRegjeringenBackfill(
     else oppdatert++;
   }
 
+  const relevante = beriket.filter((i) => erRegjeringenRelevant(i.tittel, i.sammendrag_raa)).length;
+  const klass = klassifiserKjøring({
+    raattAntall: utfall.raattAntall,
+    antallNye: lagret,
+    feil: utfall.feil,
+    forsok: utfall.forsok,
+    vellykket: utfall.vellykket,
+    httpStatus: utfall.httpStatus,
+    manglendeFrist: horingerUtenFrist,
+  });
+  await loggRegjeringenKjoring(supabase, {
+    status: klass.status,
+    antallFunnet: utfall.raattAntall,
+    antallEtterFilter: relevante,
+    antallNye: lagret,
+    feilmelding: klass.feilmelding,
+    httpStatus: klass.httpStatus,
+    varighetMs: Date.now() - start,
+  });
+
   return {
     backfill: BACKFILL_KODE,
     periode: `${BACKFILL_FRA}–${BACKFILL_TIL}`,
     funnet: utfall.raattAntall,
-    relevante: beriket.filter((i) => erRegjeringenRelevant(i.tittel, i.sammendrag_raa)).length,
+    relevante,
     planlagt_nye: plan.nye.length,
     planlagt_oppdateringer: plan.oppdateringer.length,
     lagret,
     oppdatert,
+    horinger_uten_frist: horingerUtenFrist,
+    status: klass.status,
     feed_feil: utfall.feil.map((f) => f.melding),
     feil: feil.length ? feil.slice(0, 10) : undefined,
   };

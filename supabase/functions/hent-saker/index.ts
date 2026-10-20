@@ -6,6 +6,7 @@ import {
   erKulturRelevant,
   erKulturSak,
   erPortefoljesak,
+  erRegjeringenHoring,
   erRegjeringenRelevant,
   finnHøringsfrist,
   kategoriFraTittel,
@@ -18,7 +19,7 @@ import { hentBergenSaker } from "./bergen.ts";
 import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
 import { hentSametingetSaker } from "./sametinget.ts";
 import { hentRegjeringenRSS, parseOgBerik } from "./regjeringen.ts";
-import { BACKFILL_KODE, kjorRegjeringenBackfill } from "./backfill.ts";
+import { BACKFILL_KODE, kjorRegjeringenBackfill, planleggTommeHoringsfrister } from "./backfill.ts";
 import {
   feilFraStatus,
   feilFraUnntak,
@@ -354,6 +355,30 @@ async function lesJobb(req: Request): Promise<{ kjoertAv: KjoertAv; backfill: st
   };
 }
 
+async function fyllTommeHoringsfrister(
+  supabase: { from: (t: string) => any },
+  frister: ReadonlyMap<string, string> | undefined,
+): Promise<number> {
+  if (!frister || frister.size === 0) return 0;
+  const { data, error } = await supabase
+    .from("varsler")
+    .select("id, kilde, tittel, instans, sammendrag, frist, manuelt_redigert")
+    .is("frist", null)
+    .ilike("kilde", "%regjeringen.no%");
+  if (error) {
+    console.error("Kunne ikke lese høringer uten frist");
+    return 0;
+  }
+  const plan = planleggTommeHoringsfrister({ eksisterende: data ?? [], frister });
+  let n = 0;
+  for (const op of plan) {
+    const { error: u } = await supabase.from("varsler").update(op.felt).eq("id", op.id);
+    if (u) console.error("Fristoppdatering feilet");
+    else n++;
+  }
+  return n;
+}
+
 async function kjørAdapter(
   navn: string,
   fn: () => Promise<AdapterUtfall>,
@@ -494,7 +519,15 @@ Deno.serve(async (req: Request) => {
 
     let antallLagret = 0;
     const lagretPerAdapter = new Map<string, number>();
+    const horingUtenFrist = new Map<string, number>();
     const driftFeil: string[] = [];
+
+    const regjeringen = kjøringer.find((k) => k.navn === "regjeringen-rss");
+    const fyltFrist = await fyllTommeHoringsfrister(
+      supabase,
+      regjeringen?.utfall.horingsfrister,
+    );
+    if (fyltFrist > 0) console.log(`Satte manglende høringsfrist på ${fyltFrist} saker`);
 
     // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
     // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke
@@ -596,6 +629,13 @@ Deno.serve(async (req: Request) => {
         );
         const nokkel = kildeNokkel(item.kilde);
         if (nokkel) eksKilder.add(nokkel);
+        if (
+          item.adapter === "regjeringen-rss" &&
+          erRegjeringenHoring(item) &&
+          !item.frist
+        ) {
+          horingUtenFrist.set(item.adapter, (horingUtenFrist.get(item.adapter) ?? 0) + 1);
+        }
       }
     }
 
@@ -616,6 +656,7 @@ Deno.serve(async (req: Request) => {
         vellykket: k.utfall.vellykket,
         httpStatus: k.utfall.httpStatus,
         forventerTreff: meta?.forventerTreff ?? false,
+        manglendeFrist: horingUtenFrist.get(k.navn) ?? 0,
       });
       kildeStatus.push({
         adapter: k.navn,

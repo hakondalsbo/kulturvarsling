@@ -13,9 +13,12 @@ import {
   erRegjeringenRelevant,
   ekstraFristside,
   innenInnhentingsvindu,
+  leggPaHoringsfrist,
+  parseHoringsliste,
   parseRegjeringenFrist,
   skalHenteFristside,
   sideUrl,
+  type HoringslisteTreff,
   type RssItem,
 } from "./logikk.ts";
 
@@ -138,6 +141,52 @@ export async function hentRegjeringenSide(url: string): Promise<string | null> {
   }
 }
 
+/** KUD-høringer, nyeste først. documenttype/ownerid er listing-parametre, ikke RSS-parametre. */
+export const HORINGSLISTE_SIDER = 2;
+
+export function horingslisteUrl(side: number): string {
+  const params = new URLSearchParams({
+    documenttype: "dokumenter/høringer",
+    ownerid: "545",
+    sortby: "1",
+    page: String(side),
+  });
+  return `https://www.regjeringen.no/no/dokument/id2000006/?${params}`;
+}
+
+/**
+ * Høringsfristen ligger i dokumentlisten, ikke i RSS. Samme ærlige
+ * User-Agent som resten av adapteren. 403 og Cloudflare-utfordring blir
+ * en tom liste — vi løser ikke utfordringen.
+ */
+export async function hentHoringsliste(
+  hent: (url: string) => Promise<string | null> = hentRegjeringenSide,
+): Promise<{ treff: HoringslisteTreff[]; feil: string | null }> {
+  const treff: HoringslisteTreff[] = [];
+  for (let side = 1; side <= HORINGSLISTE_SIDER; side++) {
+    const html = await hent(horingslisteUrl(side));
+    if (!html) {
+      if (side === 1) return { treff: [], feil: "Høringslisten svarte ikke" };
+      break;
+    }
+    const sideTreff = parseHoringsliste(html);
+    if (sideTreff.length === 0) {
+      if (side === 1) return { treff: [], feil: "Høringslisten manglet treff" };
+      break;
+    }
+    treff.push(...sideTreff);
+  }
+  return { treff, feil: null };
+}
+
+export function fristkart(treff: HoringslisteTreff[]): Map<string, string> {
+  const ut = new Map<string, string>();
+  for (const t of treff) {
+    if (t.frist) ut.set(t.id, t.frist);
+  }
+  return ut;
+}
+
 /** Henter HTML for hørings- og tilskuddssider og parser frist. */
 export async function parseOgBerik(
   items: RssItem[],
@@ -178,6 +227,9 @@ export async function hentRegjeringenRSS(nå = Date.now()): Promise<AdapterUtfal
     );
   }
   const items = filtrerRegjeringenItems(utfall.items, nå);
+  const liste = await hentHoringsliste();
+  if (liste.feil) console.error(`Høringsliste: ${liste.feil}`);
+  const medFrist = leggPaHoringsfrist(items, liste.treff);
   for (const feed of REGJERINGEN_FEEDS) {
     if (utfall.feil.some((f) => f.url === feed.url)) continue;
     const n = utfall.items.filter((i) => i.instans === feed.instans).length;
@@ -185,10 +237,11 @@ export async function hentRegjeringenRSS(nå = Date.now()): Promise<AdapterUtfal
   }
   return {
     ...utfall,
-    items,
+    items: medFrist,
     raattAntall: utfall.raattAntall,
-    antallEtterFilter: items.filter((i) =>
+    antallEtterFilter: medFrist.filter((i) =>
       erRegjeringenRelevant(i.tittel, i.sammendrag_raa)
     ).length,
+    horingsfrister: fristkart(liste.treff),
   };
 }

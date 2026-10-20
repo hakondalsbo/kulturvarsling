@@ -15,6 +15,7 @@ export const KILDE_STATUSER = [
   "feil_auth",
   "feil_nett",
   "feil_tomt_svar",
+  "feil_manglende_frist",
 ] as const;
 
 export type KildeStatus = (typeof KILDE_STATUSER)[number];
@@ -39,6 +40,8 @@ export type AdapterUtfall = {
   vellykket: number;
   /** HTTP-status for vellykket kall, eller feilens status når kallet feilet. */
   httpStatus: number | null;
+  /** Innholds-id → frist fra høringslisten, når den lot seg hente. */
+  horingsfrister?: ReadonlyMap<string, string>;
 };
 
 export type KjoertAv = "supabase_cron" | "vercel_cron" | "manuell";
@@ -270,6 +273,8 @@ export type KjøringInndata = {
    * 0 råtreff der er feil_tomt_svar, ikke tom og ikke ok_ingen_nye.
    */
   forventerTreff?: boolean;
+  /** Nye Regjeringen-høringer lagret uten frist. Gjør ellers grønn kjøring til alarm. */
+  manglendeFrist?: number;
 };
 
 export type KjøringKlassifisering = {
@@ -283,7 +288,30 @@ export type KjøringKlassifisering = {
  * Totalfeil kan aldri bli «tom» eller «ok_*» — det er Kildevakt-fellen.
  * Delvis (noe svarte, noe feilet) slår ut ok/tom selv om råtreff > 0.
  */
+function medManglendeFrist(
+  base: KjøringKlassifisering,
+  antall: number | undefined,
+): KjøringKlassifisering {
+  if (!antall || antall <= 0) return base;
+  const tekst = antall === 1 ? "1 høring uten frist" : `${antall} høringer uten frist`;
+  if (base.status === "ok_nye" || base.status === "ok_ingen_nye" || base.status === "tom") {
+    return {
+      status: "feil_manglende_frist",
+      httpStatus: base.httpStatus,
+      feilmelding: tekst,
+    };
+  }
+  return {
+    ...base,
+    feilmelding: base.feilmelding ? `${base.feilmelding}; ${tekst}`.slice(0, 2000) : tekst,
+  };
+}
+
 export function klassifiserKjøring(p: KjøringInndata): KjøringKlassifisering {
+  return medManglendeFrist(klassifiserKjøringUtenFrist(p), p.manglendeFrist);
+}
+
+function klassifiserKjøringUtenFrist(p: KjøringInndata): KjøringKlassifisering {
   const feil = p.feil ?? [];
   const vellykket = p.vellykket;
   const forsok = p.forsok;
