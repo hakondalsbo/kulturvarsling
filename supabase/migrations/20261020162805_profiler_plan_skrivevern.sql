@@ -9,6 +9,8 @@
 --
 -- En senere migrasjon som legger til en kolonne brukeren skal kunne lagre,
 -- må gi authenticated GRANT UPDATE på den kolonnen.
+-- REVOKE UPDATE ON TABLE fjerner også kolonne-GRANT som er gitt tidligere.
+-- Finnes varsler_aktive allerede, gis den tilbake under.
 
 create or replace function public.beskytt_profil_betaling()
 returns trigger
@@ -65,3 +67,17 @@ grant update (
   personvern_akseptert_at,
   personvern_versjon
 ) on table public.profiler to authenticated;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'profiler'
+      and column_name = 'varsler_aktive'
+  ) then
+    execute 'grant update (varsler_aktive) on table public.profiler to authenticated';
+  end if;
+end
+$$;
