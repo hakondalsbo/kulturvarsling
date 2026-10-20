@@ -10,16 +10,21 @@ import {
   erGyldigEpost,
   erOneClick,
   erUuid,
+  dryRunLogg,
   filtrerMottakere,
   hemmeligheterStemmer,
   lesToken,
   listUnsubscribeHeaders,
   opphavTillatt,
+  oppsummerHopp,
+  planleggUtsendelse,
   skalSkriveAvmelding,
   svarEtterSkriving,
+  utsendingErAktiv,
   utsendelsesModus,
   validerPamelding,
 } from "./samtykke.ts";
+import { avsender, behandlingsansvarlig, bunntekst, orgnr } from "./organisasjon.ts";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 
@@ -156,19 +161,83 @@ test("one-click krever akkurat List-Unsubscribe=One-Click", () => {
   assert.equal(erOneClick("{}", "application/json"), false);
 });
 
+test("behandlingsansvarlig styres av én linje og brukes i e-post", () => {
+  const js = readFileSync("public/organisasjon.js", "utf8");
+  const html = readFileSync("public/personvern.html", "utf8");
+  const meldPa = readFileSync("supabase/functions/meld-pa/index.ts", "utf8");
+  const nyhetsbrev = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
+  const navnelinjer = js.split("\n").filter((linje) => linje.startsWith("export const behandlingsansvarlig"));
+  assert.equal(navnelinjer.length, 1);
+  assert.equal(behandlingsansvarlig, "[PLASSHOLDER – fyll inn juridisk navn]");
+  assert.equal(orgnr, "[PLASSHOLDER – fyll inn org.nr.]");
+  assert.match(html, /data-org="behandlingsansvarlig"/);
+  assert.match(html, /src="\/organisasjon\.js"/);
+  assert.doesNotMatch(html, /Åndsverkstedet AS|Kulturvarsling AS/);
+  assert.equal(
+    avsender(behandlingsansvarlig),
+    `"[PLASSHOLDER – fyll inn juridisk navn]" <nyhetsbrev@kulturvarsling.no>`,
+  );
+  assert.equal(
+    avsender("Åndsverkstedet AS", "Kulturvarsling <post@example.com>"),
+    '"Åndsverkstedet AS" <post@example.com>',
+  );
+  assert.equal(bunntekst("Kulturvarsling AS"), "Behandlingsansvarlig: Kulturvarsling AS.");
+  assert.match(meldPa, /fraAdresse\(\)/);
+  assert.match(meldPa, /bunntekst\(behandlingsansvarlig\)/);
+  assert.match(nyhetsbrev, /bunntekst\(behandlingsansvarlig\)/);
+  assert.match(nyhetsbrev, /fraAdresse\(\)/);
+});
+
 test("personvernsiden dekker pliktene og har synlige plassholdere", () => {
   const html = readFileSync("public/personvern.html", "utf8");
   const css = readFileSync("public/papir.css", "utf8");
   for (const del of ["Nyhetsbrev", "Varsler", "Konto", "Behandlingsgrunnlag", "Lagringstid", "Dine rettigheter", "Kontakt"]) {
     assert.match(html, new RegExp(del));
   }
-  assert.match(html, /PLASSHOLDER – fyll inn juridisk navn/);
-  assert.match(html, /PLASSHOLDER – fyll inn org\.nr\./);
+  assert.equal(behandlingsansvarlig.includes("PLASSHOLDER"), true);
+  assert.equal(orgnr.includes("PLASSHOLDER"), true);
   assert.match(html, new RegExp(PERSONVERN_VERSJON));
   assert.match(html, /papir\.css/);
   assert.match(css, /Newsreader/);
   assert.match(css, /Libre Franklin/);
   assert.match(css, /#FBF8F2/i);
+});
+
+test("dry-run er standard og logger uten å sende", () => {
+  assert.equal(utsendingErAktiv(undefined), false);
+  assert.equal(utsendingErAktiv(null), false);
+  assert.equal(utsendingErAktiv(""), false);
+  assert.equal(utsendingErAktiv("false"), false);
+  assert.equal(utsendingErAktiv("ja"), false);
+  assert.equal(utsendingErAktiv("true"), true);
+  assert.equal(utsendingErAktiv(" TRUE "), true);
+
+  const plan = planleggUtsendelse([
+    { id: 2, epost: "Ada@Example.no", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
+    { id: 1, epost: " ada@example.no ", avmeldings_token: "22222222-2222-4222-8222-222222222222", samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: null },
+    { id: 3, epost: "gammel@example.no", avmeldings_token: null, samtykke_gitt_at: null, bekreftet_at: null, avmeldt_at: null },
+    { id: 4, epost: "av@example.no", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: "t", avmeldt_at: "t" },
+    { id: 5, epost: "venter@example.no", avmeldings_token: TOKEN, samtykke_gitt_at: "t", bekreftet_at: null, avmeldt_at: null },
+  ]);
+  assert.deepEqual(plan.mottakere.map((rad) => rad.epost), ["ada@example.no"]);
+  assert.equal(plan.mottakere[0].id, 1);
+  const hopp = oppsummerHopp(plan.hoppetOver);
+  assert.equal(hopp.duplikat, 1);
+  assert.equal(hopp.avmeldt, 1);
+  assert.equal(hopp.ubekreftet, 1);
+  assert.equal(hopp.uten_samtykke, 1);
+
+  const logg = dryRunLogg(plan.mottakere);
+  assert.equal(logg.send, false);
+  assert.equal(logg.status, "dry_run");
+  assert.deepEqual(logg.rader, [{ pamelding_id: 1, status: "dry_run" }]);
+
+  const kilde = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
+  const dry = kilde.indexOf('status: rad.status');
+  const resend = kilde.indexOf("https://api.resend.com/emails");
+  assert.ok(dry > 0 && resend > dry);
+  assert.match(kilde, /UTSENDING_AKTIV/);
+  assert.match(kilde, /Ingenting er sendt/);
 });
 
 test("avmelding og bekreftelse viser ikke suksess før svaret er ok", () => {
@@ -194,7 +263,8 @@ test("nyhetsbrev kan ikke trigges med anon-nøkkelen alene", () => {
   const kilde = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
   const config = readFileSync("supabase/config.toml", "utf8");
   assert.match(kilde, /x-nyhetsbrev-nokkel/);
-  assert.match(kilde, /filtrerMottakere/);
+  assert.match(kilde, /planleggUtsendelse/);
+  assert.match(kilde, /utsendingErAktiv/);
   assert.match(kilde, /List-Unsubscribe/);
   assert.match(kilde, /nyhetsbrev_utsendelser/);
   assert.match(kilde, /Adressen er ikke bekreftet, samtykkende og aktiv/);

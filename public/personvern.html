@@ -12,17 +12,17 @@
     <h1>Personvernerklæring</h1>
     <p class="meta">Versjon personvern-2026-10 · Sist oppdatert 19. oktober 2026</p>
 
-    <aside class="plassholder">
-      <p class="versal">Plassholder – må fylles ut før erklæringen er endelig</p>
-      <p><strong>Behandlingsansvarlig:</strong> [PLASSHOLDER – fyll inn juridisk navn]</p>
-      <p><strong>Organisasjonsnummer:</strong> [PLASSHOLDER – fyll inn org.nr.]</p>
+    <aside class="plassholder" id="org-boks">
+      <p class="versal" id="org-varsel">Plassholder – må fylles ut før erklæringen er endelig</p>
+      <p><strong>Behandlingsansvarlig:</strong> <span data-org="behandlingsansvarlig"></span></p>
+      <p><strong>Organisasjonsnummer:</strong> <span data-org="orgnr"></span></p>
       <p>Kontakt: <a href="mailto:personvern@kulturvarsling.no">personvern@kulturvarsling.no</a></p>
     </aside>
 
     <p>Denne erklæringen gjelder kulturvarsling.no: nyhetsbrevet, varslene og kontoen. Den beskriver hvilke opplysninger vi behandler, hvorfor, hvor lenge, og hvilke rettigheter du har.</p>
 
     <h2>Behandlingsansvarlig</h2>
-    <p>Behandlingsansvarlig er [PLASSHOLDER – fyll inn juridisk navn], org.nr. [PLASSHOLDER – fyll inn org.nr.]. Henvendelser om personvern sendes til <a href="mailto:personvern@kulturvarsling.no">personvern@kulturvarsling.no</a>.</p>
+    <p>Behandlingsansvarlig er <span data-org="behandlingsansvarlig"></span>, org.nr. <span data-org="orgnr"></span>. Henvendelser om personvern sendes til <a href="mailto:personvern@kulturvarsling.no">personvern@kulturvarsling.no</a>.</p>
 
     <h2>Nyhetsbrev</h2>
     <p>Hvis du melder deg på nyhetsbrevet, lagrer vi e-postadresse, navn du selv skriver inn, tidspunktet for samtykket, versjonen av samtykketeksten, hvor påmeldingen kom fra, og om du har bekreftet eller meldt deg av.</p>
@@ -63,9 +63,11 @@
     <p>Innloggingen bruker en nødvendig informasjonskapsel for å holde deg pålogget. Vi setter ikke egne annonse- eller sporingskapsler. Leverandørenes driftslogger kan likevel inneholde IP-adresse i kort tid.</p>
 
     <h2>Kontakt</h2>
-    <p>Personvern: <a href="mailto:personvern@kulturvarsling.no">personvern@kulturvarsling.no</a>. Avmelding som ikke virker: <a href="mailto:avmelding@kulturvarsling.no">avmelding@kulturvarsling.no</a>. Behandlingsansvarlig og organisasjonsnummer står i plassholderen øverst til de er fylt inn.</p>
+    <p>Personvern: <a href="mailto:personvern@kulturvarsling.no">personvern@kulturvarsling.no</a>. Avmelding som ikke virker: <a href="mailto:avmelding@kulturvarsling.no">avmelding@kulturvarsling.no</a>. Behandlingsansvarlig: <span data-org="behandlingsansvarlig"></span>.</p>
 
     <p class="bunn"><a href="/">Til forsiden</a></p>
   </article>
+  <noscript><p>Slå på JavaScript for å vise behandlingsansvarlig. Verdien ligger i organisasjon.js.</p></noscript>
+  <script type="module" src="/organisasjon.js"></script>
 </body>
 </html>

@@ -9,28 +9,38 @@
 // Anon-nøkkelen er ikke nok, selv om gatewayen godtar den som JWT.
 //
 //   POST {"test": true}                 → HTML, sender ingenting
-//   POST {"til": "meg@epost.no"}        → én testadresse (krever hemmeligheten)
-//   POST {"bekreft": "send"}            → bare bekreftede, samtykkende, ikke avmeldte
+//   POST {"til": "meg@epost.no"}        → én kvalifisert adresse, eller dry-run
+//   POST {"bekreft": "send"}            → kvalifiserte mottakere, eller dry-run
 //   GET  ?avmeld=...                    → skriver ingenting (avmelding er /avmeld)
 //
+// UTSENDING_AKTIV må være "true" for å sende. Uten den, eller med annen verdi,
+// logges mottakerne som dry_run og ingenting sendes.
+//
 // Secrets: NYHETSBREV_NOKKEL, RESEND_API_KEY, ANTHROPIC_API_KEY,
-// valgfritt AVSENDER og OFFENTLIG_URL.
+// valgfritt UTSENDING_AKTIV, AVSENDER og OFFENTLIG_URL.
+// Avsenderens visningsnavn kommer fra public/organisasjon.js.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { avsender, behandlingsansvarlig, bunntekst } from "../_shared/organisasjon.ts";
 import {
   avmeldingsFunksjon,
   avmeldingsSide,
-  filtrerMottakere,
+  dryRunLogg,
+  escapeHtml,
   hemmeligheterStemmer,
   listUnsubscribeHeaders,
   normaliserEpost,
+  oppsummerHopp,
+  planleggUtsendelse,
+  utsendingErAktiv,
   utsendelsesModus,
   type Pameldingsrad,
 } from "../_shared/samtykke.ts";
 
-const AVSENDER = Deno.env.get("AVSENDER") ??
-  "Kulturvarsling <nyhetsbrev@kulturvarsling.no>";
+function fraAdresse(): string {
+  return avsender(behandlingsansvarlig, Deno.env.get("AVSENDER"));
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -140,6 +150,7 @@ function byggHtml(
     </div>
     <div style="text-align:center;font-size:11px;color:${grå};margin-top:30px;line-height:1.7;">
       Du får denne fordi du meldte deg på Kulturvarsling.${antallArkivert ? ` ${antallArkivert} saker ble arkivert til historikken denne uken.` : ""}<br/>
+      ${escapeHtml(bunntekst(behandlingsansvarlig))}<br/>
       <a href="${avmeldUrl}" style="color:${grå};">Meld meg av nyhetsbrevet</a>
     </div>
   </div></body></html>`;
@@ -179,20 +190,57 @@ Deno.serve(async (req: Request) => {
     }
 
     let mottakere: Mottaker[] = [];
-    if (modus === "alle") {
-      const { data, error } = await supabase.from("pamelding")
+    if (modus === "alle" || modus === "en") {
+      const sporring = supabase.from("pamelding")
         .select("id, epost, avmeldings_token, samtykke_gitt_at, bekreftet_at, avmeldt_at");
+      const { data, error } = modus === "en"
+        ? await sporring.eq("epost_normalisert", normaliserEpost(String(body.til)))
+        : await sporring;
       if (error) {
         console.error("mottakere", error.message);
         return json({ feil: "Kunne ikke lese mottakere. Ingenting er sendt." }, 500);
       }
-      mottakere = filtrerMottakere((data ?? []) as Pameldingsrad[]);
+      const plan = planleggUtsendelse((data ?? []) as Pameldingsrad[]);
+      if (!utsendingErAktiv(Deno.env.get("UTSENDING_AKTIV"))) {
+        const logg = dryRunLogg(plan.mottakere);
+        const utsendelseId = crypto.randomUUID();
+        if (logg.rader.length) {
+          const { error: loggFeil } = await supabase.from("nyhetsbrev_utsendelser").insert(
+            logg.rader.map((rad) => ({
+              utsendelse_id: utsendelseId,
+              pamelding_id: rad.pamelding_id,
+              resend_id: null,
+              status: rad.status,
+            })),
+          );
+          if (loggFeil) {
+            console.error("dry-run logg", loggFeil.message);
+            return json({
+              dry_run: true,
+              sendt: 0,
+              feil: "Kunne ikke logge dry-run. Ingenting er sendt.",
+            }, 500);
+          }
+        }
+        return json({
+          dry_run: true,
+          sendt: 0,
+          utsendelse_id: logg.rader.length ? utsendelseId : null,
+          ville_fått: plan.mottakere.map((rad) => rad.epost),
+          hoppet_over: oppsummerHopp(plan.hoppetOver),
+          merknad: "UTSENDING_AKTIV er av. Ingenting er sendt.",
+        });
+      }
+      mottakere = plan.mottakere;
       if (mottakere.length === 0) {
         return json({
           sendt: 0,
           mottakere: 0,
-          merknad: "Ingen bekreftede, samtykkende mottakere. Ingenting er sendt.",
-        });
+          hoppet_over: oppsummerHopp(plan.hoppetOver),
+          merknad: modus === "en"
+            ? "Adressen er ikke bekreftet, samtykkende og aktiv. Ingenting er sendt."
+            : "Ingen bekreftede, samtykkende mottakere. Ingenting er sendt.",
+        }, modus === "en" ? 409 : 200);
       }
     }
 
@@ -226,24 +274,6 @@ Deno.serve(async (req: Request) => {
     const resendKey = Deno.env.get("RESEND_API_KEY");
     if (!resendKey) return json({ feil: "mangler RESEND_API_KEY. Ingenting er sendt." }, 500);
 
-    if (modus === "en") {
-      const epost = normaliserEpost(String(body.til));
-      const { data, error } = await supabase.from("pamelding")
-        .select("id, epost, avmeldings_token, samtykke_gitt_at, bekreftet_at, avmeldt_at")
-        .eq("epost_normalisert", epost);
-      if (error) {
-        console.error("en mottaker", error.message);
-        return json({ feil: "Kunne ikke lese mottakeren. Ingenting er sendt." }, 500);
-      }
-      mottakere = filtrerMottakere((data ?? []) as Pameldingsrad[]);
-      if (mottakere.length === 0) {
-        return json({
-          sendt: 0,
-          merknad: "Adressen er ikke bekreftet, samtykkende og aktiv. Ingenting er sendt.",
-        }, 409);
-      }
-    }
-
     const utsendelseId = crypto.randomUUID();
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     let sendt = 0;
@@ -252,7 +282,7 @@ Deno.serve(async (req: Request) => {
       const token = mottaker.avmeldings_token;
       const side = token ? avmeldingsSide(offentligUrl(), token) : "mailto:personvern@kulturvarsling.no";
       const html = byggHtml(analyse, frister ?? [], antallArkivert ?? 0, side);
-      const text = `${analyse.emne}\n\nMeld deg av: ${side}`;
+      const text = `${analyse.emne}\n\n${bunntekst(behandlingsansvarlig)}\nMeld deg av: ${side}`;
       const hoder = token
         ? listUnsubscribeHeaders(avmeldingsFunksjon(supabaseUrl, token))
         : { "List-Unsubscribe": "<mailto:avmelding@kulturvarsling.no?subject=avmeld>" };
@@ -263,7 +293,7 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: AVSENDER,
+          from: fraAdresse(),
           to: mottaker.epost,
           subject: analyse.emne,
           html,

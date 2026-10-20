@@ -9,6 +9,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { avsender, behandlingsansvarlig, bunntekst } from "../_shared/organisasjon.ts";
 import {
   KILDE_VENTESIDE,
   SAMTYKKE_VERSJON,
@@ -28,8 +29,9 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const AVSENDER = Deno.env.get("AVSENDER") ??
-  "Kulturvarsling <nyhetsbrev@kulturvarsling.no>";
+function fraAdresse(): string {
+  return avsender(behandlingsansvarlig, Deno.env.get("AVSENDER"));
+}
 
 function svar(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -83,10 +85,15 @@ async function sendEpost(til: string, emne: string, html: string, text: string):
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: AVSENDER, to: til, subject: emne, html, text }),
+    body: JSON.stringify({ from: fraAdresse(), to: til, subject: emne, html, text }),
   });
   if (!res.ok) console.error("Resend feilet", res.status);
   return res.ok;
+}
+
+function medBunn(html: string): string {
+  const bunn = escapeHtml(bunntekst(behandlingsansvarlig));
+  return `${html}<p style="color:#6B665C;font-size:14px;">${bunn}</p>`;
 }
 
 function bekreftHtml(lenke: string): string {
@@ -95,6 +102,7 @@ function bekreftHtml(lenke: string): string {
     <p>Bekreft at du vil motta nyhetsbrev fra Kulturvarsling.</p>
     <p><a href="${href}">Bekreft påmeldingen</a></p>
     <p style="color:#6B665C;font-size:14px;">Hvis du ikke ba om dette, kan du se bort fra e-posten. Ingenting sendes før lenken er bekreftet.</p>
+    ${medBunn("")}
   </body></html>`;
 }
 
@@ -189,8 +197,8 @@ Deno.serve(async (req: Request) => {
     const sendt = await sendEpost(
       validert.verdi.epost,
       "Du er allerede påmeldt Kulturvarsling",
-      `<p>Adressen er allerede bekreftet. Du trenger ikke gjøre noe mer.</p>`,
-      "Adressen er allerede bekreftet. Du trenger ikke gjøre noe mer.",
+      medBunn("<p>Adressen er allerede bekreftet. Du trenger ikke gjøre noe mer.</p>"),
+      `Adressen er allerede bekreftet. Du trenger ikke gjøre noe mer.\n\n${bunntekst(behandlingsansvarlig)}`,
     );
     if (!sendt) {
       return svar({ ok: false, feil: "Du er allerede påmeldt, men e-posten kom ikke fram. Prøv igjen." }, 502);
@@ -243,7 +251,7 @@ Deno.serve(async (req: Request) => {
     validert.verdi.epost,
     "Bekreft påmelding til Kulturvarsling",
     bekreftHtml(lenke),
-    `Bekreft påmeldingen ved å åpne lenken:\n${lenke}\n\nIngenting sendes før lenken er bekreftet.`,
+    `Bekreft påmeldingen ved å åpne lenken:\n${lenke}\n\nIngenting sendes før lenken er bekreftet.\n\n${bunntekst(behandlingsansvarlig)}`,
   );
   if (!sendt) {
     return svar({ ok: false, feil: "Vi fikk ikke sendt bekreftelses-e-posten. Prøv igjen." }, 502);

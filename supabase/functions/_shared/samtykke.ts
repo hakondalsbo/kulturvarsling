@@ -152,19 +152,79 @@ export type Pameldingsrad = {
   avmeldt_at: string | null;
 };
 
-/** Bare dokumentert, bekreftet og ikke-avmeldt. Én rad per adresse, laveste id. */
-export function filtrerMottakere(rader: Pameldingsrad[]): Pameldingsrad[] {
+export type Hoppgrunn =
+  | "uten_samtykke"
+  | "ubekreftet"
+  | "avmeldt"
+  | "uten_token"
+  | "ugyldig"
+  | "duplikat";
+
+export type Utsendelsesplan = {
+  mottakere: Pameldingsrad[];
+  hoppetOver: { id: number; epost: string; grunn: Hoppgrunn }[];
+};
+
+/**
+ * Bare dokumentert, bekreftet og ikke-avmeldt. Én rad per adresse, laveste id.
+ * Avmeldte og ubekreftede blir med i hoppetOver, ikke i mottakere.
+ */
+export function planleggUtsendelse(rader: Pameldingsrad[]): Utsendelsesplan {
   const sett = new Map<string, Pameldingsrad>();
+  const hoppetOver: Utsendelsesplan["hoppetOver"] = [];
   const sortert = [...rader].sort((a, b) => a.id - b.id);
   for (const rad of sortert) {
-    if (!rad.samtykke_gitt_at || !rad.bekreftet_at || rad.avmeldt_at) continue;
-    if (!erUuid(rad.avmeldings_token)) continue;
     const epost = normaliserEpost(rad.epost ?? "");
-    if (!erGyldigEpost(epost)) continue;
-    if (sett.has(epost)) continue;
+    let grunn: Hoppgrunn | null = null;
+    if (!erGyldigEpost(epost)) grunn = "ugyldig";
+    else if (!rad.samtykke_gitt_at) grunn = "uten_samtykke";
+    else if (rad.avmeldt_at) grunn = "avmeldt";
+    else if (!rad.bekreftet_at) grunn = "ubekreftet";
+    else if (!erUuid(rad.avmeldings_token)) grunn = "uten_token";
+    else if (sett.has(epost)) grunn = "duplikat";
+    if (grunn) {
+      hoppetOver.push({ id: rad.id, epost, grunn });
+      continue;
+    }
     sett.set(epost, { ...rad, epost });
   }
-  return [...sett.values()];
+  return { mottakere: [...sett.values()], hoppetOver };
+}
+
+export function filtrerMottakere(rader: Pameldingsrad[]): Pameldingsrad[] {
+  return planleggUtsendelse(rader).mottakere;
+}
+
+/** Hovedbryteren er av med mindre hemmeligheten UTSENDING_AKTIV er nøyaktig "true". */
+export function utsendingErAktiv(verdi: string | undefined | null): boolean {
+  return typeof verdi === "string" && verdi.trim().toLowerCase() === "true";
+}
+
+export function dryRunLogg(mottakere: Pameldingsrad[]): {
+  send: false;
+  status: "dry_run";
+  rader: { pamelding_id: number; status: "dry_run" }[];
+} {
+  return {
+    send: false,
+    status: "dry_run",
+    rader: mottakere.map((rad) => ({ pamelding_id: rad.id, status: "dry_run" as const })),
+  };
+}
+
+export function oppsummerHopp(
+  hoppetOver: Utsendelsesplan["hoppetOver"],
+): Record<Hoppgrunn, number> {
+  const tall: Record<Hoppgrunn, number> = {
+    uten_samtykke: 0,
+    ubekreftet: 0,
+    avmeldt: 0,
+    uten_token: 0,
+    ugyldig: 0,
+    duplikat: 0,
+  };
+  for (const rad of hoppetOver) tall[rad.grunn] += 1;
+  return tall;
 }
 
 export type UtsendelsesModus = "test" | "en" | "alle" | "avvist";
