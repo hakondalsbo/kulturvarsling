@@ -5,8 +5,11 @@ import {
   dedupEtterKilde,
   erKulturRelevant,
   erKulturSak,
+  erPortefoljesak,
+  erRegjeringenRelevant,
   finnHøringsfrist,
-  normaliserKildeUrl,
+  kategoriFraTittel,
+  kildeNokkel,
   statusFraFrist,
   stortingsSesjoner,
 } from "./logikk.ts";
@@ -14,7 +17,8 @@ import { hentEInnsynKultursaker } from "./einnsyn.ts";
 import { hentBergenSaker } from "./bergen.ts";
 import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
 import { hentSametingetSaker } from "./sametinget.ts";
-import { hentRegjeringenRSS } from "./regjeringen.ts";
+import { hentRegjeringenRSS, parseOgBerik } from "./regjeringen.ts";
+import { BACKFILL_KODE, kjorRegjeringenBackfill } from "./backfill.ts";
 import {
   feilFraStatus,
   feilFraUnntak,
@@ -107,7 +111,7 @@ async function hentEnStortingssesjon(
       const tittel = sak.tittel ?? sak.korttittel ?? "";
       const kilde =
         `https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=${sak.id}`;
-      const nokkel = normaliserKildeUrl(kilde);
+      const nokkel = kildeNokkel(kilde);
       if (nokkel && eksKilder.has(nokkel)) continue; // detaljoppslag kun for nye saker
 
       let frist: string | null = null;
@@ -266,9 +270,9 @@ Tittel: ${item.tittel}
 ${item.sammendrag_raa ? `Beskrivelse: ${item.sammendrag_raa.slice(0, 400)}` : ""}
 Instans: ${item.instans}
 
-RELEVANT = ja BARE hvis saken direkte berører: finansiering av kunst/kultur, kulturinstitusjoner, kunstnerstipend, kulturbygg, scenekunst, musikk, film, museer, bibliotek, kulturarv, opphavsrett, kulturpolitikk, kulturskoler, kulturfond eller lignende kjerneområder for kulturfeltet.
+RELEVANT = ja BARE hvis saken direkte berører: finansiering av kunst/kultur, kulturinstitusjoner, kunstnerstipend, kulturbygg, scenekunst, musikk, film, museer, bibliotek, kulturarv, opphavsrett, kulturpolitikk, kulturskoler, kulturfond, dataspill, mediepolitikk, kringkasting, pengespill (herunder nettpoker) eller statsbudsjettet til Kultur- og likestillingsdepartementet.
 
-IKKE RELEVANT = saker om: forsvar, beredskap, helse, skole (unntatt kulturskole), justis, samferdsel, AI i utdanning generelt, helikopter, redning, eller andre saker som bare nevner "kultur" i forbifarten.
+IKKE RELEVANT = saker om: forsvar, beredskap, helse, skole (unntatt kulturskole), justis, samferdsel, AI i utdanning generelt, helikopter, redning, eller andre saker som bare nevner "kultur" i forbifarten (for eksempel fordi Kultur- og likestillingsdepartementet står som avsender uten at innholdet gjelder kultur, medier, spill eller stipend).
 
 Svar BARE med gyldig JSON, ingen markdown:
 {
@@ -331,19 +335,23 @@ async function testClaude(apiKey: string | undefined): Promise<string> {
 }
 
 // Prod-jobben `hent-saker-daglig` poster { "utlost_av": "pg_cron" }.
-async function lesKjoertAv(req: Request): Promise<KjoertAv> {
-  let utlostAv: unknown;
+// Engangs-backfill: { "backfill": "regjeringen-2026-10" }. Den kjører ikke av cron.
+async function lesJobb(req: Request): Promise<{ kjoertAv: KjoertAv; backfill: string | null }> {
+  let data: { utlost_av?: unknown; backfill?: unknown } = {};
   try {
     const tekst = await req.text();
-    if (tekst.trim()) utlostAv = JSON.parse(tekst)?.utlost_av;
+    if (tekst.trim()) data = JSON.parse(tekst) ?? {};
   } catch {
-    utlostAv = undefined;
+    data = {};
   }
-  return utledKjoertAv({
-    utlostAv,
-    headerUtlostAv: req.headers.get("x-utlost-av"),
-    vercelCronHeader: req.headers.get("x-vercel-cron"),
-  });
+  return {
+    kjoertAv: utledKjoertAv({
+      utlostAv: data?.utlost_av,
+      headerUtlostAv: req.headers.get("x-utlost-av"),
+      vercelCronHeader: req.headers.get("x-vercel-cron"),
+    }),
+    backfill: typeof data?.backfill === "string" ? data.backfill : null,
+  };
 }
 
 async function kjørAdapter(
@@ -401,11 +409,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const kjoertAv = await lesKjoertAv(req);
+    const jobb = await lesJobb(req);
+    const kjoertAv = jobb.kjoertAv;
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    if (jobb.backfill) {
+      if (jobb.backfill !== BACKFILL_KODE) {
+        return jsonSvar({ feil: "Ukjent backfill" }, 400);
+      }
+      const resultat = await kjorRegjeringenBackfill(supabase);
+      console.log("Backfill:", resultat);
+      return jsonSvar(resultat, resultat.feil && !resultat.backfill ? 503 : 200);
+    }
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     // Hent eksisterende kilder for deduplicering. Feil her avbryter før innhenting.
@@ -415,7 +432,7 @@ Deno.serve(async (req: Request) => {
     }
     const eksKilder = new Set(
       (eks ?? [])
-        .map((v: any) => normaliserKildeUrl(v.kilde))
+        .map((v: any) => kildeNokkel(v.kilde))
         .filter((n: string | null): n is string => !!n),
     );
 
@@ -448,19 +465,25 @@ Deno.serve(async (req: Request) => {
     ]);
 
     const alle = kjøringer.flatMap((k) =>
-      k.utfall.items.map((i) => ({ ...i, adapter: k.navn }))
+      k.utfall.items.map((i) => ({
+        ...i,
+        adapter: k.navn,
+        portefolje: erPortefoljesak(i.tittel ?? "", i.sammendrag_raa ?? ""),
+      }))
     );
 
     // Filtrer bort duplikater og ikke-relevante.
     // Saker valgt via komité/emne (forhåndsgodkjent) hopper over nøkkelordfilteret —
     // en sak om åndsverkloven mangler f.eks. ordet «kultur» i tittelen.
-    // Claude-laget kvalitetssikrer uansett alt til slutt.
-    const kandidater = alle.filter(
-      (item) =>
-        item.kilde &&
-        (item.forhåndsgodkjent ||
-          erKulturRelevant(item.tittel, item.sammendrag_raa)),
-    );
+    // Regjeringen bruker eget filter: departementsnavnet alene er ikke treff,
+    // mens KUD-porteføljen (medier, spill, budsjett, stipend, kulturbygg) er det.
+    const kandidater = alle.filter((item) => {
+      if (!item.kilde) return false;
+      if (item.adapter === "regjeringen-rss") {
+        return erRegjeringenRelevant(item.tittel, item.sammendrag_raa ?? "");
+      }
+      return item.forhåndsgodkjent || erKulturRelevant(item.tittel, item.sammendrag_raa);
+    });
     // Samme normaliserte URL to ganger i én kjøring (to sesjoner, eller samme
     // sak to ganger) blir én rad. Det var slik p=200362 og p=200367 ble doblet.
     const nye = dedupEtterKilde(kandidater, eksKilder);
@@ -484,7 +507,13 @@ Deno.serve(async (req: Request) => {
     let antallAvvist = 0;
 
     for (const item of nye) {
-      let kategori = "scenekunst";
+      if (item.adapter === "regjeringen-rss") {
+        const [beriket] = await parseOgBerik([item]);
+        if (beriket?.frist) item.frist = beriket.frist;
+      }
+      let kategori = item.portefolje
+        ? kategoriFraTittel(item.tittel, item.sammendrag_raa ?? "")
+        : "scenekunst";
       let niva = item.niva ?? "nasjonalt";
       let status = statusFraFrist(item.frist);
       let sammendrag = item.sammendrag_raa?.slice(0, 400) || item.tittel;
@@ -504,10 +533,12 @@ Deno.serve(async (req: Request) => {
           driftFeil.push(`${item.tittel.slice(0, 60)}: Claude-analyse utilgjengelig, utsatt`);
           continue;
         }
-        if (!analyse.relevant) {
+        if (!analyse.relevant && !item.portefolje) {
           // Husk avvisningen: lagres som UPUBLISERT rad (appen viser kun
           // publisert=true), så samme sak aldri koster en ny AI-vurdering —
           // dedup via kilde-URL stopper den ved neste kjøring.
+          // Porteføljesaker (mediepolitikk, dataspill, KUD-budsjett, høringer)
+          // publiseres likevel, med kildetekst hvis modellen sa nei.
           const avvistFeil = await lagreVarsel(supabase, {
             tittel: item.tittel,
             sammendrag: "Automatisk avvist av relevansfilteret",
@@ -522,17 +553,21 @@ Deno.serve(async (req: Request) => {
           });
           if (!avvistFeil) {
             antallAvvist++;
-            const nokkel = normaliserKildeUrl(item.kilde);
+            const nokkel = kildeNokkel(item.kilde);
             if (nokkel) eksKilder.add(nokkel);
           }
           continue;
         }
-        kategori = analyse.kategori ?? kategori;
-        // Adaptere som VET nivået sitt (f.eks. Bergen = kommune) overstyres ikke
-        if (!item.niva) niva = analyse.niva ?? niva;
-        sammendrag = analyse.sammendrag || sammendrag;
-        // Bruk Claude-status kun hvis vi ikke har frist (frist er mer presis)
-        if (!item.frist) status = analyse.status ?? status;
+        if (analyse.relevant) {
+          kategori = analyse.kategori ?? kategori;
+          // Adaptere som VET nivået sitt (f.eks. Bergen = kommune) overstyres ikke
+          if (!item.niva) niva = analyse.niva ?? niva;
+          sammendrag = analyse.sammendrag || sammendrag;
+          // Bruk Claude-status kun hvis vi ikke har frist (frist er mer presis)
+          if (!item.frist) status = analyse.status ?? status;
+        } else if (analyse.kategori) {
+          kategori = analyse.kategori;
+        }
       }
 
       const error = await lagreVarsel(supabase, {
@@ -559,7 +594,7 @@ Deno.serve(async (req: Request) => {
           item.adapter,
           (lagretPerAdapter.get(item.adapter) ?? 0) + 1,
         );
-        const nokkel = normaliserKildeUrl(item.kilde);
+        const nokkel = kildeNokkel(item.kilde);
         if (nokkel) eksKilder.add(nokkel);
       }
     }

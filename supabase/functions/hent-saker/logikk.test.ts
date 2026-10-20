@@ -6,10 +6,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   dedupEtterKilde,
+  dekodXml,
   erKulturRelevant,
   erKulturSak,
+  erPortefoljesak,
+  erRegjeringenRelevant,
   finnHøringsfrist,
+  kildeNokkel,
   normaliserKildeUrl,
+  parseRegjeringenFrist,
   parseStortingetDato,
   statusFraFrist,
   parseRssItems,
@@ -396,4 +401,113 @@ test("dedup beholder første rad per normalisert URL og hopper over allerede lag
     lagret ? [lagret] : [],
   );
   assert.deepEqual(ut.map((r) => r.id), ["ny", "runde-a", "runde-b"]);
+});
+
+// ─── Regjeringen oktober 2026: porterfølje, frist, entiteter ─────────────────
+
+const BUDSJETT_TITLER = [
+  "Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap",
+  "Statsbudsjettet 2027: Regjeringa styrker redaktørstyrte medium i ei uroleg tid",
+  "Statsbudsjettet 2027: Arbeidarparti-regjeringa held fram styrkinga på dansefeltet i heile landet",
+  "Statsbudsjettet 2027: Æresløn til Mari Boine",
+  "Statsbudsjettet 2027: Regjeringa gir stønad til fem nye prosjekt i ordninga Nasjonale kulturbygg",
+  "Statsbudsjettet 2027: Meir til kunstnarane i Statens kunstnarstipend",
+  "Statsbudsjettet 2027: Regjeringa vil ha nytt nasjonalt toppidrettssenter",
+  "Statsbudsjettet 2027: Arbeidarparti-regjeringa styrker filmfeltet med 75 millionar kroner",
+  "Statsbudsjettet 2027: Full momskompensasjon for frivilligheit og idrett også i 2027",
+];
+
+test("KUD-porteføljen fra oktober 2026 er relevant, også uten kulturord i brødteksten", () => {
+  const saker: Array<[string, string]> = [
+    ...BUDSJETT_TITLER.map((t): [string, string] => [t, ""]),
+    [
+      "Retningslinjer - Tilskudd fra Kultur- og likestillingsdepartementet til nasjonale kulturbygg for 2028",
+      "Søknadsfristen for 2027 var 1. januar 2026. For 2028 er fristen 1. desember 2026.",
+    ],
+    [
+      "Innspill til kvotefordelingen av kunstnerstipendmidlene for 2027",
+      "Frist: 20. november 2026",
+    ],
+    [
+      "Høring - forslag til endringer i kringkastingsforskriften",
+      "Forslaget gjelder lokalradio og FM-nettet.",
+    ],
+    [
+      "Høring - forslag til endringer i pengespillforskriften",
+      "Forslaget gjelder nettpoker og ansvarlig spill.",
+    ],
+    [
+      "Høring av Lotteri- og stiftelsestilsynets utredning om regulering av pengespill-lignende elementer i dataspill",
+      "Utredningen omtaler lootbokser. Filminstituttet er høringsinstans.",
+    ],
+    [
+      "Redegjørelse av kultur- og likestillingsministeren om mediepolitikk og ytringsfrihet",
+      "",
+    ],
+  ];
+  for (const [tittel, tekst] of saker) {
+    assert.equal(erPortefoljesak(tittel, tekst), true, tittel);
+    assert.equal(erRegjeringenRelevant(tittel, tekst), true, tittel);
+  }
+});
+
+test("presseinvitasjon, nynorskkommune, ministerbesøk og barnevern-redegjørelse er ikke portefølje", () => {
+  assert.equal(
+    erRegjeringenRelevant(
+      "Presseinvitasjon: Kultur- og likestillingsministeren legger fram kulturbudsjettet",
+      "Kulturbygg og stipend",
+    ),
+    false,
+  );
+  assert.equal(erRegjeringenRelevant("Volda er årets nynorskkommune"), false);
+  assert.equal(
+    erRegjeringenRelevant(
+      "Kultur- og likestillingsministeren besøker Kina",
+      "Kultur- og likestillingsdepartementet deltar på møtet.",
+    ),
+    false,
+  );
+  const barnevern = "Redegjørelse av barne- og familieministeren om situasjonen i barnevernet";
+  assert.equal(erPortefoljesak(barnevern), false);
+  assert.equal(erRegjeringenRelevant(barnevern), false);
+});
+
+test("hørings- og tilskuddsfrister leses, og seneste merkede dato vinner", () => {
+  assert.equal(
+    parseRegjeringenFrist("<p>Høringsfrist: 12.01.2027</p><p>Frist for å sende inn høringssvar er 12. januar 2027.</p>"),
+    "2027-01-12",
+  );
+  assert.equal(parseRegjeringenFrist("Høringsfrist 12.11.2026"), "2026-11-12");
+  assert.equal(parseRegjeringenFrist("Høyringsfrist: 12. november 2026"), "2026-11-12");
+  assert.equal(parseRegjeringenFrist("Høringsfrist: 29. november 2026"), "2026-11-29");
+  assert.equal(parseRegjeringenFrist("Frist: 20. november 2026"), "2026-11-20");
+  assert.equal(
+    parseRegjeringenFrist(
+      "Frist for søknad om investeringstilskudd over statsbudsjettet for 2027 er 1. januar 2026. Merk at søknadsfristen for søknader til statsbudsjettet for 2028 er flyttet fram en måned, slik at fristen er 1. desember 2026.",
+    ),
+    "2026-12-01",
+  );
+  assert.equal(
+    parseRegjeringenFrist("Høringsfrist: 12.10.2026. Ny høringsfrist: 28.10.2026."),
+    "2026-10-28",
+  );
+  assert.equal(parseRegjeringenFrist("Publisert 14. oktober 2026 uten merket frist."), null);
+});
+
+test("RSS dekoder &amp; og dedup treffer rader som fortsatt har entiteten", () => {
+  const kodet = "https://www.regjeringen.no/no/dokumenter/horing/id1/?a=1&amp;b=2";
+  const dekodet = "https://www.regjeringen.no/no/dokumenter/horing/id1/?a=1&b=2";
+  const items = parseRssItems(
+    `<rss><channel><item><title>Høring &amp; kultur</title><link>${kodet}</link><description>Kulturbudsjettet</description></item></channel></rss>`,
+    "KUD – høring",
+  );
+  assert.equal(items[0].tittel, "Høring & kultur");
+  assert.equal(items[0].kilde, dekodet);
+  assert.equal(dekodXml(kodet), dekodet);
+  assert.equal(kildeNokkel(kodet), kildeNokkel(dekodet));
+  const ut = dedupEtterKilde(
+    [{ id: "ny", kilde: dekodet }],
+    [kildeNokkel(kodet)!],
+  );
+  assert.deepEqual(ut, []);
 });
