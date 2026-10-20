@@ -13,6 +13,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
   byggPrompt,
   hentBearerToken,
+  KLARTEKST_MAKS_TOKENS,
+  KLARTEKST_MODELL,
   lagProfilNokkel,
   lagInnholdsNokkel,
   lesGyldigCache,
@@ -100,10 +102,10 @@ async function spørClaude(prompt: string, apiKey: string): Promise<string | nul
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-5",
+        model: KLARTEKST_MODELL,
         // Sonnet 5 tenker adaptivt som standard, og tenke-tokens teller mot
         // max_tokens — gi rom nok til både tenking og selve JSON-svaret.
-        max_tokens: 2000,
+        max_tokens: KLARTEKST_MAKS_TOKENS,
         messages: [{ role: "user", content: prompt }],
       }),
     }, "klartekst");
@@ -214,7 +216,7 @@ Deno.serve(async (req: Request) => {
     if (!sak) return svar({ feil: "Fant ikke saken" }, 404);
 
     const profilNøkkel = lagProfilNokkel(profil);
-    const innhold = await lagInnholdsNokkel(byggPrompt(sak, profil), "claude-sonnet-5");
+    const innhold = await lagInnholdsNokkel(byggPrompt(sak, profil), KLARTEKST_MODELL);
     const cacheNøkkel = `${varselId}|${profilNøkkel}|${innhold}`;
     const lokaltSvar = lokalCache.get(cacheNøkkel);
     if (lokaltSvar) return svar({ svar: lokaltSvar, cachet: true });
