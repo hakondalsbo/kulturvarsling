@@ -1,0 +1,255 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  AVVIST_SAMMENDRAG,
+  DATASPILL_VARSEL_ID,
+} from "../_shared/varselvern.ts";
+import {
+  BACKFILL_FRA,
+  BACKFILL_TIL,
+  DATASPILL_FRIST,
+  DATASPILL_SAMMENDRAG,
+  MEDIEPOLITIKK_SAMMENDRAG,
+  MEDIEPOLITIKK_VARSEL_ID,
+  STATSBUDSJETT_FRIST,
+  STATSBUDSJETT_VARSEL_ID,
+  backfillFeeds,
+  planleggBackfill,
+  type EksisterendeVarsel,
+} from "./backfill.ts";
+import { filtrerRegjeringenItems } from "./regjeringen.ts";
+import type { RssItem } from "./logikk.ts";
+
+const NÅ = Date.parse("2026-10-20T12:00:00Z");
+
+const BUDSJETT = [
+  "Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap",
+  "Statsbudsjettet 2027: Regjeringa styrker redaktørstyrte medium i ei uroleg tid",
+  "Statsbudsjettet 2027: Arbeidarparti-regjeringa held fram styrkinga på dansefeltet i heile landet",
+  "Statsbudsjettet 2027: Æresløn til Mari Boine",
+  "Statsbudsjettet 2027: Regjeringa gir stønad til fem nye prosjekt i ordninga Nasjonale kulturbygg",
+  "Statsbudsjettet 2027: Meir til kunstnarane i Statens kunstnarstipend",
+  "Statsbudsjettet 2027: Regjeringa vil ha nytt nasjonalt toppidrettssenter",
+  "Statsbudsjettet 2027: Arbeidarparti-regjeringa styrker filmfeltet med 75 millionar kroner",
+  "Statsbudsjettet 2027: Full momskompensasjon for frivilligheit og idrett også i 2027",
+];
+
+let itemNr = 0;
+function item(tittel: string, over: Partial<RssItem> = {}): RssItem {
+  itemNr += 1;
+  const slug = tittel.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 48);
+  return {
+    tittel,
+    instans: "KUD – nyhet",
+    kilde: `https://www.regjeringen.no/no/aktuelt/${slug}/id${itemNr}/`,
+    frist: null,
+    sammendrag_raa: tittel,
+    kilde_id: `rss-${itemNr}`,
+    publisert_dato: "2026-10-07",
+    ...over,
+  };
+}
+
+const HULL = [
+  ...BUDSJETT.map((t) => item(t, { instans: "KUD – statsbudsjett" })),
+  item(
+    "Retningslinjer - Tilskudd fra Kultur- og likestillingsdepartementet til nasjonale kulturbygg for 2028",
+    { instans: "KUD – tilskudd", frist: "2026-12-01" },
+  ),
+  item("Innspill til kvotefordelingen av kunstnerstipendmidlene for 2027", {
+    frist: "2026-11-20",
+  }),
+  item("Høring - forslag til endringer i kringkastingsforskriften", {
+    instans: "KUD – høring",
+    frist: "2026-11-12",
+    sammendrag_raa: "Forslaget gjelder lokalradio og FM-nettet.",
+  }),
+  item("Høring - forslag til endringer i pengespillforskriften", {
+    instans: "KUD – høring",
+    frist: "2026-11-29",
+    sammendrag_raa: "Forslaget gjelder nettpoker.",
+  }),
+  item(
+    "Høring av Lotteri- og stiftelsestilsynets utredning om regulering av pengespill-lignende elementer i dataspill",
+    {
+      instans: "KUD – høring",
+      kilde: "https://www.regjeringen.no/no/dokumenter/dataspill/id90/?a=1&b=2",
+      frist: DATASPILL_FRIST,
+    },
+  ),
+  item("Presseinvitasjon: statsbudsjettet legges fram", { instans: "KUD – nyhet" }),
+  item("Volda er årets nynorskkommune"),
+  item("Kultur- og likestillingsministeren besøker Kina", {
+    sammendrag_raa: "Kultur- og likestillingsdepartementet deltar.",
+  }),
+  item("Redegjørelse av barne- og familieministeren om situasjonen i barnevernet", {
+    instans: "Regjeringen – høring",
+  }),
+];
+
+function rad(over: Partial<EksisterendeVarsel> & Pick<EksisterendeVarsel, "id">): EksisterendeVarsel {
+  return {
+    kilde: null,
+    sammendrag: "Ekte sammendrag",
+    manuelt_redigert: false,
+    publisert: true,
+    frist: null,
+    kategori: "kulturpolitikk",
+    ...over,
+  };
+}
+
+test("backfill-vinduet er 29.09–19.10 og bare KUD-tilleggsfeedene", () => {
+  const feeds = backfillFeeds();
+  assert.equal(feeds.length, 4);
+  for (const f of feeds) {
+    assert.match(f.url, new RegExp(`from=${BACKFILL_FRA.replaceAll(".", "\\.")}`));
+    assert.match(f.url, new RegExp(`to=${BACKFILL_TIL.replaceAll(".", "\\.")}`));
+    assert.match(f.url, /owner=545/);
+  }
+});
+
+test("backfill setter inn de manglende sakene én gang, og hopper over støy", () => {
+  const første = planleggBackfill({ items: HULL, eksisterende: [], nå: NÅ });
+  const titler = første.nye.map((r) => r.tittel);
+  for (const t of BUDSJETT) assert.ok(titler.includes(t), t);
+  assert.ok(titler.some((t) => String(t).includes("nasjonale kulturbygg for 2028")));
+  assert.ok(titler.some((t) => String(t).includes("kunstnerstipendmidlene")));
+  assert.ok(titler.some((t) => String(t).includes("kringkastingsforskriften")));
+  assert.ok(titler.some((t) => String(t).includes("pengespillforskriften")));
+  assert.equal(titler.some((t) => String(t).startsWith("Presseinvitasjon")), false);
+  assert.equal(titler.some((t) => String(t).includes("nynorskkommune")), false);
+  assert.equal(titler.some((t) => String(t).includes("besøker Kina")), false);
+  assert.equal(titler.some((t) => String(t).includes("barnevernet")), false);
+  assert.equal(første.nye.length, 14);
+
+  const eksisterende: EksisterendeVarsel[] = første.nye.map((r, i) => rad({
+    id: `ny-${i}`,
+    kilde: String(r.kilde),
+    tittel: String(r.tittel),
+    sammendrag: String(r.sammendrag),
+    frist: (r.frist as string | null) ?? null,
+  }));
+  const andre = planleggBackfill({ items: HULL, eksisterende, nå: NÅ });
+  assert.deepEqual(andre.nye, []);
+});
+
+test("lagret &amp;-URL blokkerer nytt innlegg med dekodet lenke", () => {
+  const kilde = "https://www.regjeringen.no/no/dokumenter/horing-kultur/id9/?a=1&b=2";
+  const plan = planleggBackfill({
+    items: [item("Høring om kulturloven", { kilde, instans: "KUD – høring" })],
+    eksisterende: [rad({
+      id: "gammel",
+      kilde: kilde.replace("&", "&amp;"),
+    })],
+    nå: NÅ,
+  });
+  assert.deepEqual(plan.nye, []);
+});
+
+test("mediepolitikk publiseres med sammendrag, uten kategori, tittel eller frist", () => {
+  const plan = planleggBackfill({
+    items: [],
+    eksisterende: [rad({
+      id: MEDIEPOLITIKK_VARSEL_ID,
+      tittel: "Redegjørelse av kultur- og likestillingsministeren om mediepolitikk og ytringsfrihet",
+      sammendrag: AVVIST_SAMMENDRAG,
+      kategori: "kulturpolitikk",
+      publisert: false,
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200464",
+    })],
+    nå: NÅ,
+  });
+  assert.equal(plan.nye.length, 0);
+  assert.equal(plan.oppdateringer.length, 1);
+  assert.deepEqual(plan.oppdateringer[0].felt, {
+    sammendrag: MEDIEPOLITIKK_SAMMENDRAG,
+    publisert: true,
+  });
+
+  const igjen = planleggBackfill({
+    items: [],
+    eksisterende: [rad({
+      id: MEDIEPOLITIKK_VARSEL_ID,
+      sammendrag: MEDIEPOLITIKK_SAMMENDRAG,
+      publisert: true,
+      kategori: "kulturpolitikk",
+    })],
+    nå: NÅ,
+  });
+  assert.deepEqual(igjen.oppdateringer, []);
+});
+
+test("statsbudsjett 80653f79 får frist 28.10 uten å røre tekst, også når manuelt_redigert", () => {
+  const felles = rad({
+    id: STATSBUDSJETT_VARSEL_ID,
+    tittel: "Statsbudsjettet 2027 (kapitler fordelt til familie- og kulturkomiteen)",
+    sammendrag: "Ekte sammendrag om litteraturkapitlene.",
+    kategori: "litteratur",
+    frist: null,
+    manuelt_redigert: true,
+    kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200445",
+  });
+  const plan = planleggBackfill({ items: [], eksisterende: [felles], nå: NÅ });
+  assert.deepEqual(plan.oppdateringer, [{
+    id: STATSBUDSJETT_VARSEL_ID,
+    felt: { frist: STATSBUDSJETT_FRIST, status: "viktig" },
+  }]);
+  assert.equal(STATSBUDSJETT_FRIST, "2026-10-28");
+
+  const satt = planleggBackfill({
+    items: [],
+    eksisterende: [{ ...felles, frist: "2026-10-28" }],
+    nå: NÅ,
+  });
+  assert.deepEqual(satt.oppdateringer, []);
+});
+
+test("dataspillhøringen får sammendrag, frist og publisering, og er deretter i ro", () => {
+  const åpen = planleggBackfill({
+    items: [],
+    eksisterende: [rad({
+      id: DATASPILL_VARSEL_ID,
+      sammendrag: AVVIST_SAMMENDRAG,
+      kategori: "spill",
+      publisert: false,
+      frist: null,
+      manuelt_redigert: true,
+    })],
+    nå: NÅ,
+  });
+  assert.deepEqual(åpen.oppdateringer[0].felt, {
+    sammendrag: DATASPILL_SAMMENDRAG,
+    frist: DATASPILL_FRIST,
+    publisert: true,
+    kategori: "spill",
+    status: "normal",
+    manuelt_redigert: true,
+  });
+
+  const rettet = planleggBackfill({
+    items: [],
+    eksisterende: [rad({
+      id: DATASPILL_VARSEL_ID,
+      sammendrag: DATASPILL_SAMMENDRAG,
+      kategori: "spill",
+      publisert: true,
+      frist: DATASPILL_FRIST,
+      manuelt_redigert: true,
+    })],
+    nå: NÅ,
+  });
+  assert.deepEqual(rettet.oppdateringer, []);
+  assert.deepEqual(rettet.nye, []);
+});
+
+test("KUD-tillegg eldre enn vinduet droppes, globale dokumenter beholdes", () => {
+  const nå = NÅ;
+  const gammel = "2020-01-01";
+  const ut = filtrerRegjeringenItems([
+    item("Gammel KUD-nyhet", { instans: "KUD – nyhet", publisert_dato: gammel }),
+    item("Fersk KUD-nyhet", { instans: "KUD – nyhet", publisert_dato: "2026-10-07" }),
+    item("Gammel NOU", { instans: "Regjeringen – NOU", publisert_dato: gammel }),
+  ], nå);
+  assert.deepEqual(ut.map((i) => i.tittel), ["Fersk KUD-nyhet", "Gammel NOU"]);
+});

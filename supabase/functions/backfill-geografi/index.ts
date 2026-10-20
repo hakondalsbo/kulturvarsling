@@ -6,6 +6,7 @@
 // orgnr → Brønnøysund → kommunenr/fylkesnr (samme regel som hent-saker/einnsyn.ts).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { oppdaterVarsel } from "../_shared/varselvern.ts";
 
 const EINNSYN = "https://api.einnsyn.no";
 const BRREG = "https://data.brreg.no/enhetsregisteret/api/enheter";
@@ -51,7 +52,7 @@ Deno.serve(async () => {
   // Alle eInnsyn-saker (uansett om de har geografi — idempotent oppdatering)
   const { data: saker, error } = await supabase
     .from("varsler")
-    .select("id, kilde, kommunenr, fylkesnr, niva, sted")
+    .select("id, kilde, kommunenr, fylkesnr, niva, sted, sammendrag, manuelt_redigert")
     .like("kilde", "%einnsyn.no/moetesak/%");
   if (error) {
     return new Response(JSON.stringify({ feil: error.message }), { status: 500 });
@@ -99,14 +100,16 @@ Deno.serve(async () => {
       sak.niva === niva && sak.sted === sted
     ) { uendret++; continue; }
 
+    // Geografi er ikke tekstfelt. oppdaterVarsel slipper dem igjennom og
+    // fjerner tittel, sammendrag og kategori hvis raden er manuelt redigert.
     const { error: uErr } = await supabase
       .from("varsler")
-      .update({
+      .update(oppdaterVarsel(sak, {
         kommunenr: geo.kommunenr,
         fylkesnr: geo.fylkesnr,
         niva,
         sted,
-      })
+      }))
       .eq("id", sak.id);
     if (uErr) { feil.push(`${mid}: ${uErr.message}`); continue; }
     oppdatert++;
@@ -128,7 +131,7 @@ Deno.serve(async () => {
   }
   const { data: komSaker } = await supabase
     .from("varsler")
-    .select("id, kilde, kommunenr, fylkesnr, niva, sted")
+    .select("id, kilde, kommunenr, fylkesnr, niva, sted, sammendrag, manuelt_redigert")
     .like("kilde", "%.kommune.no%")
     .is("kommunenr", null);
   for (const sak of komSaker ?? []) {
@@ -138,7 +141,11 @@ Deno.serve(async () => {
     if (!knr) { feil.push(`${sak.kilde}: fant ikke kommune for subdomene`); continue; }
     const { error: uErr } = await supabase
       .from("varsler")
-      .update({ kommunenr: knr, fylkesnr: knr.slice(0, 2), niva: "kommune" })
+      .update(oppdaterVarsel(sak, {
+        kommunenr: knr,
+        fylkesnr: knr.slice(0, 2),
+        niva: "kommune",
+      }))
       .eq("id", sak.id);
     if (uErr) { feil.push(`${sak.id}: ${uErr.message}`); continue; }
     kommune_no_oppdatert++;
