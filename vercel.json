@@ -1,4 +1,5 @@
 {
+  "buildCommand": "vite build",
   "routes": [
     { "handle": "filesystem" },
     { "src": "/app", "dest": "/index.html" },

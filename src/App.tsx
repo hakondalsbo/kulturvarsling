@@ -1,6 +1,7 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type CSSProperties } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta } from "./avis.tsx";
+import { byttPremiumVerktøy, sakerJegFølger } from "./app-logikk.ts";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase → Settings → API
@@ -16,10 +17,10 @@ async function lastVarsler() {
     .eq("publisert", true)
     .order("frist", { ascending: true });
   if (error) { console.error("Varsler-feil:", error); return null; }
-  return data.map(v => ({
+  return data.map((v: any) => ({
     ...v,
     nivå: v.niva,  // map db snake_case → app camelCase
-    dager: v.dager ?? Math.max(0, Math.floor((new Date(v.frist) - new Date()) / 86400000))
+    dager: v.dager ?? Math.max(0, Math.floor((new Date(v.frist).getTime() - Date.now()) / 86400000))
   }));
 }
 
@@ -28,7 +29,7 @@ async function lastKampanjer() {
     .select("*")
     .eq("aktiv", true);
   if (error) { console.error("Kampanje-feil:", error); return null; }
-  return data.map(k => ({
+  return data.map((k: any) => ({
     ...k,
     sig: k.signaturer ?? 0,
     mal: k.mal,
@@ -37,25 +38,25 @@ async function lastKampanjer() {
   }));
 }
 
-async function hentProfil(userId) {
+async function hentProfil(userId: any) {
   const { data } = await sb.from("profiler").select("*").eq("id", userId).single();
   return data;
 }
 
-async function lagreProfil(userId, oppdateringer) {
+async function lagreProfil(userId: any, oppdateringer: any) {
   const { error } = await sb.from("profiler")
     .update({ ...oppdateringer, oppdatert: new Date().toISOString() })
     .eq("id", userId);
   return !error;
 }
 
-async function upsertProfil(userId, data) {
+async function upsertProfil(userId: any, data: any) {
   const { error } = await sb.from("profiler")
     .upsert({ id: userId, ...data, oppdatert: new Date().toISOString() });
   return !error;
 }
 
-async function toggleFølgSak(brukerId, sakId, følger) {
+async function toggleFølgSak(brukerId: any, sakId: any, følger: any) {
   if (følger) {
     await sb.from("fulgte_saker").delete()
       .eq("bruker_id", brukerId).eq("sak_id", sakId);
@@ -64,10 +65,10 @@ async function toggleFølgSak(brukerId, sakId, følger) {
   }
 }
 
-async function hentFulgte(brukerId) {
+async function hentFulgte(brukerId: any) {
   const { data } = await sb.from("fulgte_saker")
     .select("sak_id").eq("bruker_id", brukerId);
-  return (data ?? []).map(r => r.sak_id);
+  return (data ?? []).map((r: any) => r.sak_id);
 }
 
 async function lastKilder() {
@@ -88,13 +89,13 @@ async function lastKilder() {
 // Klartekst («hva betyr dette for meg?») er forståelse av en offentlig sak =
 // GRATIS for alle innloggede. Innlogging kreves kun for å hindre anonymt
 // misbruk av et betalt-per-kall AI-endepunkt — selve registreringen er gratis.
-export function kanBrukeKlartekst(user){
+export function kanBrukeKlartekst(user: any){
   return !!user?.id;
 }
 // Beholdt for bakoverkompatibilitet med E2-koden; klartekst har ingen kvote nå.
-export function registrerKlartekstBruk(_user){ /* gratis — ingen teller */ }
+export function registrerKlartekstBruk(_user: any){ /* gratis — ingen teller */ }
 
-async function loggAktivitetDB(brukerId, entry) {
+async function loggAktivitetDB(brukerId: any, entry: any) {
   await sb.from("aktivitet").insert({
     bruker_id: brukerId,
     type: entry.type,
@@ -104,14 +105,14 @@ async function loggAktivitetDB(brukerId, entry) {
   });
 }
 
-async function hentAktivitet(brukerId) {
+async function hentAktivitet(brukerId: any) {
   const { data } = await sb.from("aktivitet")
     .select("*").eq("bruker_id", brukerId)
     .order("opprettet", { ascending: false }).limit(50);
   return data ?? [];
 }
 
-async function signKampanje(kampanjeId, brukerId, navn, epost) {
+async function signKampanje(kampanjeId: any, brukerId: any, navn: any, epost: any) {
   const { error } = await sb.from("kampanje_signaturer").insert({
     kampanje_id: kampanjeId,
     bruker_id: brukerId ?? null,
@@ -121,7 +122,7 @@ async function signKampanje(kampanjeId, brukerId, navn, epost) {
   return !error;
 }
 
-async function sendFeedbackDB(brukerId, type, tekst, sakTittel) {
+async function sendFeedbackDB(brukerId: any, type: any, tekst: any, sakTittel: any) {
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token ?? null;
   const innlogget = data?.session?.user?.id ?? null;
@@ -191,48 +192,24 @@ const FYLKER = [
   {nr:"40",navn:"Telemark"},{nr:"42",navn:"Agder"},{nr:"46",navn:"Vestland"},
   {nr:"50",navn:"Trøndelag"},{nr:"55",navn:"Troms"},{nr:"56",navn:"Finnmark"},
 ];
-const fylkesnavn = (nr) => FYLKER.find(f=>f.nr===String(nr))?.navn ?? null;
+const fylkesnavn = (nr: any) => FYLKER.find((f: any)=>f.nr===String(nr))?.navn ?? null;
 
 const POLITIKERE = [
   {id:1,navn:"Anette Hansen",parti:"Ap",rolle:"Kulturbyråd",nivå:"kommune",sted:"Oslo",kategori:["scenekunst","musikk"],kontakt:"anette.hansen@oslo.kommune.no"},
   {id:2,navn:"Per Kristian Dahl",parti:"H",rolle:"Familie- og kulturkomiteen",nivå:"nasjonalt",sted:"Nasjonalt",kategori:["scenekunst","film"],kontakt:"pkdahl@stortinget.no"},
   {id:3,navn:"Silje Moe",parti:"SV",rolle:"Kulturpolitisk talsmann",nivå:"nasjonalt",sted:"Nasjonalt",kategori:["musikk","dans"],kontakt:"silje.moe@sv.no"},
 ];
-const PARTIFARGE = {Ap:"#E4002B",H:"#0070C0",SV:"#E8003D",Sp:"#00843D",KrF:"#FBBC04",V:"#006D3B"};
+const PARTIFARGE: Record<string, string> = {Ap:"#E4002B",H:"#0070C0",SV:"#E8003D",Sp:"#00843D",KrF:"#FBBC04",V:"#006D3B"};
 
-const VARSLER = [];
-
-const KAMPANJER = [];
-
-const SAK_HISTORIKK = [];
+const VARSLER: any[] = [];
 
 // Bruker-aktivitet (sendte meldinger, signerte kampanjer, fulgte saker)
-const AKTIVITET_INIT = [];
+const AKTIVITET_INIT: any[] = [];
 
 // Kommune mock-data
-const KOM_HØRINGER_INIT = [];
+const KOM_HØRINGER_INIT: any[] = [];
 
-const KOM_SVAR_MOCK = [];
-
-// Budget texts for premium analysis mock
-const BUDSJETT_ANALYSE_MOCK = `**Analyse av kulturbudsjettet**
-
-**Overordnet bilde**
-Budsjettet viser en nominell økning på 2,1 %, men justert for forventet prisvekst (3,4 %) er dette et reelt kutt på om lag 1,3 prosentpoeng. Kulturfeltet taper kjøpekraft for tredje år på rad.
-
-**Nøkkelfunn**
-- Frie midler til scenekunst reduseres med 4,2 mill kr (–8 %)
-- Stipendordninger for visuelle kunstnere er uendret nominelt, men søkermassen har økt med 23 %
-- Tilskudd til lokale musikklokaler er fjernet som egen post og slått sammen med bredere kulturpott
-- Investeringsmidler til kulturbygg øker med 12 %, men er øremerket to navngitte prosjekter
-
-**Risikopunkter**
-⚠ Sammenslåingen av musikktilskudd skaper uforutsigbarhet og favoriserer større aktører
-⚠ Ingen deflatorjustering er synlig i dokumentet – det bør etterlyses
-⚠ Fleksibilitetsposten (15 mill) gir stor skjønnsmessig makt til administrasjonen
-
-**Anbefalte tiltak**
-Kulturfeltet bør kreve: (1) real-prisjusterte rammer, (2) gjeninnføring av øremerket musikktilskudd, (3) innsyn i kriteriene for fleksibilitetsposten.`;
+const KOM_SVAR_MOCK: any[] = [];
 
 // ─── Utility ──────────────────────────────────────────────────────────────
 const css = `
@@ -298,15 +275,15 @@ export function showToast(msg:string, type:"ok"|"feil"|"info"="ok") { _showToast
 
 function ToastContainer() {
   const [toasts,setToasts]=useState<{id:number;msg:string;type:string}[]>([]);
-  _showToast = (msg,type="ok")=>{
+  _showToast = (msg: any,type: any="ok")=>{
     const id=Date.now();
-    setToasts(t=>[...t,{id,msg,type}]);
-    setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),3200);
+    setToasts((t: any)=>[...t,{id,msg,type}]);
+    setTimeout(()=>setToasts((t: any)=>t.filter((x: any)=>x.id!==id)),3200);
   };
   if(!toasts.length) return null;
   return (
     <div style={{position:"fixed",bottom:80,left:"50%",transform:"translateX(-50%)",zIndex:9999,display:"flex",flexDirection:"column",gap:8,alignItems:"center",pointerEvents:"none"}}>
-      {toasts.map(t=>(
+      {toasts.map((t: any)=>(
         <div key={t.id} style={{
           background:t.type==="feil"?"#991B1B":t.type==="info"?"#1D4ED8":"#14532D",
           color:"#fff",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:600,
@@ -320,29 +297,15 @@ function ToastContainer() {
   );
 }
 
-// ─── Skeleton loader ────────────────────────────────────────────────────────
-function Skeleton({h=16,w="100%",r=6,style={}}: {h?:number;w?:string|number;r?:number;style?:any}) {
-  return <div style={{height:h,width:w,borderRadius:r,background:"linear-gradient(90deg,#EDE8E2 25%,#F6F3EF 50%,#EDE8E2 75%)",backgroundSize:"200% 100%",animation:"shimmer 1.4s infinite",...style}}/>;
-}
-function VarselSkeleton() {
-  return (
-    <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 16px",borderLeft:"4px solid #EDE8E2"}}>
-      <div style={{display:"flex",gap:6,marginBottom:10}}><Skeleton h={18} w={60}/><Skeleton h={18} w={80}/></div>
-      <Skeleton h={16} w="90%" style={{marginBottom:6}}/>
-      <Skeleton h={14} w="70%" style={{marginBottom:12}}/>
-      <div style={{display:"flex",justifyContent:"space-between"}}><Skeleton h={12} w={100}/><Skeleton h={12} w={60}/></div>
-    </div>
-  );
-}
 
-function Badge({children,color=C.red,bg,style={},className=""}) {
+function Badge({children,color=C.red,bg,style={},className=""}: any) {
   return <span className={className} style={{background:bg||color+"18",color,padding:"2px 9px",borderRadius:99,fontSize:11,fontWeight:700,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:3,...style}}>{children}</span>;
 }
-function Btn({children,variant="primary",size="md",onClick,style={},disabled,className=""}) {
+function Btn({children,variant="primary",size="md",onClick,style={},disabled,className=""}: any) {
   const base = {border:"none",borderRadius:9,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,transition:"all .15s",...style};
   const pad = size==="sm"?"7px 14px":size==="lg"?"14px 28px":"10px 20px";
   const fs = size==="sm"?12:size==="lg"?16:14;
-  const variants = {
+  const variants: Record<string, any> = {
     primary:{background:C.red,color:"#fff",padding:pad,fontSize:fs,boxShadow:"0 1px 2px rgba(140,28,19,.18),0 3px 10px rgba(140,28,19,.16)"},
     secondary:{background:C.bgCard,color:C.text,border:`1.5px solid ${C.border}`,padding:pad,fontSize:fs},
     ghost:{background:"none",color:C.red,border:`1.5px solid ${C.red}`,padding:size==="sm"?"7px 14px":"10px 20px",fontSize:size==="sm"?12:14},
@@ -351,7 +314,7 @@ function Btn({children,variant="primary",size="md",onClick,style={},disabled,cla
   };
   return <button className={className} style={{...base,...variants[variant],...style}} onClick={onClick} disabled={disabled}>{children}</button>;
 }
-function Input({label,placeholder,value,onChange,type="text",rows}) {
+function Input({label,placeholder,value,onChange,type="text",rows}: any) {
   const s = {width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,color:C.text,background:C.bgCard,fontFamily:"inherit"};
   return (
     <div style={{marginBottom:14}}>
@@ -360,35 +323,31 @@ function Input({label,placeholder,value,onChange,type="text",rows}) {
     </div>
   );
 }
-function Card({children,style={}}) {
+function Card({children,style={}}: any) {
   return <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"20px 22px",boxShadow:"0 1px 2px rgba(26,18,16,.03),0 6px 20px rgba(26,18,16,.05)",...style}}>{children}</div>;
 }
-function Progress({value,max,color=C.red}) {
+function Progress({value,max,color=C.red}: any) {
   return (
     <div style={{background:C.bgAlt,borderRadius:99,height:6,overflow:"hidden"}}>
       <div style={{background:color,width:`${Math.min(100,Math.round(value/max*100))}%`,height:"100%",borderRadius:99,transition:"width .4s"}}/>
     </div>
   );
 }
-function StatusDot({status}) {
-  const cfg={kritisk:"#DC2626",viktig:C.amber,normal:C.green}[status]||C.muted;
-  return <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:cfg,marginRight:5}}/>;
-}
-function NivåBadge({nivå,sted}) {
-  const cfg={nasjonalt:[C.blue,"#DBEAFE"],fylke:[C.purple,"#EDE9FE"],kommune:[C.green,"#D1FAE5"]}[nivå]||[C.muted,C.bgAlt];
+function NivåBadge({nivå,sted}: any) {
+  const cfg=({nasjonalt:[C.blue,"#DBEAFE"],fylke:[C.purple,"#EDE9FE"],kommune:[C.green,"#D1FAE5"]} as Record<string, string[]>)[nivå]||[C.muted,C.bgAlt];
   return <Badge color={cfg[0]} bg={cfg[1]}>{nivå==="nasjonalt"?"🏛":nivå==="fylke"?"🗺":"📍"} {nivå==="nasjonalt"?"Nasjonalt":sted}</Badge>;
 }
 
-function KildeTillitsstrip({onÅpne}) {
+function KildeTillitsstrip({onÅpne}: any) {
   const [kilder,setKilder]=useState<any[]|null>(null);
   useEffect(()=>{ lastKilder().then(setKilder).catch(()=>setKilder([])); },[]);
   return <KildeSetning kilder={kilder} onÅpne={onÅpne}/>;
 }
 
-function KildeHelseSide({onBack}) {
+function KildeHelseSide({onBack}: any) {
   const [kilder,setKilder]=useState<any[]>([]);
   const [lastet,setLastet]=useState(false);
-  useEffect(()=>{ lastKilder().then(k=>{setKilder(k);setLastet(true);}).catch(()=>{setKilder([]);setLastet(true);}); },[]);
+  useEffect(()=>{ lastKilder().then((k: any)=>{setKilder(k);setLastet(true);}).catch(()=>{setKilder([]);setLastet(true);}); },[]);
   return (
     <div className="avis-wrap">
       <button type="button" className="avis-tilbake" onClick={onBack}>Tilbake</button>
@@ -397,58 +356,13 @@ function KildeHelseSide({onBack}) {
   );
 }
 
-// ─── LANDING PAGE ─────────────────────────────────────────────────────────
-function Landing({setScreen,varsler=[],kampanjer=[]}) {
-  const [valgt,setValgt]=useState<any>(null);
-  const [fane,setFane]=useState("info");
-  const [lokaleFulgte,setLokaleFulgte]=useState<any[]>([]);
-  return (
-    <div className="avis">
-      <style>{css}</style>
-      <div className="avis-dato">
-        <div className="avis-wrap avis-dato-rad">
-          <div className="avis-dato-venstre">
-            <span className="avis-dato-meta">{datoMeta(varsler.length)}</span>
-          </div>
-          <div className="avis-dato-hoyre">
-            <button type="button" onClick={()=>setScreen("kommune-login")}>For kommuner</button>
-            <button type="button" onClick={()=>setScreen("bruker-login")}>Logg inn</button>
-          </div>
-        </div>
-      </div>
-      <header className="avis-mast">
-        <button type="button" className="avis-tittel">Kultur<span>varsling</span></button>
-        <p className="avis-under">Kulturpolitikken, før den er vedtatt.</p>
-      </header>
-      <ForsideAvis
-        saker={varsler}
-        lastet
-        fulgte={lokaleFulgte}
-        onToggleFølg={(id)=>setLokaleFulgte((f)=>f.includes(id)?f.filter((x)=>x!==id):[...f,id])}
-        onÅpne={(sak, tab)=>{setFane(tab);setValgt(sak);}}
-        onAlle={()=>setScreen("bruker-app")}
-        kampanjeAntall={kampanjer.length}
-        onKampanjer={()=>setScreen("bruker-login")}
-      />
-      <footer className="avis-fot">
-        <div className="avis-wrap avis-fot-rad">
-          <span>© Kulturvarsling</span>
-          <span>
-            <button type="button" onClick={()=>setScreen("bruker-login")}>Logg inn</button>
-          </span>
-        </div>
-      </footer>
-      {valgt&&<SaksModal sak={valgt} startTab={fane} onClose={()=>setValgt(null)} kampanjer={kampanjer}/>}
-    </div>
-  );
-}
 
 
 // ─── PERSONVERN MODAL ────────────────────────────────────────────────────────
-function PersonvernModal({onClose}) {
+function PersonvernModal({onClose}: any) {
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:700,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0"}} onClick={onClose}>
-      <div style={{background:C.bgCard,borderRadius:"18px 18px 0 0",width:"100%",maxWidth:680,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 48px rgba(0,0,0,.2)"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:C.bgCard,borderRadius:"18px 18px 0 0",width:"100%",maxWidth:680,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 48px rgba(0,0,0,.2)"}} onClick={(e: any)=>e.stopPropagation()}>
         <div style={{padding:"20px 24px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:C.bgCard}}>
           <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>🔒 Personvern og databehandling</h2>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,color:C.muted,cursor:"pointer"}}>✕</button>
@@ -464,7 +378,7 @@ function PersonvernModal({onClose}) {
             ["Cookies og sporingsverktøy","Vi bruker kun funksjonelle informasjonskapsler som er nødvendige for at tjenesten skal fungere. Vi bruker ingen annonse- eller atferdssporingsverktøy."],
             ["Dine rettigheter","Du har rett til innsyn, retting og sletting av dine data. Du kan når som helst trekke tilbake samtykket og slette kontoen din under Min side → Innstillinger. For henvendelser: personvern@kulturvarsling.no"],
             ["Datalagring","Data lagres på servere i EU/EØS-området. Vi oppbevarer data så lenge kontoen er aktiv, eller i inntil 12 måneder etter siste innlogging."],
-          ].map(([tittel,tekst])=>(
+          ].map(([tittel,tekst]: any)=>(
             <div key={tittel} style={{marginBottom:20}}>
               <div style={{fontWeight:700,fontSize:14,color:C.redDark,marginBottom:6}}>{tittel}</div>
               <div style={{color:C.muted,fontSize:13,lineHeight:1.65}}>{tekst}</div>
@@ -481,7 +395,7 @@ function PersonvernModal({onClose}) {
 }
 
 // ─── ONBOARDING WIZARD ───────────────────────────────────────────────────────
-function OnboardingWizard({user,setUser,onDone}) {
+function OnboardingWizard({user,setUser,onDone}: any) {
   const [steg,setSteg]=useState(0);
   const [org,setOrg]=useState(user?.org||"");
   const [orgType,setOrgType]=useState(user?.orgType||"");
@@ -499,7 +413,7 @@ function OnboardingWizard({user,setUser,onDone}) {
   ];
 
   function fullfør() {
-    setUser(u=>({...u,org,orgType,varselKat:valgtKat,varselNivå:valgtNivå,varselFrekvens:frekvens,onboardingDone:true}));
+    setUser((u: any)=>({...u,org,orgType,varselKat:valgtKat,varselNivå:valgtNivå,varselFrekvens:frekvens,onboardingDone:true}));
     if(user?.id) {
       upsertProfil(user.id, {
         org, org_type: orgType, fagfelt: valgtKat,
@@ -520,7 +434,7 @@ function OnboardingWizard({user,setUser,onDone}) {
               Steg {steg+1} av {stegListe.length}
             </div>
             <div style={{display:"flex",gap:5}}>
-              {stegListe.map((_,i)=>(
+              {stegListe.map((_: any,i: any)=>(
                 <div key={i} style={{width:i<=steg?24:8,height:6,borderRadius:99,background:i<=steg?"#fff":"rgba(255,255,255,.3)",transition:"width .3s"}}/>
               ))}
             </div>
@@ -535,13 +449,13 @@ function OnboardingWizard({user,setUser,onDone}) {
             <div>
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:".04em"}}>Navn / organisasjon</div>
-                <input value={org} onChange={e=>setOrg(e.target.value)} placeholder="Eks: Norsk Musikerforbund"
+                <input value={org} onChange={(e: any)=>setOrg(e.target.value)} placeholder="Eks: Norsk Musikerforbund"
                   style={{width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",color:C.text,background:C.bgCard}}/>
               </div>
               <div style={{marginBottom:4}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Type aktør</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                  {[["organisasjon","🏢 Organisasjon"],["kunstner","🎨 Frilanser/kunstner"],["institusjon","🏛 Institusjon"],["annet","👤 Annet"]].map(([id,lbl])=>(
+                  {[["organisasjon","🏢 Organisasjon"],["kunstner","🎨 Frilanser/kunstner"],["institusjon","🏛 Institusjon"],["annet","👤 Annet"]].map(([id,lbl]: any)=>(
                     <button key={id} onClick={()=>setOrgType(id)}
                       style={{padding:"10px 12px",borderRadius:9,border:`1.5px solid ${orgType===id?C.red:C.border}`,background:orgType===id?"#FFF0EF":C.bgCard,color:orgType===id?C.red:C.text,fontSize:13,fontWeight:orgType===id?700:400,fontFamily:"inherit",textAlign:"left"}}>
                       {lbl}
@@ -556,8 +470,8 @@ function OnboardingWizard({user,setUser,onDone}) {
           {steg===1&&(
             <div>
               <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-                {KATEGORIER.map(k=>(
-                  <button key={k.id} onClick={()=>setValgtKat(p=>p.includes(k.id)?p.filter(x=>x!==k.id):[...p,k.id])}
+                {KATEGORIER.map((k: any)=>(
+                  <button key={k.id} onClick={()=>setValgtKat((p: any)=>p.includes(k.id)?p.filter((x: any)=>x!==k.id):[...p,k.id])}
                     style={{padding:"8px 13px",borderRadius:99,border:`1.5px solid ${valgtKat.includes(k.id)?C.red:C.border}`,background:valgtKat.includes(k.id)?C.red:"none",color:valgtKat.includes(k.id)?"#fff":C.text,fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:valgtKat.includes(k.id)?700:400}}>
                     {k.ikon} {k.label}
                   </button>
@@ -567,8 +481,8 @@ function OnboardingWizard({user,setUser,onDone}) {
               <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Geografisk nivå</div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {[["nasjonalt","🏛 Nasjonalt"],["fylke","🗺 Fylke"],["kommune","📍 Kommune"]].map(([id,lbl])=>(
-                    <button key={id} onClick={()=>setValgtNivå(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])}
+                  {[["nasjonalt","🏛 Nasjonalt"],["fylke","🗺 Fylke"],["kommune","📍 Kommune"]].map(([id,lbl]: any)=>(
+                    <button key={id} onClick={()=>setValgtNivå((p: any)=>p.includes(id)?p.filter((x: any)=>x!==id):[...p,id])}
                       style={{padding:"8px 14px",borderRadius:8,border:`1.5px solid ${valgtNivå.includes(id)?C.red:C.border}`,background:valgtNivå.includes(id)?C.red:"none",color:valgtNivå.includes(id)?"#fff":C.text,fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:valgtNivå.includes(id)?700:400}}>
                       {lbl}
                     </button>
@@ -585,7 +499,7 @@ function OnboardingWizard({user,setUser,onDone}) {
                 ["straks","⚡ Straks","Kun varsler med under 7 dager til frist og status kritisk"],
                 ["daglig","📅 Daglig oppsummering","Én e-post per dag med alle nye saker – anbefalt"],
                 ["ukentlig","📬 Ukentlig digest","Én e-post per uke – oversikt over siste 7 dager"],
-              ].map(([id,lbl,sub])=>(
+              ].map(([id,lbl,sub]: any)=>(
                 <div key={id} onClick={()=>setFrekvens(id)}
                   style={{display:"flex",gap:14,alignItems:"center",padding:"14px 16px",borderRadius:12,border:`1.5px solid ${frekvens===id?C.red:C.border}`,background:frekvens===id?"#FFF0EF":"none",cursor:"pointer"}}>
                   <div style={{width:20,height:20,borderRadius:"50%",border:`2.5px solid ${frekvens===id?C.red:C.border}`,background:frekvens===id?C.red:"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -608,13 +522,13 @@ function OnboardingWizard({user,setUser,onDone}) {
                 <br/><br/>
                 Kulturvarsling.no vil bruke e-postadressen din til å sende varsler du har abonnert på. Vi deler aldri dine data med tredjeparter til kommersielle formål.
               </div>
-              <div onClick={()=>setSamtykke(s=>!s)} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"14px 16px",borderRadius:12,border:`1.5px solid ${samtykke?C.green:C.border}`,background:samtykke?"#F0FDF4":"none",cursor:"pointer",marginBottom:14}}>
+              <div onClick={()=>setSamtykke((s: any)=>!s)} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"14px 16px",borderRadius:12,border:`1.5px solid ${samtykke?C.green:C.border}`,background:samtykke?"#F0FDF4":"none",cursor:"pointer",marginBottom:14}}>
                 <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${samtykke?C.green:C.border}`,background:samtykke?C.green:"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>
                   {samtykke&&<span style={{color:"#fff",fontSize:12,fontWeight:900}}>✓</span>}
                 </div>
                 <div style={{fontSize:13,color:C.text,lineHeight:1.55}}>
                   Jeg har lest og akseptert{" "}
-                  <button onClick={e=>{e.stopPropagation();setVisPersonvern(true);}} style={{background:"none",border:"none",color:C.red,fontWeight:700,fontSize:13,cursor:"pointer",padding:0,textDecoration:"underline"}}>
+                  <button onClick={(e: any)=>{e.stopPropagation();setVisPersonvern(true);}} style={{background:"none",border:"none",color:C.red,fontWeight:700,fontSize:13,cursor:"pointer",padding:0,textDecoration:"underline"}}>
                     personvernerklæringen
                   </button>
                   {" "}og samtykker til at Kulturvarsling.no kan behandle mine personopplysninger.
@@ -628,9 +542,9 @@ function OnboardingWizard({user,setUser,onDone}) {
 
           {/* Navigasjon */}
           <div style={{display:"flex",gap:10,marginTop:24}}>
-            {steg>0&&<Btn variant="secondary" onClick={()=>setSteg(s=>s-1)}>← Tilbake</Btn>}
+            {steg>0&&<Btn variant="secondary" onClick={()=>setSteg((s: any)=>s-1)}>← Tilbake</Btn>}
             {steg<stegListe.length-1&&(
-              <Btn variant="primary" style={{flex:1}} onClick={()=>setSteg(s=>s+1)}>
+              <Btn variant="primary" style={{flex:1}} onClick={()=>setSteg((s: any)=>s+1)}>
                 Neste →
               </Btn>
             )}
@@ -654,7 +568,7 @@ function OnboardingWizard({user,setUser,onDone}) {
 // ─── BRUKER LOGIN ─────────────────────────────────────────────────────────
 
 // ─── FEEDBACK MODAL ──────────────────────────────────────────────────────────
-function FeedbackModal({onClose, kontekst=null as any}) {
+function FeedbackModal({onClose, kontekst=null as any}: any) {
   const [type,setType]=useState(kontekst?.type||"feil");
   const [tekst,setTekst]=useState("");
   const [sendt,setSendt]=useState(false);
@@ -683,7 +597,7 @@ function FeedbackModal({onClose, kontekst=null as any}) {
 
   if(sendt) return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:C.bgCard,borderRadius:16,padding:"40px 32px",textAlign:"center",maxWidth:400}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:C.bgCard,borderRadius:16,padding:"40px 32px",textAlign:"center",maxWidth:400}} onClick={(e: any)=>e.stopPropagation()}>
         <div style={{fontSize:40,marginBottom:12}}>🙏</div>
         <div style={{fontWeight:800,fontSize:17,color:C.green,marginBottom:6}}>Takk for tilbakemeldingen!</div>
         <div style={{fontSize:13,color:C.muted,marginBottom:20,lineHeight:1.6}}>Vi bruker innspill som dette til å forbedre plattformen og kvaliteten på sakene vi overvåker.</div>
@@ -694,7 +608,7 @@ function FeedbackModal({onClose, kontekst=null as any}) {
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:C.bgCard,borderRadius:16,width:"100%",maxWidth:480,padding:"24px 28px",boxShadow:"0 24px 64px rgba(0,0,0,.25)"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:C.bgCard,borderRadius:16,width:"100%",maxWidth:480,padding:"24px 28px",boxShadow:"0 24px 64px rgba(0,0,0,.25)"}} onClick={(e: any)=>e.stopPropagation()}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark,margin:0}}>📬 Send oss tilbakemelding</h2>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,color:C.muted,cursor:"pointer"}}>✕</button>
@@ -709,7 +623,7 @@ function FeedbackModal({onClose, kontekst=null as any}) {
         <div style={{marginBottom:14}}>
           <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",marginBottom:8}}>Type tilbakemelding</div>
           <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-            {[["feil","⚠️ Feil i saken"],["mangler","🔍 Manglende sak"],["utdatert","🗓 Utdatert info"],["forslag","💡 Forslag til forbedring"],["annet","💬 Annet"]].map(([id,lbl])=>(
+            {[["feil","⚠️ Feil i saken"],["mangler","🔍 Manglende sak"],["utdatert","🗓 Utdatert info"],["forslag","💡 Forslag til forbedring"],["annet","💬 Annet"]].map(([id,lbl]: any)=>(
               <button key={id} onClick={()=>setType(id)}
                 style={{padding:"6px 12px",borderRadius:99,border:"1.5px solid "+(type===id?C.red:C.border),background:type===id?C.red:"none",color:type===id?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:type===id?700:400,fontFamily:"inherit"}}>
                 {lbl}
@@ -722,7 +636,7 @@ function FeedbackModal({onClose, kontekst=null as any}) {
           <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",marginBottom:6}}>
             {type==="feil"?"Hva er feil?":type==="mangler"?"Hvilken sak mangler?":type==="utdatert"?"Hva er utdatert?":type==="forslag"?"Ditt forslag":("Beskriv")}
           </div>
-          <textarea value={tekst} onChange={e=>setTekst(e.target.value)} rows={4}
+          <textarea value={tekst} onChange={(e: any)=>setTekst(e.target.value)} rows={4}
             placeholder={type==="feil"?"F.eks. feil frist, feil instans, faktafeil i sammendrag...":type==="mangler"?"Beskriv saken og hvem som behandler den...":type==="forslag"?"Hva ville gjort plattformen bedre for deg?":"..."}
             style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1px solid "+C.border,fontSize:13,lineHeight:1.6,resize:"vertical",boxSizing:"border-box",fontFamily:"inherit"}}/>
         </div>
@@ -739,7 +653,7 @@ function FeedbackModal({onClose, kontekst=null as any}) {
   );
 }
 
-function BrukerLogin({setScreen,setUser}) {
+function BrukerLogin({setScreen,setUser}: any) {
   const [epost,setEpost]=useState("");
   const [pw,setPw]=useState("");
   const [navn,setNavn]=useState("");
@@ -785,7 +699,7 @@ function BrukerLogin({setScreen,setUser}) {
     }
     if(data.user) {
       await upsertProfil(data.user.id, { navn, onboarding_done: false, plan: "gratis" });
-      await new Promise(r=>setTimeout(r,500));
+      await new Promise((r: any)=>setTimeout(r,500));
       setUser({
         id: data.user.id, navn, epost: data.user.email,
         org:"", orgType:"", fagfelt:[],
@@ -852,9 +766,9 @@ function BrukerLogin({setScreen,setUser}) {
         )}
 
         <Card style={{padding:"24px"}}>
-          <Input label="E-postadresse" placeholder="deg@eksempel.no" value={epost} onChange={e=>setEpost(e.target.value)} type="email"/>
-          <Input label="Passord" placeholder="Minst 6 tegn" value={pw} onChange={e=>setPw(e.target.value)} type="password"/>
-          {mode==="register"&&<Input label="Navn / organisasjon" placeholder="Eks: Frode Gjerløw / Åndsverkstedet" value={navn} onChange={e=>setNavn(e.target.value)}/>}
+          <Input label="E-postadresse" placeholder="deg@eksempel.no" value={epost} onChange={(e: any)=>setEpost(e.target.value)} type="email"/>
+          <Input label="Passord" placeholder="Minst 6 tegn" value={pw} onChange={(e: any)=>setPw(e.target.value)} type="password"/>
+          {mode==="register"&&<Input label="Navn / organisasjon" placeholder="Eks: Frode Gjerløw / Åndsverkstedet" value={navn} onChange={(e: any)=>setNavn(e.target.value)}/>}
           {mode==="register"&&(
             <div style={{fontSize:12,color:C.muted,lineHeight:1.55,marginBottom:12}}>
               Ved å opprette konto aksepterer du{" "}
@@ -877,7 +791,7 @@ function BrukerLogin({setScreen,setUser}) {
           )}
           <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,textAlign:"center",fontSize:13,color:C.muted}}>
             {mode==="login"?"Har du ikke konto?":"Har du allerede konto?"}
-            <button onClick={()=>{setMode(m=>m==="login"?"register":"login");setFeil("");}}
+            <button onClick={()=>{setMode((m: any)=>m==="login"?"register":"login");setFeil("");}}
               style={{background:"none",border:"none",color:C.red,fontWeight:700,fontSize:13,marginLeft:5,cursor:"pointer",fontFamily:"inherit"}}>
               {mode==="login"?"Registrer deg gratis":"Logg inn"}
             </button>
@@ -893,20 +807,20 @@ function BrukerLogin({setScreen,setUser}) {
 }
 
 // ─── BRUKER APP ───────────────────────────────────────────────────────────
-function BrukerApp({user,setUser,setScreen}) {
+function BrukerApp({user,setUser,setScreen}: any) {
   const [view,setView]=useState("forside");
   const [showPremium,setShowPremium]=useState(false);
   const [showVarselReg,setShowVarselReg]=useState(false);
   const [showOnboarding,setShowOnboarding]=useState(user&&!user.onboardingDone);
   const [showPersonvern,setShowPersonvern]=useState(false);
   const [showFeedback,setShowFeedback]=useState(false);
-  const [fulgte,setFullgte]=useState([]);
+  const [fulgte,setFullgte]=useState<any[]>([]);
   const isPremium = user?.plan==="premium";
   const [aktivitet,setAktivitet]=useState(AKTIVITET_INIT);
 
   // ── Last data fra Supabase ved oppstart ──────────────────
-  const [varsler,setVarsler]=useState([]);
-  const [kampanjer,setKampanjer]=useState([]);
+  const [varsler,setVarsler]=useState<any[]>([]);
+  const [kampanjer,setKampanjer]=useState<any[]>([]);
   const [dataLastet,setDataLastet]=useState(false);
 
   // ── Aktive vs. historiske saker ──────────────────────────
@@ -914,10 +828,10 @@ function BrukerApp({user,setUser,setScreen}) {
   // historikken — ikke i varsellisten. Historikken er arkivet som senere gir
   // statistikk og trender («hva skjedde i feltet mitt?»).
   const idagISO = new Date().toISOString().split("T")[0];
-  const erHistorisk = (v)=>
+  const erHistorisk = (v: any)=>
     (v.frist && v.frist < idagISO) ||
     (!v.frist && v.opprettet && (Date.now()-new Date(v.opprettet).getTime()) > 90*86400000);
-  const aktiveVarsler = useMemo(()=>varsler.filter(v=>!erHistorisk(v)),[varsler]);
+  const aktiveVarsler = useMemo(()=>varsler.filter((v: any)=>!erHistorisk(v)),[varsler]);
   const historiskeVarsler = useMemo(()=>varsler.filter(erHistorisk),[varsler]);
 
   useEffect(()=>{
@@ -934,7 +848,7 @@ function BrukerApp({user,setUser,setScreen}) {
         setFullgte(f);
         // Last aktivitet
         const a = await hentAktivitet(user.id);
-        if(a.length > 0) setAktivitet(a.map(x=>({
+        if(a.length > 0) setAktivitet(a.map((x: any)=>({
           ...x, type:x.type, tittel:x.tittel, dato:x.opprettet?.slice(0,10)||"",
           sakId:x.sak_id, mottaker:x.mottaker, status:x.status||"sendt"
         })));
@@ -945,10 +859,10 @@ function BrukerApp({user,setUser,setScreen}) {
 
     // Real-time: lytt på nye varsler
     const kanalen = sb.channel("varsler-live")
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"varsler",filter:"publisert=eq.true"},(payload)=>{
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"varsler",filter:"publisert=eq.true"},(payload: any)=>{
         const v = payload.new;
-        const nytt = {...v, nivå:v.niva, dager:v.dager??Math.max(0,Math.floor((new Date(v.frist)-new Date())/86400000))};
-        setVarsler(prev=>[nytt,...prev]);
+        const nytt = {...v, nivå:v.niva, dager:v.dager??Math.max(0,Math.floor((new Date(v.frist).getTime()-Date.now())/86400000))};
+        setVarsler((prev: any)=>[nytt,...prev]);
         showToast(`Nytt varsel: ${v.tittel.slice(0,60)}…`,"info");
       })
       .subscribe();
@@ -956,15 +870,15 @@ function BrukerApp({user,setUser,setScreen}) {
     return ()=>{ sb.removeChannel(kanalen); };
   },[]);
 
-  async function loggAktivitet(entry) {
+  async function loggAktivitet(entry: any) {
     const ny = {...entry, id:Date.now(), dato:new Date().toLocaleDateString("no-NO")};
-    setAktivitet(a=>[ny,...a]);
+    setAktivitet((a: any)=>[ny,...a]);
     if(user?.id) await loggAktivitetDB(user.id, entry);
   }
 
-  async function toggleFølg(sakId) {
+  async function toggleFølg(sakId: any) {
     const følger = fulgte.includes(sakId);
-    setFullgte(f=>følger?f.filter(x=>x!==sakId):[...f,sakId]);
+    setFullgte((f: any)=>følger?f.filter((x: any)=>x!==sakId):[...f,sakId]);
     if(user?.id) await toggleFølgSak(user.id, sakId, følger);
   }
 
@@ -1039,7 +953,7 @@ function BrukerApp({user,setUser,setScreen}) {
       <header className="avis-mast">
         <button type="button" className="avis-tittel" onClick={()=>gå("forside")}>Kultur<span>varsling</span></button>
         <p className="avis-under">Kulturpolitikken, før den er vedtatt.</p>
-        <button type="button" className="avis-menyknapp" aria-expanded={menyÅpen} aria-controls="avis-mobilmeny" onClick={()=>setMenyÅpen(v=>!v)}>Meny</button>
+        <button type="button" className="avis-menyknapp" aria-expanded={menyÅpen} aria-controls="avis-mobilmeny" onClick={()=>setMenyÅpen((v: any)=>!v)}>Meny</button>
       </header>
 
       <nav className="avis-meny" aria-label="Hovedmeny">
@@ -1048,10 +962,10 @@ function BrukerApp({user,setUser,setScreen}) {
           <button type="button" className={view==="varsler"?"aktiv":undefined} onClick={()=>gå("varsler")}>Varsler</button>
           <button type="button" onClick={tilMetode}>Slik jobber vi</button>
           <span className="avis-mer">
-            <button type="button" className={mer.some(m=>m.id===view)?"aktiv":undefined} aria-expanded={merÅpen} onClick={()=>setMerÅpen(v=>!v)}>Mer</button>
+            <button type="button" className={mer.some((m: any)=>m.id===view)?"aktiv":undefined} aria-expanded={merÅpen} onClick={()=>setMerÅpen((v: any)=>!v)}>Mer</button>
             {merÅpen&&(
               <div className="avis-mer-panel" role="menu">
-                {mer.map(m=>(
+                {mer.map((m: any)=>(
                   <button type="button" role="menuitem" key={m.id} className={view===m.id?"aktiv":undefined} onClick={()=>gå(m.id)}>{m.label}</button>
                 ))}
               </div>
@@ -1064,7 +978,7 @@ function BrukerApp({user,setUser,setScreen}) {
           <button type="button" className={view==="forside"?"aktiv":undefined} onClick={()=>gå("forside")}>Forsiden</button>
           <button type="button" className={view==="varsler"?"aktiv":undefined} onClick={()=>gå("varsler")}>Varsler</button>
           <button type="button" onClick={tilMetode}>Slik jobber vi</button>
-          {mer.map(m=>(
+          {mer.map((m: any)=>(
             <button type="button" key={m.id} className={view===m.id?"aktiv":undefined} onClick={()=>gå(m.id)}>{m.label}</button>
           ))}
           <button type="button" onClick={()=>setScreen("kommune-login")}>For kommuner</button>
@@ -1075,7 +989,7 @@ function BrukerApp({user,setUser,setScreen}) {
       )}
 
       <main>
-        {view==="forside"   &&<BrukerForside setView={gå} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} dataLastet={dataLastet} user={user} minFylke={user?.fylkesnr} onVelgFylke={(fnr)=>{setUser(u=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}/>}
+        {view==="forside"   &&<BrukerForside setView={gå} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} dataLastet={dataLastet} user={user} minFylke={user?.fylkesnr} onVelgFylke={(fnr: any)=>{setUser((u: any)=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}/>}
         {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer} minFylke={user?.fylkesnr} fagfelt={user?.fagfelt||[]}/>}
         {view==="kilder"    &&<KildeHelseSide onBack={()=>gå("forside")}/>}
         {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&(
@@ -1084,7 +998,7 @@ function BrukerApp({user,setUser,setScreen}) {
             {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
             {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
             {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
-            {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
+            {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} varslerData={varsler} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
             {view==="premium"   &&<PremiumVerktøy varslerData={varsler} user={user}/>}
           </div>
         )}
@@ -1104,7 +1018,7 @@ function BrukerApp({user,setUser,setScreen}) {
       <nav className="avis-bunn" aria-label="Bunnmeny">
         <button type="button" className={view==="forside"?"aktiv":undefined} onClick={()=>gå("forside")}>Forsiden</button>
         <button type="button" className={view==="varsler"?"aktiv":undefined} onClick={()=>gå("varsler")}>Varsler</button>
-        <button type="button" className={menyÅpen?"aktiv":undefined} aria-expanded={menyÅpen} onClick={()=>setMenyÅpen(v=>!v)}>Mer</button>
+        <button type="button" className={menyÅpen?"aktiv":undefined} aria-expanded={menyÅpen} onClick={()=>setMenyÅpen((v: any)=>!v)}>Mer</button>
       </nav>
     </div>
   );
@@ -1112,10 +1026,10 @@ function BrukerApp({user,setUser,setScreen}) {
 
 
 // ─── FØLG-KNAPP ──────────────────────────────────────────────────────────────
-function FølgKnapp({sakId,fulgte,toggleFølg,size="sm"}) {
+function FølgKnapp({sakId,fulgte,toggleFølg,size="sm"}: any) {
   const følger = fulgte.includes(sakId);
   return (
-    <button onClick={e=>{e.stopPropagation();toggleFølg(sakId);}}
+    <button onClick={(e: any)=>{e.stopPropagation();toggleFølg(sakId);}}
       style={{padding:size==="sm"?"5px 10px":"8px 14px",borderRadius:7,border:`1.5px solid ${følger?C.red:C.border}`,background:følger?"#FFF0EF":"none",color:følger?C.red:C.muted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4,flexShrink:0,transition:"all .15s"}}>
       {følger?"🔔 Følger":"🔕 Følg saken"}
     </button>
@@ -1123,7 +1037,7 @@ function FølgKnapp({sakId,fulgte,toggleFølg,size="sm"}) {
 }
 
 // ─── MIN PROFIL SIDE ─────────────────────────────────────────────────────────
-function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselReg,setShowPremium,setShowOnboarding,setShowPersonvern}) {
+function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,varslerData=[],setShowVarselReg,setShowPremium,setShowOnboarding,setShowPersonvern}: any) {
   const [tab,setTab]=useState("profil");
   const [redigerOrg,setRedigerOrg]=useState(false);
   const [orgVal,setOrgVal]=useState(user?.org||"");
@@ -1131,7 +1045,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
   const [fylkeVal,setFylkeVal]=useState(user?.fylkesnr||"");
   async function lagreOrg(){
     const oppd={org:orgVal,orgType:orgTypeVal,fylkesnr:fylkeVal||null};
-    setUser(u=>({...u,...oppd}));
+    setUser((u: any)=>({...u,...oppd}));
     setRedigerOrg(false);
     if(user?.id) await lagreProfil(user.id,{org:orgVal,org_type:orgTypeVal,fylkesnr:fylkeVal||null});
   }
@@ -1139,7 +1053,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
   return (
     <div>
       <div className="sub-nav" style={{display:"flex",gap:0,marginBottom:24,borderBottom:`1px solid ${C.border}`}}>
-        {[["profil","👤 Organisasjonsprofil"],["fulgte","🔔 Saker jeg følger"],["aktivitet","📋 Aktivitet"],["innstillinger","⚙️ Innstillinger"]].map(([id,lbl])=>(
+        {[["profil","👤 Organisasjonsprofil"],["fulgte","🔔 Saker jeg følger"],["aktivitet","📋 Aktivitet"],["innstillinger","⚙️ Innstillinger"]].map(([id,lbl]: any)=>(
           <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:13,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
             {lbl}
           </button>
@@ -1152,7 +1066,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
           <Card>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <div style={{fontWeight:700,fontSize:14}}>Organisasjonsinfo</div>
-              <Btn variant="secondary" size="sm" onClick={()=>setRedigerOrg(r=>!r)}>{redigerOrg?"Lagre":"Rediger"}</Btn>
+              <Btn variant="secondary" size="sm" onClick={()=>setRedigerOrg((r: any)=>!r)}>{redigerOrg?"Lagre":"Rediger"}</Btn>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
               <div style={{width:52,height:52,background:C.red,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:22,fontFamily:"serif"}}>
@@ -1162,7 +1076,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
                 <div style={{fontWeight:700,fontSize:16}}>{user?.org||user?.navn||"Ikke satt"}</div>
                 <div style={{fontSize:12,color:C.muted,marginTop:2}}>{user?.epost}</div>
                 <div style={{fontSize:11,marginTop:4,display:"flex",gap:5,flexWrap:"wrap"}}>
-                  {user?.orgType&&<Badge color={C.muted}>{({organisasjon:"🏢 Organisasjon",kunstner:"🎨 Frilanser/kunstner",institusjon:"🏛 Institusjon",annet:"👤 Annet"})[user.orgType]||user.orgType}</Badge>}
+                  {user?.orgType&&<Badge color={C.muted}>{({organisasjon:"🏢 Organisasjon",kunstner:"🎨 Frilanser/kunstner",institusjon:"🏛 Institusjon",annet:"👤 Annet"} as Record<string, string>)[user.orgType]||user.orgType}</Badge>}
                   {user?.fylkesnr&&<Badge color={C.komBlue}>📍 {fylkesnavn(user.fylkesnr)}</Badge>}
                 </div>
               </div>
@@ -1171,12 +1085,12 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
               <div>
                 <div style={{marginBottom:10}}>
                   <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:".03em"}}>Organisasjonsnavn</div>
-                  <input value={orgVal} onChange={e=>setOrgVal(e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  <input value={orgVal} onChange={(e: any)=>setOrgVal(e.target.value)} style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,boxSizing:"border-box",fontFamily:"inherit"}}/>
                 </div>
                 <div style={{marginBottom:12}}>
                   <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:".03em"}}>Type aktør</div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                    {[["organisasjon","🏢 Org."],["kunstner","🎨 Frilanser"],["institusjon","🏛 Inst."],["annet","👤 Annet"]].map(([id,lbl])=>(
+                    {[["organisasjon","🏢 Org."],["kunstner","🎨 Frilanser"],["institusjon","🏛 Inst."],["annet","👤 Annet"]].map(([id,lbl]: any)=>(
                       <button key={id} onClick={()=>setOrgTypeVal(id)}
                         style={{padding:"7px 8px",borderRadius:7,border:`1.5px solid ${orgTypeVal===id?C.red:C.border}`,background:orgTypeVal===id?"#FFF0EF":"none",color:orgTypeVal===id?C.red:C.text,fontSize:12,fontFamily:"inherit",cursor:"pointer"}}>
                         {lbl}
@@ -1186,10 +1100,10 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
                 </div>
                 <div style={{marginBottom:12}}>
                   <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:".03em"}}>Hvilket fylke holder du til i?</div>
-                  <select value={fylkeVal} onChange={e=>setFylkeVal(e.target.value)}
+                  <select value={fylkeVal} onChange={(e: any)=>setFylkeVal(e.target.value)}
                     style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,boxSizing:"border-box",fontFamily:"inherit",background:"#fff"}}>
                     <option value="">— Velg fylke (for «vis mitt fylke») —</option>
-                    {FYLKER.map(f=><option key={f.nr} value={f.nr}>{f.navn}</option>)}
+                    {FYLKER.map((f: any)=><option key={f.nr} value={f.nr}>{f.navn}</option>)}
                   </select>
                   <div style={{fontSize:11,color:C.muted,marginTop:5,lineHeight:1.5}}>Da kan du filtrere til saker som angår ditt fylke. Alltid gratis.</div>
                 </div>
@@ -1208,10 +1122,10 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
             <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Aktivitetsoppsummering</div>
             {[
               ["Saker fulgt",fulgte.length,"🔔"],
-              ["Høringssvar sendt",aktivitet.filter(a=>a.type==="horingssvar").length,"📝"],
-              ["Politikere kontaktet",aktivitet.filter(a=>a.type==="kontakt").length,"📬"],
-              ["Kampanjer signert",aktivitet.filter(a=>a.type==="signatur").length,"✊"],
-            ].map(([lbl,n,ikon])=>(
+              ["Høringssvar sendt",aktivitet.filter((a: any)=>a.type==="horingssvar").length,"📝"],
+              ["Politikere kontaktet",aktivitet.filter((a: any)=>a.type==="kontakt").length,"📬"],
+              ["Kampanjer signert",aktivitet.filter((a: any)=>a.type==="signatur").length,"✊"],
+            ].map(([lbl,n,ikon]: any)=>(
               <div key={lbl} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
                 <span style={{fontSize:13,color:C.muted}}>{ikon} {lbl}</span>
                 <span style={{fontWeight:800,fontSize:16,fontFamily:"'Playfair Display',serif",color:C.text}}>{n}</span>
@@ -1232,9 +1146,9 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
             </div>
           ):(
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {varslerData.filter(v=>fulgte.includes(v.id)).map(v=>{
-                const ki=KATEGORIER.find(k=>k.id===v.kategori);
-                const bc={kritisk:"#DC2626",viktig:"#D97706",normal:"#16A34A"}[v.status];
+              {sakerJegFølger(varslerData, fulgte).map((v: any)=>{
+                const ki=KATEGORIER.find((k: any)=>k.id===v.kategori);
+                const bc=({kritisk:"#DC2626",viktig:"#D97706",normal:"#16A34A"} as Record<string, string>)[v.status];
                 return (
                   <div key={v.id} style={{background:C.bgCard,border:`1px solid ${C.border}`,borderLeft:`4px solid ${bc}`,borderRadius:12,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
                     <div style={{flex:1}}>
@@ -1259,7 +1173,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
         <Card>
           <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Siste aktivitet</div>
           {aktivitet.length===0&&<div style={{fontSize:13,color:C.muted}}>Ingen aktivitet registrert ennå.</div>}
-          {aktivitet.map(a=>(
+          {aktivitet.map((a: any)=>(
             <div key={a.id} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
               <span style={{fontSize:16,flexShrink:0}}>{a.type==="horingssvar"?"📝":a.type==="kontakt"?"📬":a.type==="signatur"?"✊":"🔔"}</span>
               <div style={{flex:1}}>
@@ -1305,7 +1219,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
 }
 
 // ─── BRUKER FORSIDE ───────────────────────────────────────────────────────
-function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true,minFylke=null,onVelgFylke=()=>{},user=null}) {
+function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true,minFylke=null,onVelgFylke=()=>{},user=null}: any) {
   const [valgt,setValgt]=useState<any>(null);
   const [fane,setFane]=useState("info");
   // Fylkesvalg og premium-port ligger på profil og i «Mer». Forsiden viser ikke lenger fylkeveggen.
@@ -1317,7 +1231,7 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
         lastet={dataLastet}
         fulgte={fulgte}
         onToggleFølg={toggleFølg}
-        onÅpne={(sak, tab)=>{setFane(tab);setValgt(sak);}}
+        onÅpne={(sak: any, tab: any)=>{setFane(tab);setValgt(sak);}}
         onAlle={()=>setView("varsler")}
         kampanjeAntall={kampanjer.length}
         onKampanjer={()=>setView("kampanjer")}
@@ -1328,15 +1242,15 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
 }
 
 // ─── VarselKort ────────────────────────────────────────────────────────────
-export function VarselKort({v,compact=false,onClick,fulgte=[],toggleFølg=()=>{}}) {
-  const ki=KATEGORIER.find(k=>k.id===v.kategori);
+export function VarselKort({v,compact=false,onClick,fulgte=[],toggleFølg=()=>{}}: any) {
+  const ki=KATEGORIER.find((k: any)=>k.id===v.kategori);
   const bc=v.status==="kritisk"?"#DC2626":v.status==="viktig"?"#D97706":"#16A34A";
   const fristDato = v.frist ? new Date(v.frist).toLocaleDateString("no-NO",{day:"numeric",month:"short"}) : null;
-  const statusLabel = {kritisk:"Kritisk",viktig:"Viktig",normal:"Normal"}[v.status]||v.status;
+  const statusLabel = ({kritisk:"Kritisk",viktig:"Viktig",normal:"Normal"} as Record<string, string>)[v.status]||v.status;
   return (
     <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:compact?"12px 14px":"16px 20px",borderLeft:`4px solid ${bc}`,transition:"box-shadow .15s"}}
-      onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 20px rgba(0,0,0,.1)"}
-      onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+      onMouseEnter={(e: any)=>e.currentTarget.style.boxShadow="0 4px 20px rgba(0,0,0,.1)"}
+      onMouseLeave={(e: any)=>e.currentTarget.style.boxShadow="none"}>
       <div onClick={()=>onClick(v)} style={{cursor:"pointer"}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:10,marginBottom:6}}>
           <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",flex:1}}>
@@ -1372,7 +1286,7 @@ export function VarselKort({v,compact=false,onClick,fulgte=[],toggleFølg=()=>{}
   );
 }
 
-function KampanjeKort({k,compact=false,user=null}) {
+function KampanjeKort({k,compact=false,user=null}: any) {
   const [sig,setSig]=useState(k.sig);
   const [vis,setVis]=useState(false);
   const [signert,setSignert]=useState(false);
@@ -1384,7 +1298,7 @@ function KampanjeKort({k,compact=false,user=null}) {
     if(!navn||!epost) return;
     setLaster(true);
     const ok = await signKampanje(k.id, user?.id??null, navn, epost);
-    if(ok) { setSig(s=>s+1); setSignert(true); setVis(false); showToast("Signert! Takk for støtten ✊"); }
+    if(ok) { setSig((s: any)=>s+1); setSignert(true); setVis(false); showToast("Signert! Takk for støtten ✊"); }
     else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
     setLaster(false);
   }
@@ -1392,7 +1306,7 @@ function KampanjeKort({k,compact=false,user=null}) {
   return (
     <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px"}}>
       <div style={{display:"flex",gap:5,marginBottom:7,flexWrap:"wrap"}}>
-        {k.tags.map(t=><Badge key={t} color={C.muted}>{t}</Badge>)}
+        {k.tags.map((t: any)=><Badge key={t} color={C.muted}>{t}</Badge>)}
       </div>
       <h3 style={{margin:"0 0 6px",fontSize:compact?13:14,fontWeight:700,lineHeight:1.3}}>{k.tittel}</h3>
       {!compact&&<p style={{margin:"0 0 10px",fontSize:12,color:C.muted,lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{k.beskrivelse}</p>}
@@ -1405,8 +1319,8 @@ function KampanjeKort({k,compact=false,user=null}) {
         <div style={{textAlign:"center",padding:"8px",background:"#F0FDF4",borderRadius:8,color:C.green,fontWeight:700,fontSize:12}}>✓ Du har signert!</div>
       ):vis?(
         <div>
-          <input placeholder="Navn" value={navn} onChange={e=>setNavn(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:6,boxSizing:"border-box",fontFamily:"inherit"}}/>
-          <input placeholder="E-post" value={epost} onChange={e=>setEpost(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:8,boxSizing:"border-box",fontFamily:"inherit"}}/>
+          <input placeholder="Navn" value={navn} onChange={(e: any)=>setNavn(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:6,boxSizing:"border-box",fontFamily:"inherit"}}/>
+          <input placeholder="E-post" value={epost} onChange={(e: any)=>setEpost(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:8,boxSizing:"border-box",fontFamily:"inherit"}}/>
           <div style={{display:"flex",gap:6}}>
             <Btn variant="primary" size="sm" style={{flex:1}} onClick={signer} disabled={laster}>{laster?"Lagrer...":"Signer"}</Btn>
             <Btn variant="secondary" size="sm" onClick={()=>setVis(false)}>✕</Btn>
@@ -1429,15 +1343,15 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
     window.addEventListener("keydown",esc);
     return ()=>{ document.body.style.overflow=""; window.removeEventListener("keydown",esc); };
   },[onClose]);
-  const [malModal,setMalModal]=useState(null);
+  const [malModal,setMalModal]=useState<any>(null);
   const [visNyKampanje,setVisNyKampanje]=useState(false);
   const [visFeedback,setVisFeedback]=useState(false);
   const [nyKampTittel,setNyKampTittel]=useState(`Stopp: ${sak.tittel}`);
   const [nyKampBeskr,setNyKampBeskr]=useState("");
   const [nyKampOpprettet,setNyKampOpprettet]=useState(false);
-  const ki=KATEGORIER.find(k=>k.id===sak.kategori);
-  const relPol=POLITIKERE.filter(p=>p.kategori.includes(sak.kategori)||p.nivå===sak.nivå);
-  const relKampanjer=kampanjer.filter(k=>k.kategori===sak.kategori||k.sakId===sak.id);
+  const ki=KATEGORIER.find((k: any)=>k.id===sak.kategori);
+  const relPol=POLITIKERE.filter((p: any)=>p.kategori.includes(sak.kategori)||p.nivå===sak.nivå);
+  const relKampanjer=kampanjer.filter((k: any)=>k.kategori===sak.kategori||k.sakId===sak.id);
 
   // Klartekst (VEIKART E2): «hva betyr dette for deg?» — Claude forklarer saken
   // ut fra brukerens profil. Svaret caches per sak+profiltype i backend.
@@ -1461,7 +1375,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
       {malModal&&<MalModal type={malModal.type} kontekst={malModal.kontekst} onClose={()=>setMalModal(null)}/>}
       {visFeedback&&<FeedbackModal onClose={()=>setVisFeedback(false)} kontekst={{sakTittel:sak.tittel,type:"feil"}}/>}
-      <div style={{background:C.bgCard,borderRadius:18,width:"100%",maxWidth:700,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 64px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:C.bgCard,borderRadius:18,width:"100%",maxWidth:700,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 64px rgba(0,0,0,.3)"}} onClick={(e: any)=>e.stopPropagation()}>
         <div style={{padding:"20px 24px 0",position:"sticky",top:0,background:C.bgCard,zIndex:1}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div style={{flex:1}}>
@@ -1476,7 +1390,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
             <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,color:C.muted,marginLeft:12,flexShrink:0,padding:4}}>✕</button>
           </div>
           <div className="sub-nav" style={{display:"flex",gap:0,marginTop:16,borderBottom:`1px solid ${C.border}`}}>
-            {[["info","ℹ️ Info"],["mobiliser","📬 Mobiliser"],["kampanje","✊ Kampanje"],["horingssvar","📝 Høringssvar"],["del","🔗 Del"]].map(([id,lbl])=>(
+            {[["info","ℹ️ Info"],["mobiliser","📬 Mobiliser"],["kampanje","✊ Kampanje"],["horingssvar","📝 Høringssvar"],["del","🔗 Del"]].map(([id,lbl]: any)=>(
               <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:12,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
                 {lbl}{id==="kampanje"&&relKampanjer.length>0&&<span style={{marginLeft:4,background:C.red,color:"#fff",borderRadius:99,fontSize:10,padding:"1px 6px"}}>{relKampanjer.length}</span>}
               </button>
@@ -1520,7 +1434,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
                   {klartekst.hva_kan_du_gjore?.length>0&&(
                     <div>
                       <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",marginBottom:5}}>Dette kan du gjøre nå</div>
-                      {klartekst.hva_kan_du_gjore.map((h,i)=>(
+                      {klartekst.hva_kan_du_gjore.map((h: any,i: any)=>(
                         <div key={i} style={{fontSize:13,lineHeight:1.7,display:"flex",gap:7,color:C.text}}><span style={{color:C.purple}}>→</span><span>{h}</span></div>
                       ))}
                     </div>
@@ -1557,7 +1471,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
               {relPol.length===0&&(
                 <div style={{fontSize:13,color:C.muted,padding:"16px 0"}}>Ingen direkte treff – gå til Mobiliser-siden for å søke opp politikere.</div>
               )}
-              {relPol.map(p=>(
+              {relPol.map((p: any)=>(
                 <div key={p.id} style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
                     <div>
@@ -1602,7 +1516,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
               {relKampanjer.length>0&&(
                 <div style={{marginBottom:20}}>
                   <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12}}>✊ Aktive kampanjer på denne saken</div>
-                  {relKampanjer.map(k=>(
+                  {relKampanjer.map((k: any)=>(
                     <div key={k.id} style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:12,padding:"14px 16px",marginBottom:10}}>
                       <h3 style={{fontSize:14,fontWeight:700,marginBottom:8}}>{k.tittel}</h3>
                       <p style={{fontSize:12,color:C.muted,lineHeight:1.5,marginBottom:10}}>{k.beskrivelse}</p>
@@ -1634,12 +1548,12 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
                   <div style={{background:C.bgAlt,borderRadius:12,padding:"16px"}}>
                     <div style={{marginBottom:10}}>
                       <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",marginBottom:5}}>Kampanjetittel</div>
-                      <input value={nyKampTittel} onChange={e=>setNyKampTittel(e.target.value)}
+                      <input value={nyKampTittel} onChange={(e: any)=>setNyKampTittel(e.target.value)}
                         style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,boxSizing:"border-box",fontFamily:"inherit",background:C.bgCard}}/>
                     </div>
                     <div style={{marginBottom:14}}>
                       <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em",marginBottom:5}}>Hva krever dere? (vises til underskrivere)</div>
-                      <textarea value={nyKampBeskr} onChange={e=>setNyKampBeskr(e.target.value)} rows={3}
+                      <textarea value={nyKampBeskr} onChange={(e: any)=>setNyKampBeskr(e.target.value)} rows={3}
                         style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,resize:"vertical",lineHeight:1.5,boxSizing:"border-box",fontFamily:"inherit",background:C.bgCard}}
                         placeholder={`Vi krever at ${sak.instans} trekker tilbake forslaget og sikrer...`}/>
                     </div>
@@ -1669,18 +1583,18 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
   );
 }
 
-function KampanjeSignerMini({k}) {
-  const [sig,setSig]=useState(k.sig);
+function KampanjeSignerMini({k}: any) {
+  const [,setSig]=useState(k.sig);
   const [signert,setSignert]=useState(false);
   const [vis,setVis]=useState(false);
   const [navn,setNavn]=useState(""); const [epost,setEpost]=useState("");
   if(signert) return <div style={{textAlign:"center",padding:"8px",background:"#F0FDF4",borderRadius:8,color:C.green,fontWeight:700,fontSize:12}}>✓ Du har signert!</div>;
   if(vis) return (
     <div>
-      <input placeholder="Navn" value={navn} onChange={e=>setNavn(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:6,boxSizing:"border-box",fontFamily:"inherit"}}/>
-      <input placeholder="E-post" value={epost} onChange={e=>setEpost(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:8,boxSizing:"border-box",fontFamily:"inherit"}}/>
+      <input placeholder="Navn" value={navn} onChange={(e: any)=>setNavn(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:6,boxSizing:"border-box",fontFamily:"inherit"}}/>
+      <input placeholder="E-post" value={epost} onChange={(e: any)=>setEpost(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,marginBottom:8,boxSizing:"border-box",fontFamily:"inherit"}}/>
       <div style={{display:"flex",gap:6}}>
-        <Btn variant="primary" size="sm" style={{flex:1,background:"#EA580C"}} onClick={()=>{if(navn&&epost){setSig(s=>s+1);setSignert(true);}}}>Signer</Btn>
+        <Btn variant="primary" size="sm" style={{flex:1,background:"#EA580C"}} onClick={()=>{if(navn&&epost){setSig((s: any)=>s+1);setSignert(true);}}}>Signer</Btn>
         <Btn variant="secondary" size="sm" onClick={()=>setVis(false)}>✕</Btn>
       </div>
     </div>
@@ -1688,7 +1602,7 @@ function KampanjeSignerMini({k}) {
   return <Btn variant="primary" size="sm" style={{width:"100%",background:"#EA580C"}} onClick={()=>setVis(true)}>✊ Signer denne kampanjen</Btn>;
 }
 
-function HøringssvarMini({sak}) {
+function HøringssvarMini({sak}: any) {
   const [visHjelp,setVisHjelp]=useState(false);
   const [tekst,setTekst]=useState(
     "Høringssvar \u2013 "+sak.tittel+"\n\nFra: [Organisasjonsnavn]\nTil: "+sak.instans+"\nDato: "+new Date().toLocaleDateString("no-NO")+"\n\n--- Vår vurdering ---\n[Skriv din vurdering her. Vær konkret og bruk fakta.]\n\n--- Konsekvenser for vårt felt ---\n[Hva betyr dette for din organisasjon eller gruppe?]\n\n--- Konklusjon og krav ---\n[Skriv tydelig hva dere krever eller anbefaler]\n\nMed vennlig hilsen,\n[Navn, tittel]\n[Organisasjon]\n[E-post / telefon]"
@@ -1704,7 +1618,7 @@ function HøringssvarMini({sak}) {
   );
   return (
     <div>
-      <div onClick={()=>setVisHjelp(v=>!v)} style={{background:"#EEF2FF",border:"1px solid #C7D2FE",borderRadius:10,padding:"10px 14px",marginBottom:12,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div onClick={()=>setVisHjelp((v: any)=>!v)} style={{background:"#EEF2FF",border:"1px solid #C7D2FE",borderRadius:10,padding:"10px 14px",marginBottom:12,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <span style={{fontSize:13,fontWeight:600,color:C.komBlue}}>💡 Hva er et høringssvar – og hvorfor nytter det?</span>
         <span style={{color:C.komBlue,fontSize:12}}>{visHjelp?"▲":"▼"}</span>
       </div>
@@ -1719,7 +1633,7 @@ function HøringssvarMini({sak}) {
         <strong>📬 Lever svaret til:</strong> {sak.instans} –{" "}
         <a href={sak.kilde} target="_blank" rel="noreferrer" style={{color:C.komBlue,fontWeight:600}}>finn offisiell innleveringsside ↗</a>
       </div>
-      <textarea value={tekst} onChange={e=>setTekst(e.target.value)} rows={12}
+      <textarea value={tekst} onChange={(e: any)=>setTekst(e.target.value)} rows={12}
         style={{width:"100%",padding:12,borderRadius:8,border:"1px solid "+C.border,fontSize:12,lineHeight:1.65,resize:"vertical",boxSizing:"border-box",fontFamily:"monospace",color:C.text}}/>
       <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
         <Btn variant="primary" style={{flex:1,background:C.green,minWidth:160}} onClick={()=>{
@@ -1735,7 +1649,7 @@ function HøringssvarMini({sak}) {
   );
 }
 
-function DelMini({sak}) {
+function DelMini({sak}: any) {
   const [kopiert,setKopiert]=useState(false);
   const [epostSendt,setEpostSendt]=useState(false);
   const url="https://kulturvarsling.no/sak/"+sak.id;
@@ -1761,7 +1675,7 @@ function DelMini({sak}) {
           style={{padding:"9px 14px",background:"#fff",border:"1px solid "+C.border,borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",color:epostSendt?C.green:C.text,fontFamily:"inherit"}}>
           {epostSendt?"✓ Åpnet":"📧 Del via e-post"}
         </button>
-        {[["Facebook","#1877F2","https://www.facebook.com/sharer/sharer.php?u="],["LinkedIn","#0A66C2","https://www.linkedin.com/sharing/share-offsite/?url="]].map(([n,c,u])=>(
+        {[["Facebook","#1877F2","https://www.facebook.com/sharer/sharer.php?u="],["LinkedIn","#0A66C2","https://www.linkedin.com/sharing/share-offsite/?url="]].map(([n,c,u]: any)=>(
           <button key={n} style={{padding:"9px 14px",background:c,color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
             onClick={()=>window.open(u+encodeURIComponent(url))}>
             {n}
@@ -1782,7 +1696,7 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=VARSLER,kampanj
         saker={varslerData}
         fulgte={fulgte}
         onToggleFølg={toggleFølg}
-        onÅpne={(sak, tab)=>{setFane(tab);setValgt(sak);}}
+        onÅpne={(sak: any, tab: any)=>{setFane(tab);setValgt(sak);}}
         minFylke={minFylke?String(minFylke):null}
         fylker={FYLKER}
         prioriterteFag={fagfelt}
@@ -1794,14 +1708,14 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=VARSLER,kampanj
 
 // ─── START KAMPANJE (brukergenerert, med moderering) ──────────────────────────
 // Kampanjer opprettes med aktiv=false og blir synlige først etter godkjenning.
-function StartKampanjeModal({onClose,user,varslerData=[]}) {
+function StartKampanjeModal({onClose,user,varslerData=[]}: any) {
   const [tittel,setTittel]=useState("");
   const [beskrivelse,setBeskrivelse]=useState("");
   const [mål,setMål]=useState(500);
   const [kategori,setKategori]=useState("scenekunst");
   const [sakId,setSakId]=useState("");
-  const [status,setStatus]=useState(null); // null | "sender" | "sendt" | feiltekst
-  const inputStil={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",background:"#fff",boxSizing:"border-box"};
+  const [status,setStatus]=useState<any>(null); // null | "sender" | "sendt" | feiltekst
+  const inputStil: CSSProperties={width:"100%",padding:"10px 12px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",background:"#fff",boxSizing:"border-box"};
   const send=async()=>{
     if(!tittel.trim()||!beskrivelse.trim()){setStatus("Fyll ut både tittel og beskrivelse.");return;}
     setStatus("sender");
@@ -1820,7 +1734,7 @@ function StartKampanjeModal({onClose,user,varslerData=[]}) {
   };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(26,18,16,.55)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:C.bgCard,borderRadius:18,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",padding:"26px 28px"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:C.bgCard,borderRadius:18,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",padding:"26px 28px"}} onClick={(e: any)=>e.stopPropagation()}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
           <h2 style={{fontSize:20,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>✊ Start en kampanje</h2>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:C.muted}}>×</button>
@@ -1844,29 +1758,29 @@ function StartKampanjeModal({onClose,user,varslerData=[]}) {
             </p>
             <div>
               <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>TITTEL</label>
-              <input style={inputStil} value={tittel} onChange={e=>setTittel(e.target.value)} placeholder="F.eks. «Bevar kulturskoletilbudet i Arendal»" maxLength={90}/>
+              <input style={inputStil} value={tittel} onChange={(e: any)=>setTittel(e.target.value)} placeholder="F.eks. «Bevar kulturskoletilbudet i Arendal»" maxLength={90}/>
             </div>
             <div>
               <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>HVA KJEMPER DERE FOR?</label>
-              <textarea style={{...inputStil,minHeight:90,resize:"vertical"}} value={beskrivelse} onChange={e=>setBeskrivelse(e.target.value)} placeholder="Beskriv saken, hvem som rammes, og hva dere krever." maxLength={600}/>
+              <textarea style={{...inputStil,minHeight:90,resize:"vertical"}} value={beskrivelse} onChange={(e: any)=>setBeskrivelse(e.target.value)} placeholder="Beskriv saken, hvem som rammes, og hva dere krever." maxLength={600}/>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               <div>
                 <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>SIGNATURMÅL</label>
-                <input style={inputStil} type="number" min={50} value={mål} onChange={e=>setMål(e.target.value)}/>
+                <input style={inputStil} type="number" min={50} value={mål} onChange={(e: any)=>setMål(e.target.value)}/>
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>FAGFELT</label>
-                <select style={inputStil} value={kategori} onChange={e=>setKategori(e.target.value)}>
-                  {KATEGORIER.map(k=><option key={k.id} value={k.id}>{k.ikon} {k.label}</option>)}
+                <select style={inputStil} value={kategori} onChange={(e: any)=>setKategori(e.target.value)}>
+                  {KATEGORIER.map((k: any)=><option key={k.id} value={k.id}>{k.ikon} {k.label}</option>)}
                 </select>
               </div>
             </div>
             <div>
               <label style={{fontSize:12,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>KNYTT TIL POLITISK SAK (VALGFRITT, MEN ANBEFALT)</label>
-              <select style={inputStil} value={sakId} onChange={e=>setSakId(e.target.value)}>
+              <select style={inputStil} value={sakId} onChange={(e: any)=>setSakId(e.target.value)}>
                 <option value="">— Ingen tilknytning —</option>
-                {varslerData.map(v=><option key={v.id} value={v.id}>{v.tittel.slice(0,70)}</option>)}
+                {varslerData.map((v: any)=><option key={v.id} value={v.id}>{v.tittel.slice(0,70)}</option>)}
               </select>
             </div>
             {status&&status!=="sender"&&(
@@ -1882,11 +1796,11 @@ function StartKampanjeModal({onClose,user,varslerData=[]}) {
   );
 }
 
-function BrukerKampanjer({kampanjerData=kampanjer,varslerData=varsler,user=null}) {
-  const [valgt,setValgt]=useState(null);
+function BrukerKampanjer({kampanjerData=[],varslerData=[],user=null}: any) {
+  const [valgt,setValgt]=useState<any>(null);
   const [showNy,setShowNy]=useState(false);
   const [sort,setSort]=useState("frist");
-  const sorted=useMemo(()=>[...kampanjerData].sort((a,b)=>{
+  const sorted=useMemo(()=>[...kampanjerData].sort((a: any,b: any)=>{
     if(sort==="frist") return a.dager-b.dager;
     if(sort==="fremgang") return (b.sig/b.mal)-(a.sig/a.mal);
     if(sort==="signaturer") return b.sig-a.sig;
@@ -1896,7 +1810,7 @@ function BrukerKampanjer({kampanjerData=kampanjer,varslerData=varsler,user=null}
     <div>
       <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
         <span style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em"}}>Sorter:</span>
-        {[["frist","⏰ Frist"],["fremgang","📈 Fremgang"],["signaturer","✍️ Signaturer"]].map(([id,lbl])=>(
+        {[["frist","⏰ Frist"],["fremgang","📈 Fremgang"],["signaturer","✍️ Signaturer"]].map(([id,lbl]: any)=>(
           <button key={id} onClick={()=>setSort(id)}
             style={{padding:"5px 12px",borderRadius:99,border:"1.5px solid "+(sort===id?C.red:C.border),background:sort===id?C.red:"none",color:sort===id?"#fff":C.text,fontSize:12,cursor:"pointer",fontWeight:sort===id?700:400,fontFamily:"inherit"}}>
             {lbl}
@@ -1907,12 +1821,12 @@ function BrukerKampanjer({kampanjerData=kampanjer,varslerData=varsler,user=null}
       </div>
       {showNy&&<StartKampanjeModal onClose={()=>setShowNy(false)} user={user} varslerData={varslerData}/>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}} className="grid-2">
-        {sorted.map(k=>{
-          const relSak=k.sakId?varslerData.find(v=>v.id===k.sakId):null;
+        {sorted.map((k: any)=>{
+          const relSak=k.sakId?varslerData.find((v: any)=>v.id===k.sakId):null;
           return (
             <div key={k.id} style={{background:C.bgCard,border:"1px solid "+C.border,borderRadius:14,padding:"16px 18px"}}>
               <div style={{display:"flex",gap:5,marginBottom:8,flexWrap:"wrap"}}>
-                {k.tags.map(t=><Badge key={t} color={C.muted}>{t}</Badge>)}
+                {k.tags.map((t: any)=><Badge key={t} color={C.muted}>{t}</Badge>)}
               </div>
               <h3 style={{fontSize:14,fontWeight:700,marginBottom:6,lineHeight:1.3}}>{k.tittel}</h3>
               <p style={{fontSize:12,color:C.muted,lineHeight:1.5,marginBottom:10,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{k.beskrivelse}</p>
@@ -1937,37 +1851,37 @@ function BrukerKampanjer({kampanjerData=kampanjer,varslerData=varsler,user=null}
 }
 
 // ─── MAL-MODAL ────────────────────────────────────────────────────────────────
-const MAL_TEMPLATES = {
+const MAL_TEMPLATES: Record<string, any> = {
   komite: [
-    { id:"generell", label:"Generell henvendelse", tekst:(komite)=>`Til ${komite},\n\nVi representerer kulturfeltet og ønsker å gjøre komiteen oppmerksom på en sak vi mener fortjener politisk oppmerksomhet.\n\n[Beskriv saken og hvilken beslutning som nærmer seg]\n\nVi ber komiteen om å:\n1. [Konkret krav 1]\n2. [Konkret krav 2]\n3. [Konkret krav 3]\n\nVi stiller gjerne til møte eller kan sende ytterligere dokumentasjon.\n\nMed vennlig hilsen,\n[Navn]\n[Organisasjon]\n[Telefon / e-post]` },
-    { id:"budsjett", label:"Budsjettbekymring", tekst:(komite)=>`Til ${komite},\n\nVi skriver til dere med alvorlig bekymring for kulturbudsjettets utvikling.\n\nDe foreslåtte kuttene vil ramme:\n- [Felt 1] med ca. [beløp/prosent]\n- [Felt 2] med ca. [beløp/prosent]\n\nDette vil i praksis bety at [beskriv konsekvens for feltet].\n\nVi ber komiteen om å sikre at budsjettrammen for kulturfeltet som minimum prisjusteres, og at øremerkede midler til [fagfelt] ikke slås sammen med generelle kulturmidler.\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
-    { id:"horing", label:"Be om utvidet høring", tekst:(komite)=>`Til ${komite},\n\nVi ber komiteen vurdere å utvide høringen i saken om [sakstittel].\n\nBakgrunnen for vår henvendelse er at:\n- Høringsfristen er for kort til at mindre organisasjoner kan utarbeide gode svar\n- Viktige fagmiljøer er ikke direkte varslet\n- Konsekvensene for [fagfelt] er ikke tilstrekkelig utredet\n\nVi ber om at fristen forlenges til [dato] og at følgende organisasjoner inviteres særskilt:\n[Liste]\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
+    { id:"generell", label:"Generell henvendelse", tekst:(komite: any)=>`Til ${komite},\n\nVi representerer kulturfeltet og ønsker å gjøre komiteen oppmerksom på en sak vi mener fortjener politisk oppmerksomhet.\n\n[Beskriv saken og hvilken beslutning som nærmer seg]\n\nVi ber komiteen om å:\n1. [Konkret krav 1]\n2. [Konkret krav 2]\n3. [Konkret krav 3]\n\nVi stiller gjerne til møte eller kan sende ytterligere dokumentasjon.\n\nMed vennlig hilsen,\n[Navn]\n[Organisasjon]\n[Telefon / e-post]` },
+    { id:"budsjett", label:"Budsjettbekymring", tekst:(komite: any)=>`Til ${komite},\n\nVi skriver til dere med alvorlig bekymring for kulturbudsjettets utvikling.\n\nDe foreslåtte kuttene vil ramme:\n- [Felt 1] med ca. [beløp/prosent]\n- [Felt 2] med ca. [beløp/prosent]\n\nDette vil i praksis bety at [beskriv konsekvens for feltet].\n\nVi ber komiteen om å sikre at budsjettrammen for kulturfeltet som minimum prisjusteres, og at øremerkede midler til [fagfelt] ikke slås sammen med generelle kulturmidler.\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
+    { id:"horing", label:"Be om utvidet høring", tekst:(komite: any)=>`Til ${komite},\n\nVi ber komiteen vurdere å utvide høringen i saken om [sakstittel].\n\nBakgrunnen for vår henvendelse er at:\n- Høringsfristen er for kort til at mindre organisasjoner kan utarbeide gode svar\n- Viktige fagmiljøer er ikke direkte varslet\n- Konsekvensene for [fagfelt] er ikke tilstrekkelig utredet\n\nVi ber om at fristen forlenges til [dato] og at følgende organisasjoner inviteres særskilt:\n[Liste]\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
   ],
   politiker: [
-    { id:"generell", label:"Generell henvendelse", tekst:(p)=>`Hei ${p.navn},\n\nJeg kontakter deg som ${p.rolle} fordi jeg ønsker å sette fokus på en sak jeg mener er viktig for kulturfeltet.\n\n[Beskriv saken kort og konkret]\n\nJeg håper du vil:\n- Følge med på denne saken\n- Ta initiativ til [handling]\n- Svare på dette brevet\n\nJeg er tilgjengelig for en prat om du ønsker mer informasjon.\n\nMed vennlig hilsen,\n[Ditt navn]\n[Organisasjon]\n[Telefon]` },
-    { id:"støtte", label:"Be om støtte til sak", tekst:(p)=>`Hei ${p.navn},\n\nJeg skriver til deg fordi [saksnavn] nå er til behandling, og vi trenger politisk støtte.\n\nSaken handler om [kort beskrivelse]. Uten handling vil konsekvensen være:\n- [Konsekvens 1]\n- [Konsekvens 2]\n\nDet vi konkret ber deg om er:\n1. Å ta opp saken i [komité / kommunestyre / bystyret]\n2. Å stemme for [forslag] når saken kommer til votering\n3. Å gi oss tilbakemelding på din posisjon\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
-    { id:"spørretime", label:"Be om spørsmål i Stortinget", tekst:(p)=>`Hei ${p.navn},\n\nVi ber deg vurdere å stille et skriftlig eller muntlig spørsmål til kulturministeren om følgende:\n\n«[Formuler spørsmålet]»\n\nBakgrunnen er [kort forklaring]. Saken er ikke tilstrekkelig belyst i offentligheten, og et stortingsspørsmål vil bidra til nødvendig transparens.\n\nVi kan bistå med faktagrunnlag og bakgrunnsdokumentasjon.\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
-    { id:"takk", label:"Takkebrev etter positiv handling", tekst:(p)=>`Hei ${p.navn},\n\nVi vil gjerne takke deg for [hva politikeren gjorde].\n\nDin handling betyr mye for [fagfelt / kulturliv i region]. Vi setter stor pris på at du lytter til kulturfeltet og tar ansvar.\n\nVi ser frem til å følge deg videre og vil gjerne holde deg oppdatert på utviklingen.\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
+    { id:"generell", label:"Generell henvendelse", tekst:(p: any)=>`Hei ${p.navn},\n\nJeg kontakter deg som ${p.rolle} fordi jeg ønsker å sette fokus på en sak jeg mener er viktig for kulturfeltet.\n\n[Beskriv saken kort og konkret]\n\nJeg håper du vil:\n- Følge med på denne saken\n- Ta initiativ til [handling]\n- Svare på dette brevet\n\nJeg er tilgjengelig for en prat om du ønsker mer informasjon.\n\nMed vennlig hilsen,\n[Ditt navn]\n[Organisasjon]\n[Telefon]` },
+    { id:"støtte", label:"Be om støtte til sak", tekst:(p: any)=>`Hei ${p.navn},\n\nJeg skriver til deg fordi [saksnavn] nå er til behandling, og vi trenger politisk støtte.\n\nSaken handler om [kort beskrivelse]. Uten handling vil konsekvensen være:\n- [Konsekvens 1]\n- [Konsekvens 2]\n\nDet vi konkret ber deg om er:\n1. Å ta opp saken i [komité / kommunestyre / bystyret]\n2. Å stemme for [forslag] når saken kommer til votering\n3. Å gi oss tilbakemelding på din posisjon\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
+    { id:"spørretime", label:"Be om spørsmål i Stortinget", tekst:(p: any)=>`Hei ${p.navn},\n\nVi ber deg vurdere å stille et skriftlig eller muntlig spørsmål til kulturministeren om følgende:\n\n«[Formuler spørsmålet]»\n\nBakgrunnen er [kort forklaring]. Saken er ikke tilstrekkelig belyst i offentligheten, og et stortingsspørsmål vil bidra til nødvendig transparens.\n\nVi kan bistå med faktagrunnlag og bakgrunnsdokumentasjon.\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
+    { id:"takk", label:"Takkebrev etter positiv handling", tekst:(p: any)=>`Hei ${p.navn},\n\nVi vil gjerne takke deg for [hva politikeren gjorde].\n\nDin handling betyr mye for [fagfelt / kulturliv i region]. Vi setter stor pris på at du lytter til kulturfeltet og tar ansvar.\n\nVi ser frem til å følge deg videre og vil gjerne holde deg oppdatert på utviklingen.\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
   ],
   horing: [
-    { id:"standard", label:"Standard høringssvar", tekst:(sak)=>`Høringssvar – ${sak?.tittel||"[Sakstittel]"}\n\nFra: [Organisasjonsnavn]\nTil: ${sak?.instans||"[Instans]"}\nDato: ${new Date().toLocaleDateString("no-NO")}\n\n1. INNLEDNING\n[Organisasjonen] er en [beskriv organisasjonen] med [antall] medlemmer. Vi har fulgt denne saken nøye og ønsker å bidra med våre innspill.\n\n2. SAMMENDRAG AV VÅR POSISJON\n[To til tre setninger som oppsummerer hva dere mener]\n\n3. BAKGRUNN OG KONTEKST\n[Beskriv relevant bakgrunn]\n\n4. VÅR VURDERING\n4.1 [Tema 1]\n[Vurdering]\n\n4.2 [Tema 2]\n[Vurdering]\n\n5. KONKLUSJON OG ANBEFALINGER\nPå bakgrunn av ovenstående anbefaler vi:\n- [Anbefaling 1]\n- [Anbefaling 2]\n- [Anbefaling 3]\n\nMed vennlig hilsen,\n[Navn, tittel]\n[Organisasjon]\n[Kontaktinfo]` },
-    { id:"kort", label:"Kort høringssvar (1 side)", tekst:(sak)=>`Høringssvar – ${sak?.tittel||"[Sakstittel]"}\n${sak?.instans||"[Instans]"} · ${new Date().toLocaleDateString("no-NO")}\n\nFra: [Organisasjon]\n\nVi støtter / vi støtter ikke [forslaget] av følgende grunner:\n\n[3–5 kortfattede punkter med begrunnelse]\n\nVår anbefaling er at [instans] [gjør X]. Vi ber om at innspillet tas med i den videre behandlingen.\n\n[Navn / Organisasjon]` },
-    { id:"faglig", label:"Faglig/teknisk høringssvar", tekst:(sak)=>`Faglig høringssvar – ${sak?.tittel||"[Sakstittel]"}\n\nOrganisasjon: [Navn]\nDato: ${new Date().toLocaleDateString("no-NO")}\nKontaktperson: [Navn, tittel, e-post]\n\nDEL 1: FAGLIG VURDERING\n[Grundig faglig analyse av forslaget]\n\nDEL 2: KONSEKVENSANALYSE\nØkonomiske konsekvenser: [vurdering]\nKvalitetsmessige konsekvenser: [vurdering]\nStrukturelle konsekvenser: [vurdering]\n\nDEL 3: ALTERNATIVE LØSNINGER\n[Beskriv alternativer som kan løse problemet bedre]\n\nDEL 4: KONKLUSJON\n[Tydelig konklusjon med konkrete anbefalinger]\n\n[Navn / Organisasjon]` },
-    { id:"protest", label:"Protestsvar / sterk motstand", tekst:(sak)=>`Høringssvar med sterke innvendinger\n\nSak: ${sak?.tittel||"[Sakstittel]"}\nFra: [Organisasjon]\nDato: ${new Date().toLocaleDateString("no-NO")}\n\n[Organisasjonen] protesterer på det sterkeste mot det foreslåtte [tiltaket/kuttet/vedtaket].\n\nÅrsakene er:\n1. [Sterk innvending 1 med faktagrunnlag]\n2. [Sterk innvending 2 med faktagrunnlag]\n3. [Sterk innvending 3 med faktagrunnlag]\n\nForslaget er i strid med [lov/avtale/tidligere vedtak] og vil ha alvorlige konsekvenser for [hvem].\n\nVi krever at forslaget [trekkes / endres vesentlig / sendes tilbake for ny utredning].\n\n[Navn / Organisasjon]` },
+    { id:"standard", label:"Standard høringssvar", tekst:(sak: any)=>`Høringssvar – ${sak?.tittel||"[Sakstittel]"}\n\nFra: [Organisasjonsnavn]\nTil: ${sak?.instans||"[Instans]"}\nDato: ${new Date().toLocaleDateString("no-NO")}\n\n1. INNLEDNING\n[Organisasjonen] er en [beskriv organisasjonen] med [antall] medlemmer. Vi har fulgt denne saken nøye og ønsker å bidra med våre innspill.\n\n2. SAMMENDRAG AV VÅR POSISJON\n[To til tre setninger som oppsummerer hva dere mener]\n\n3. BAKGRUNN OG KONTEKST\n[Beskriv relevant bakgrunn]\n\n4. VÅR VURDERING\n4.1 [Tema 1]\n[Vurdering]\n\n4.2 [Tema 2]\n[Vurdering]\n\n5. KONKLUSJON OG ANBEFALINGER\nPå bakgrunn av ovenstående anbefaler vi:\n- [Anbefaling 1]\n- [Anbefaling 2]\n- [Anbefaling 3]\n\nMed vennlig hilsen,\n[Navn, tittel]\n[Organisasjon]\n[Kontaktinfo]` },
+    { id:"kort", label:"Kort høringssvar (1 side)", tekst:(sak: any)=>`Høringssvar – ${sak?.tittel||"[Sakstittel]"}\n${sak?.instans||"[Instans]"} · ${new Date().toLocaleDateString("no-NO")}\n\nFra: [Organisasjon]\n\nVi støtter / vi støtter ikke [forslaget] av følgende grunner:\n\n[3–5 kortfattede punkter med begrunnelse]\n\nVår anbefaling er at [instans] [gjør X]. Vi ber om at innspillet tas med i den videre behandlingen.\n\n[Navn / Organisasjon]` },
+    { id:"faglig", label:"Faglig/teknisk høringssvar", tekst:(sak: any)=>`Faglig høringssvar – ${sak?.tittel||"[Sakstittel]"}\n\nOrganisasjon: [Navn]\nDato: ${new Date().toLocaleDateString("no-NO")}\nKontaktperson: [Navn, tittel, e-post]\n\nDEL 1: FAGLIG VURDERING\n[Grundig faglig analyse av forslaget]\n\nDEL 2: KONSEKVENSANALYSE\nØkonomiske konsekvenser: [vurdering]\nKvalitetsmessige konsekvenser: [vurdering]\nStrukturelle konsekvenser: [vurdering]\n\nDEL 3: ALTERNATIVE LØSNINGER\n[Beskriv alternativer som kan løse problemet bedre]\n\nDEL 4: KONKLUSJON\n[Tydelig konklusjon med konkrete anbefalinger]\n\n[Navn / Organisasjon]` },
+    { id:"protest", label:"Protestsvar / sterk motstand", tekst:(sak: any)=>`Høringssvar med sterke innvendinger\n\nSak: ${sak?.tittel||"[Sakstittel]"}\nFra: [Organisasjon]\nDato: ${new Date().toLocaleDateString("no-NO")}\n\n[Organisasjonen] protesterer på det sterkeste mot det foreslåtte [tiltaket/kuttet/vedtaket].\n\nÅrsakene er:\n1. [Sterk innvending 1 med faktagrunnlag]\n2. [Sterk innvending 2 med faktagrunnlag]\n3. [Sterk innvending 3 med faktagrunnlag]\n\nForslaget er i strid med [lov/avtale/tidligere vedtak] og vil ha alvorlige konsekvenser for [hvem].\n\nVi krever at forslaget [trekkes / endres vesentlig / sendes tilbake for ny utredning].\n\n[Navn / Organisasjon]` },
   ],
   pressem: [
     { id:"standard", label:"Standard pressemelding", tekst:()=>`PRESSEMELDING\n[Sted], ${new Date().toLocaleDateString("no-NO")}\n\nOVERSKRIFT: [Feng tittel som beskriver saken]\n\nINGRESS: [Én til to setninger som oppsummerer det viktigste]\n\nBRODTEKST:\n[Organisasjon] reagerer på [sak/vedtak/forslag] og krever at [hvem] [gjør hva].\n\n[Sitat fra leder eller talsperson, 1–2 setninger]\n\nBakgrunn:\n[2–3 avsnitt med fakta og kontekst]\n\nKONTAKT:\nNavn: [Navn]\nTittel: [Tittel]\nTelefon: [Nummer]\nE-post: [Adresse]\n\n###` },
     { id:"seier", label:"Pressemelding – seier / positiv sak", tekst:()=>`PRESSEMELDING\n${new Date().toLocaleDateString("no-NO")}\n\n[TITTEL: Positiv nyhet for kulturfeltet]\n\n[Organisasjon] er glad for at [beslutning/vedtak] nå er [fattet/vedtatt/bekreftet].\n\n«[Sitat fra leder]», sier [navn og tittel].\n\nDette betyr at [konkret konsekvens for feltet].\n\nBakgrunn: [Kort historikk om saken]\n\nFor mer informasjon:\n[Kontaktinfo]\n\n###` },
   ],
   sosiale: [
-    { id:"facebook", label:"Facebook-innlegg", tekst:(sak)=>`🔔 VIKTIG SAK FOR KULTURFELTET!\n\n${sak?.tittel||"[Sakstittel]"}\n\n${sak?.sammendrag||"[Kort beskrivelse av saken]"}\n\nFrist: ${sak?.frist?new Date(sak.frist).toLocaleDateString("no-NO"):"[dato]"} – det er bare ${sak?.dager||"X"} dager igjen!\n\nHva kan du gjøre?\n✅ Signer kampanjen\n✅ Send høringssvar\n✅ Kontakt din lokale politiker\n\nDel gjerne – jo flere vi er, jo sterkere stemme har vi! 💪\n\n#kulturvarsling #kulturpolitikk #norskkultur` },
-    { id:"twitter", label:"X/Twitter-tråd (3 tweets)", tekst:(sak)=>`TRÅD 🧵\n\n1/ ${sak?.tittel||"Viktig sak"}: ${sak?.sammendrag?.slice(0,100)||"[Beskrivelse]"}... Frist om ${sak?.dager||"X"} dager. Her er hva du bør vite 👇\n\n2/ Saken behandles av ${sak?.instans||"[instans]"}. Det betyr at [forklaring av hvem som bestemmer og hvordan]. Ditt høringssvar teller!\n\n3/ Hva gjør du nå? → Gå til kulturvarsling.no/sak/${sak?.id||"1"} for ferdig mal til høringssvar og direkte kontakt med ansvarlig politiker. Ta 5 minutter – det nytter! #kulturpolitikk` },
-    { id:"instagram", label:"Instagram-caption", tekst:(sak)=>`⚠️ ${sak?.dager||"X"} DAGER IGJEN\n\n${sak?.tittel||"Viktig sak for kulturfeltet"}\n\n${sak?.sammendrag||"Beskriv saken her"}\n\nVil du gjøre noe? Link i bio → kulturvarsling.no\n\n.\n.\n.\n#kulturvarsling #norskkultur #kulturpolitikk #kunst #musikk #scenekunst #demokrati` },
+    { id:"facebook", label:"Facebook-innlegg", tekst:(sak: any)=>`🔔 VIKTIG SAK FOR KULTURFELTET!\n\n${sak?.tittel||"[Sakstittel]"}\n\n${sak?.sammendrag||"[Kort beskrivelse av saken]"}\n\nFrist: ${sak?.frist?new Date(sak.frist).toLocaleDateString("no-NO"):"[dato]"} – det er bare ${sak?.dager||"X"} dager igjen!\n\nHva kan du gjøre?\n✅ Signer kampanjen\n✅ Send høringssvar\n✅ Kontakt din lokale politiker\n\nDel gjerne – jo flere vi er, jo sterkere stemme har vi! 💪\n\n#kulturvarsling #kulturpolitikk #norskkultur` },
+    { id:"twitter", label:"X/Twitter-tråd (3 tweets)", tekst:(sak: any)=>`TRÅD 🧵\n\n1/ ${sak?.tittel||"Viktig sak"}: ${sak?.sammendrag?.slice(0,100)||"[Beskrivelse]"}... Frist om ${sak?.dager||"X"} dager. Her er hva du bør vite 👇\n\n2/ Saken behandles av ${sak?.instans||"[instans]"}. Det betyr at [forklaring av hvem som bestemmer og hvordan]. Ditt høringssvar teller!\n\n3/ Hva gjør du nå? → Gå til kulturvarsling.no/sak/${sak?.id||"1"} for ferdig mal til høringssvar og direkte kontakt med ansvarlig politiker. Ta 5 minutter – det nytter! #kulturpolitikk` },
+    { id:"instagram", label:"Instagram-caption", tekst:(sak: any)=>`⚠️ ${sak?.dager||"X"} DAGER IGJEN\n\n${sak?.tittel||"Viktig sak for kulturfeltet"}\n\n${sak?.sammendrag||"Beskriv saken her"}\n\nVil du gjøre noe? Link i bio → kulturvarsling.no\n\n.\n.\n.\n#kulturvarsling #norskkultur #kulturpolitikk #kunst #musikk #scenekunst #demokrati` },
   ],
 };
 
-function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}) {
-  function applyUserFill(txt) {
+function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}: any) {
+  function applyUserFill(txt: any) {
     if(!user) return txt;
     const org = user.org||user.navn||"";
     const navn = user.navn||"";
@@ -1989,7 +1903,7 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}) {
   const [sendt, setSendt] = useState(false);
   const [kopiert, setKopiert] = useState(false);
 
-  const currentMal = maler.find(m=>m.id===valgtMal);
+  const currentMal = maler.find((m: any)=>m.id===valgtMal);
 
   useEffect(()=>{
     if(currentMal) {
@@ -2002,9 +1916,9 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  function velgMal(id) {
+  function velgMal(id: any) {
     setValgtMal(id);
-    const mal = maler.find(m=>m.id===id);
+    const mal = maler.find((m: any)=>m.id===id);
     if(!mal) return;
     let t="";
     if(type==="komite") t=mal.tekst(kontekst?.navn||"Familie- og kulturkomiteen");
@@ -2014,13 +1928,13 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}) {
     setSendt(false);
   }
 
-  const titler = {komite:"📬 Kontakt stortingskomité",politiker:"👤 Kontakt politiker",horing:"📝 Skriv høringssvar",pressem:"📰 Pressemelding",sosiale:"📱 Sosiale medier"};
-  const sendLabel = {komite:"Send til komiteen",politiker:`Send til ${kontekst?.navn||"politikeren"}`,horing:"Send høringssvar",pressem:"Kopier og send til media",sosiale:"Kopier tekst"};
+  const titler: Record<string, string> = {komite:"📬 Kontakt stortingskomité",politiker:"👤 Kontakt politiker",horing:"📝 Skriv høringssvar",pressem:"📰 Pressemelding",sosiale:"📱 Sosiale medier"};
+  const sendLabel: Record<string, string> = {komite:"Send til komiteen",politiker:`Send til ${kontekst?.navn||"politikeren"}`,horing:"Send høringssvar",pressem:"Kopier og send til media",sosiale:"Kopier tekst"};
   const canSend = ["komite","politiker","horing"].includes(type);
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.58)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:C.bgCard,borderRadius:18,width:"100%",maxWidth:680,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 28px 70px rgba(0,0,0,.3)",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:C.bgCard,borderRadius:18,width:"100%",maxWidth:680,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 28px 70px rgba(0,0,0,.3)",display:"flex",flexDirection:"column"}} onClick={(e: any)=>e.stopPropagation()}>
 
         {/* Header */}
         <div style={{padding:"20px 24px",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,background:C.bgCard,zIndex:1}}>
@@ -2042,7 +1956,7 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}) {
           <div style={{marginBottom:16}}>
             <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>Velg mal</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {maler.map(m=>(
+              {maler.map((m: any)=>(
                 <button key={m.id} onClick={()=>velgMal(m.id)}
                   style={{padding:"7px 14px",borderRadius:8,border:`1.5px solid ${valgtMal===m.id?C.red:C.border}`,background:valgtMal===m.id?C.red:"none",color:valgtMal===m.id?"#fff":C.muted,fontSize:12,cursor:"pointer",fontWeight:valgtMal===m.id?700:400,fontFamily:"inherit",transition:"all .15s"}}>
                   {m.label}
@@ -2068,7 +1982,7 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}) {
             </div>
           ) : (
             <>
-              <textarea value={tekst} onChange={e=>setTekst(e.target.value)} rows={16}
+              <textarea value={tekst} onChange={(e: any)=>setTekst(e.target.value)} rows={16}
                 style={{width:"100%",padding:14,borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:13,lineHeight:1.65,resize:"vertical",boxSizing:"border-box",fontFamily:"'DM Sans',monospace",color:C.text,background:C.bg}}/>
               <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
                 {canSend&&(
@@ -2107,12 +2021,11 @@ const KOMITEER_DATA = [
   {id:"utd",     navn:"Utdannings- og forskningskomiteen", kontakt:"utdanning@stortinget.no",          leder:"Iselin Nybø (V)",      felt:["Museer","Kulturarv","Arkiver"], url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Utdannings-og-forskningskomiteen/"},
 ];
 
-function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanjerData=[]}) {
+function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanjerData=[]}: any) {
   const [tab,setTab]=useState("oversikt");
   const [sokPol,setSokPol]=useState("");
-  const [malModal,setMalModal]=useState(null); // {type, kontekst}
-  const [valgtSakForHoring,setValgtSakForHoring]=useState(null);
-  const filtPol=POLITIKERE.filter(p=>`${p.navn} ${p.parti} ${p.rolle}`.toLowerCase().includes(sokPol.toLowerCase()));
+  const [malModal,setMalModal]=useState<any>(null); // {type, kontekst}
+  const filtPol=POLITIKERE.filter((p: any)=>`${p.navn} ${p.parti} ${p.rolle}`.toLowerCase().includes(sokPol.toLowerCase()));
 
   const ovCards=[
     {ikon:"🏛️",tittel:"Kontakt stortingskomité",tekst:"Familie- og kulturkomiteen behandler de fleste kultursaker. Send en strukturert henvendelse direkte til riktig komité.",farge:"#EEF2FF",kant:"#C7D2FE",tekst2:C.komBlue,type:"komite",tag:"4 maler"},
@@ -2125,11 +2038,11 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
 
   return (
     <div>
-      {malModal&&<MalModal type={malModal.type} kontekst={malModal.kontekst} user={user} onClose={()=>setMalModal(null)} onSend={(entry)=>loggAktivitet(entry)}/>}
+      {malModal&&<MalModal type={malModal.type} kontekst={malModal.kontekst} user={user} onClose={()=>setMalModal(null)} onSend={(entry: any)=>loggAktivitet(entry)}/>}
 
       {/* Sub-nav */}
       <div className="sub-nav" style={{display:"flex",gap:0,marginBottom:24,borderBottom:`1px solid ${C.border}`}}>
-        {[["oversikt","🗺 Oversikt"],["komiteer","🏛 Komiteer"],["politikere","👤 Politikere"],["horinger","📋 Høringer"]].map(([id,lbl])=>(
+        {[["oversikt","🗺 Oversikt"],["komiteer","🏛 Komiteer"],["politikere","👤 Politikere"],["horinger","📋 Høringer"]].map(([id,lbl]: any)=>(
           <button key={id} onClick={()=>setTab(id)}
             style={{padding:"9px 16px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:13,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
             {lbl}
@@ -2141,11 +2054,11 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
       {tab==="oversikt"&&(
         <div>
           {/* Hastesakene akkurat nå */}
-          {varslerData.filter(v=>v.status==="kritisk").length>0&&(
+          {varslerData.filter((v: any)=>v.status==="kritisk").length>0&&(
             <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:14,padding:"16px 20px",marginBottom:24}}>
               <div style={{fontWeight:800,fontSize:14,color:"#991B1B",marginBottom:12}}>⚠️ Hastesakene akkurat nå – disse trenger handling snarest</div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {varslerData.filter(v=>v.status==="kritisk").map(v=>(
+                {varslerData.filter((v: any)=>v.status==="kritisk").map((v: any)=>(
                   <div key={v.id} style={{background:"#fff",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:700,fontSize:13,color:C.text}}>{v.tittel}</div>
@@ -2170,7 +2083,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
             Velg mobiliseringsform nedenfor. Alle kortene inneholder ferdige maler du kan tilpasse og sende direkte.
           </p>
           <div className="grid-3" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
-            {ovCards.map((c,i)=>(
+            {ovCards.map((c: any,i: any)=>(
               <div key={i}
                 onClick={()=>{
                   if(c.type==="komite") setMalModal({type:"komite",kontekst:KOMITEER_DATA[0]});
@@ -2181,8 +2094,8 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
                   else if(c.type==="kampanje") setTab("oversikt");
                 }}
                 style={{background:c.farge,border:`1.5px solid ${c.kant}`,borderRadius:14,padding:"18px 20px",cursor:"pointer",transition:"box-shadow .15s,transform .15s"}}
-                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 6px 24px rgba(0,0,0,.1)";e.currentTarget.style.transform="translateY(-2px)";}}
-                onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.transform="translateY(0)";}}>
+                onMouseEnter={(e: any)=>{e.currentTarget.style.boxShadow="0 6px 24px rgba(0,0,0,.1)";e.currentTarget.style.transform="translateY(-2px)";}}
+                onMouseLeave={(e: any)=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.transform="translateY(0)";}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
                   <span style={{fontSize:28}}>{c.ikon}</span>
                   <span style={{fontSize:10,fontWeight:700,background:c.tekst2+"18",color:c.tekst2,padding:"3px 8px",borderRadius:99}}>{c.tag}</span>
@@ -2199,7 +2112,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
             <div style={{marginTop:28}}>
               <h3 style={{fontSize:15,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark,marginBottom:14}}>✊ Aktive underskriftskampanjer</h3>
               <div className="grid-3" style={{gap:14}}>
-                {kampanjerData.map(k=><KampanjeKort key={k.id} k={k}/>)}
+                {kampanjerData.map((k: any)=><KampanjeKort key={k.id} k={k}/>)}
               </div>
             </div>
           )}
@@ -2213,7 +2126,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
             💡 <strong>Tips:</strong> Klikk på en komité for å åpne ferdig brevmal. Åpne saker fra Varsler-fanen vil automatisk koble til riktig komité.
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            {KOMITEER_DATA.map(k=>(
+            {KOMITEER_DATA.map((k: any)=>(
               <Card key={k.id} style={{borderLeft:`4px solid ${C.komBlue}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
                   <div>
@@ -2227,7 +2140,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
                   </a>
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-                  {k.felt.map(f=><Badge key={f} color={C.muted} style={{fontSize:10}}>{f}</Badge>)}
+                  {k.felt.map((f: any)=><Badge key={f} color={C.muted} style={{fontSize:10}}>{f}</Badge>)}
                 </div>
                 <Btn variant="kom" size="sm" onClick={()=>setMalModal({type:"komite",kontekst:k})}>
                   📬 Åpne brevmaler for denne komiteen
@@ -2244,10 +2157,10 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
           <div style={{background:C.bgAlt,borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:C.muted}}>
             Velg en politiker og klikk <strong>Åpne brevmaler</strong> for å se alle malalternativer og tilpasse meldingen din.
           </div>
-          <input placeholder="Søk på navn, parti, sted..." value={sokPol} onChange={e=>setSokPol(e.target.value)}
+          <input placeholder="Søk på navn, parti, sted..." value={sokPol} onChange={(e: any)=>setSokPol(e.target.value)}
             style={{width:"100%",padding:"10px 14px",borderRadius:9,border:`1.5px solid ${C.border}`,fontSize:14,marginBottom:16,boxSizing:"border-box",background:C.bgCard,fontFamily:"inherit"}}/>
           <div className="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            {filtPol.map(p=>(
+            {filtPol.map((p: any)=>(
               <Card key={p.id} style={{display:"flex",flexDirection:"column",gap:0}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                   <div>
@@ -2258,7 +2171,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
                   <span style={{background:PARTIFARGE[p.parti]||C.red,color:"#fff",padding:"3px 10px",borderRadius:99,fontSize:12,fontWeight:700}}>{p.parti}</span>
                 </div>
                 <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-                  {p.kategori.map(k=>{const ki=KATEGORIER.find(c=>c.id===k);return ki?<Badge key={k} color={C.muted} style={{fontSize:10}}>{ki.ikon} {ki.label}</Badge>:null;})}
+                  {p.kategori.map((k: any)=>{const ki=KATEGORIER.find((c: any)=>c.id===k);return ki?<Badge key={k} color={C.muted} style={{fontSize:10}}>{ki.ikon} {ki.label}</Badge>:null;})}
                 </div>
                 <Btn variant="ghost" size="sm" style={{width:"100%"}} onClick={()=>setMalModal({type:"politiker",kontekst:p})}>
                   📬 Åpne brevmaler (4 varianter)
@@ -2276,8 +2189,8 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
             Velg en sak og klikk <strong>Skriv høringssvar</strong> for å velge blant fire forskjellige høringssvar-maler.
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {varslerData.map(v=>{
-              const ki=KATEGORIER.find(k=>k.id===v.kategori);
+            {varslerData.map((v: any)=>{
+              const ki=KATEGORIER.find((k: any)=>k.id===v.kategori);
               return (
                 <Card key={v.id} style={{borderLeft:`4px solid ${v.status==="kritisk"?"#DC2626":v.status==="viktig"?"#D97706":"#16A34A"}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",gap:12,marginBottom:12}}>
@@ -2317,20 +2230,20 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
 }
 
 // ─── PREMIUM VERKTØY ──────────────────────────────────────────────────────
-function PremiumVerktøy({varslerData=[],user=null}) {
+function PremiumVerktøy({varslerData=[],user=null}: any) {
   const [tool,setTool]=useState("budsjett");
   const [nivå,setNivå]=useState("kommune"); // kommune | fylke | nasjonalt
-  const [kommuner,setKommuner]=useState([]);
+  const [kommuner,setKommuner]=useState<any[]>([]);
   const [valgtKommune,setValgtKommune]=useState("");
   const [valgtFylke,setValgtFylke]=useState(user?.fylkesnr||"");
-  const [resultat,setResultat]=useState(null);
+  const [resultat,setResultat]=useState<any>(null);
   const [loading,setLoading]=useState(false);
   const [feil,setFeil]=useState("");
 
   // Hent kommunelisten (fra SSB via budsjett-funksjonen) ved første visning.
   useEffect(()=>{
     let avbrutt=false;
-    sb.functions.invoke("budsjett",{body:{list:true}}).then(({data})=>{
+    sb.functions.invoke("budsjett",{body:{list:true}}).then(({data}: any)=>{
       if(!avbrutt&&data?.kommuner) setKommuner(data.kommuner);
     });
     return ()=>{avbrutt=true;};
@@ -2364,8 +2277,8 @@ function PremiumVerktøy({varslerData=[],user=null}) {
       </div>
 
       <div style={{display:"flex",gap:10,marginBottom:24,flexWrap:"wrap"}}>
-        {tools.map(t=>(
-          <button key={t.id} onClick={()=>{setTool(t.id);setAnalyse("");}}
+        {tools.map((t: any)=>(
+          <button key={t.id} onClick={()=>{const neste=byttPremiumVerktøy(t.id);setTool(neste.tool);setResultat(neste.resultat);}}
             style={{padding:"9px 16px",borderRadius:10,border:`1.5px solid ${tool===t.id?C.purple:C.border}`,background:tool===t.id?"#EDE9FE":C.bgCard,color:tool===t.id?C.purple:C.muted,fontSize:13,cursor:"pointer",fontWeight:tool===t.id?700:500,fontFamily:"inherit"}}>
             {t.label}
           </button>
@@ -2378,7 +2291,7 @@ function PremiumVerktøy({varslerData=[],user=null}) {
             <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8}}>📊 Kulturbudsjett — finn de skjulte kuttene</div>
             <p style={{fontSize:13,color:C.muted,marginBottom:12,lineHeight:1.55}}>Ekte tall fra SSB (KOSTRA/nasjonalregnskap). Vi ser forbi totalen: når totalen stiger mens bibliotek, kulturskole eller investeringer kuttes, er det de skjulte kuttene som teller. KI forklarer hva tallene betyr.</p>
             <div style={{display:"flex",gap:6,marginBottom:12}}>
-              {[["kommune","🏘 Kommune"],["fylke","🗺 Fylke"],["nasjonalt","🏛 Nasjonalt"]].map(([id,lbl])=>(
+              {[["kommune","🏘 Kommune"],["fylke","🗺 Fylke"],["nasjonalt","🏛 Nasjonalt"]].map(([id,lbl]: any)=>(
                 <button key={id} onClick={()=>{setNivå(id);setResultat(null);}}
                   style={{padding:"6px 12px",borderRadius:99,border:`1.5px solid ${nivå===id?C.purple:C.border}`,background:nivå===id?"#EDE9FE":C.bgCard,color:nivå===id?C.purple:C.muted,fontSize:12,cursor:"pointer",fontWeight:nivå===id?700:500,fontFamily:"inherit"}}>
                   {lbl}
@@ -2387,17 +2300,17 @@ function PremiumVerktøy({varslerData=[],user=null}) {
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               {nivå==="kommune"&&(
-                <select value={valgtKommune} onChange={e=>setValgtKommune(e.target.value)}
+                <select value={valgtKommune} onChange={(e: any)=>setValgtKommune(e.target.value)}
                   style={{flex:1,minWidth:180,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",background:"#fff"}}>
                   <option value="">{kommuner.length?"— Velg kommune —":"Laster kommuner…"}</option>
-                  {kommuner.map(k=><option key={k.nr} value={k.nr}>{k.navn}</option>)}
+                  {kommuner.map((k: any)=><option key={k.nr} value={k.nr}>{k.navn}</option>)}
                 </select>
               )}
               {nivå==="fylke"&&(
-                <select value={valgtFylke} onChange={e=>setValgtFylke(e.target.value)}
+                <select value={valgtFylke} onChange={(e: any)=>setValgtFylke(e.target.value)}
                   style={{flex:1,minWidth:180,padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,fontFamily:"inherit",background:"#fff"}}>
                   <option value="">— Velg fylke —</option>
-                  {FYLKER.map(f=><option key={f.nr} value={f.nr}>{f.navn}</option>)}
+                  {FYLKER.map((f: any)=><option key={f.nr} value={f.nr}>{f.navn}</option>)}
                 </select>
               )}
               {nivå==="nasjonalt"&&(
@@ -2420,9 +2333,9 @@ function PremiumVerktøy({varslerData=[],user=null}) {
               <Card style={{marginBottom:14}}>
                 <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:14,fontFamily:"'Playfair Display',serif"}}>{resultat.kommune}: kulturøkonomi</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}} className="grid-2">
-                  {resultat.nøkkeltall.map(n=>{
-                    const siste=n.serie.filter(v=>v!=null).slice(-1)[0];
-                    const forrige=n.serie.filter(v=>v!=null).slice(-2)[0];
+                  {resultat.nøkkeltall.map((n: any)=>{
+                    const siste=n.serie.filter((v: any)=>v!=null).slice(-1)[0];
+                    const forrige=n.serie.filter((v: any)=>v!=null).slice(-2)[0];
                     const opp=siste!=null&&forrige!=null?siste-forrige:null;
                     const vsSnitt=siste!=null&&n.landssnitt!=null?siste-n.landssnitt:null;
                     return (
@@ -2449,7 +2362,7 @@ function PremiumVerktøy({varslerData=[],user=null}) {
                       <div style={{fontSize:14,lineHeight:1.65,color:C.text}}>{resultat.tolkning.skjulte_kutt}</div>
                     </div>
                   )}
-                  {[["💰 Pengene",resultat.tolkning.hovedtall],["🎯 Hva det betyr",resultat.tolkning.hva_betyr_det]].map(([t,tekst],i)=>(
+                  {[["💰 Pengene",resultat.tolkning.hovedtall],["🎯 Hva det betyr",resultat.tolkning.hva_betyr_det]].map(([t,tekst]: any,i: any)=>(
                     <div key={i} style={{marginBottom:12}}>
                       <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:3}}>{t}</div>
                       <div style={{fontSize:14,lineHeight:1.65,color:C.text}}>{tekst}</div>
@@ -2474,8 +2387,8 @@ function PremiumVerktøy({varslerData=[],user=null}) {
       {tool==="trend"&&(
         <Card>
           <div style={{fontSize:13,fontWeight:700,marginBottom:16}}>📈 Aktive saker per fagfelt</div>
-          {KATEGORIER.map(k=>{
-            const n=varslerData.filter(v=>v.kategori===k.id).length;
+          {KATEGORIER.map((k: any)=>{
+            const n=varslerData.filter((v: any)=>v.kategori===k.id).length;
             if(!n) return null;
             return (
               <div key={k.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
@@ -2495,7 +2408,7 @@ function PremiumVerktøy({varslerData=[],user=null}) {
 
       {tool==="politikeraktivitet"&&(
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {POLITIKERE.map((p,i)=>(
+          {POLITIKERE.map((p: any,i: any)=>(
             <Card key={p.id}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div style={{flex:1}}>
@@ -2524,21 +2437,21 @@ function PremiumVerktøy({varslerData=[],user=null}) {
 }
 
 // ─── VARSEL-REGISTRERING MODAL ────────────────────────────────────────────
-function VarselRegistreringModal({user,setUser,onClose}) {
+function VarselRegistreringModal({user,setUser,onClose}: any) {
   const [epost,setEpost]=useState(user?.epost||"");
-  const [valgtKat,setValgtKat]=useState([]);
+  const [valgtKat,setValgtKat]=useState<any[]>([]);
   const [valgtNivå,setValgtNivå]=useState(["nasjonalt","fylke","kommune"]);
   const [frekvens,setFrekvens]=useState("straks");
   const [lagret,setLagret]=useState(false);
 
   function lagre() {
-    setUser(u=>({...u,varselEpost:epost,varselKat:valgtKat,varselNivå:valgtNivå,varselFrekvens:frekvens}));
+    setUser((u: any)=>({...u,varselEpost:epost,varselKat:valgtKat,varselNivå:valgtNivå,varselFrekvens:frekvens}));
     setLagret(true);
   }
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:C.bgCard,borderRadius:20,width:"100%",maxWidth:500,boxShadow:"0 24px 64px rgba(0,0,0,.3)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:C.bgCard,borderRadius:20,width:"100%",maxWidth:500,boxShadow:"0 24px 64px rgba(0,0,0,.3)",overflow:"hidden"}} onClick={(e: any)=>e.stopPropagation()}>
         {lagret?(
           <div style={{padding:"48px 32px",textAlign:"center"}}>
             <div style={{fontSize:48,marginBottom:14}}>🔔</div>
@@ -2554,13 +2467,13 @@ function VarselRegistreringModal({user,setUser,onClose}) {
               <p style={{fontSize:13,opacity:.85}}>Få varsel direkte i innboksen når det dukker opp relevante saker – gratis for alle.</p>
             </div>
             <div style={{padding:"22px 24px"}}>
-              <Input label="E-postadresse for varsler" placeholder="deg@eksempel.no" value={epost} onChange={e=>setEpost(e.target.value)} type="email"/>
+              <Input label="E-postadresse for varsler" placeholder="deg@eksempel.no" value={epost} onChange={(e: any)=>setEpost(e.target.value)} type="email"/>
 
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Fagfelt (la stå tomt = alle)</div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {KATEGORIER.map(k=>(
-                    <button key={k.id} onClick={()=>setValgtKat(p=>p.includes(k.id)?p.filter(x=>x!==k.id):[...p,k.id])}
+                  {KATEGORIER.map((k: any)=>(
+                    <button key={k.id} onClick={()=>setValgtKat((p: any)=>p.includes(k.id)?p.filter((x: any)=>x!==k.id):[...p,k.id])}
                       style={{padding:"5px 10px",borderRadius:99,border:`1.5px solid ${valgtKat.includes(k.id)?C.red:C.border}`,background:valgtKat.includes(k.id)?C.red:"none",color:valgtKat.includes(k.id)?"#fff":C.text,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
                       {k.ikon} {k.label}
                     </button>
@@ -2571,8 +2484,8 @@ function VarselRegistreringModal({user,setUser,onClose}) {
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Nivå</div>
                 <div style={{display:"flex",gap:8}}>
-                  {[["nasjonalt","🏛 Nasjonalt"],["fylke","🗺 Fylke"],["kommune","📍 Kommune"]].map(([id,lbl])=>(
-                    <button key={id} onClick={()=>setValgtNivå(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])}
+                  {[["nasjonalt","🏛 Nasjonalt"],["fylke","🗺 Fylke"],["kommune","📍 Kommune"]].map(([id,lbl]: any)=>(
+                    <button key={id} onClick={()=>setValgtNivå((p: any)=>p.includes(id)?p.filter((x: any)=>x!==id):[...p,id])}
                       style={{padding:"7px 14px",borderRadius:8,border:`1.5px solid ${valgtNivå.includes(id)?C.red:C.border}`,background:valgtNivå.includes(id)?C.red:"none",color:valgtNivå.includes(id)?"#fff":C.text,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:valgtNivå.includes(id)?700:400}}>
                       {lbl}
                     </button>
@@ -2583,7 +2496,7 @@ function VarselRegistreringModal({user,setUser,onClose}) {
               <div style={{marginBottom:20}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:8,textTransform:"uppercase",letterSpacing:".04em"}}>Frekvens</div>
                 <div style={{display:"flex",gap:8}}>
-                  {[["straks","Straks (kritiske)"],["daglig","Daglig oppsummering"],["ukentlig","Ukentlig digest"]].map(([id,lbl])=>(
+                  {[["straks","Straks (kritiske)"],["daglig","Daglig oppsummering"],["ukentlig","Ukentlig digest"]].map(([id,lbl]: any)=>(
                     <button key={id} onClick={()=>setFrekvens(id)}
                       style={{padding:"7px 14px",borderRadius:8,border:`1.5px solid ${frekvens===id?C.red:C.border}`,background:frekvens===id?C.red:"none",color:frekvens===id?"#fff":C.text,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:frekvens===id?700:400}}>
                       {lbl}
@@ -2605,16 +2518,16 @@ function VarselRegistreringModal({user,setUser,onClose}) {
 }
 
 // ─── SAKSHISTORIKK ────────────────────────────────────────────────────────
-function SaksHistorikkSide({aktivitet=[],historiske=[]}) {
-  const [valgt,setValgt]=useState(null);
-  const utfallCfg={
+function SaksHistorikkSide({aktivitet=[],historiske=[]}: any) {
+  const [valgt,setValgt]=useState<any>(null);
+  const utfallCfg: Record<string, {label:string;bg:string;color:string;ikon:string}>={
     seier:{label:"Seier ✓",bg:"#D1FAE5",color:C.green,ikon:"🏆"},
     tap:{label:"Vedtatt mot vår vilje",bg:"#FEE2E2",color:C.red,ikon:"❌"},
     pågår:{label:"Avsluttet / utfall ikke registrert",bg:"#FEF3C7",color:C.amber,ikon:"⏳"},
   };
   // Ekte arkiv: saker med utgått frist (eller gamle uten frist) fra motoren.
   // Utfallssporing (seier/tap) kobles på senere — grunnlaget samles her nå.
-  const arkivSaker = historiske.map(v=>({
+  const arkivSaker = historiske.map((v: any)=>({
     id:v.id, tittel:v.tittel, sammendrag:v.sammendrag, kategori:v.kategori,
     nivå:v.nivå||v.niva, sted:v.sted, kilde:v.kilde,
     utfall:"pågår",
@@ -2624,7 +2537,7 @@ function SaksHistorikkSide({aktivitet=[],historiske=[]}) {
       {dato:v.opprettet?.slice(0,10)||v.frist,tekst:`Fanget opp av Kulturvarsling (${v.instans||"ukjent kilde"})`},
       ...(v.frist?[{dato:v.frist,tekst:"Fristen utløp"}]:[]),
     ],
-  })).sort((a,b)=>(b.avsluttet||"").localeCompare(a.avsluttet||""));
+  })).sort((a: any,b: any)=>(b.avsluttet||"").localeCompare(a.avsluttet||""));
   return (
     <div>
       <p style={{fontSize:14,color:C.muted,marginBottom:16,lineHeight:1.6}}>
@@ -2632,17 +2545,17 @@ function SaksHistorikkSide({aktivitet=[],historiske=[]}) {
       </p>
       {aktivitet.length>0&&(
         <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:12,padding:"12px 16px",marginBottom:20,fontSize:13,color:C.green}}>
-          ✓ <strong>Du bidro i {aktivitet.filter(a=>a.type==="horing"||a.type==="politiker").length} saker</strong> – saker der du sendte høringssvar eller kontaktet politiker er markert nedenfor.
+          ✓ <strong>Du bidro i {aktivitet.filter((a: any)=>a.type==="horing"||a.type==="politiker").length} saker</strong> – saker der du sendte høringssvar eller kontaktet politiker er markert nedenfor.
         </div>
       )}
 
       {/* Oppsummeringsstatistikk */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:28}}>
         {[
-          {n:arkivSaker.filter(s=>s.utfall==="seier").length,label:"Seire",bg:"#D1FAE5",color:C.green,ikon:"🏆"},
-          {n:arkivSaker.filter(s=>s.utfall==="tap").length,label:"Tapte saker",bg:"#FEE2E2",color:C.red,ikon:"❌"},
-          {n:arkivSaker.filter(s=>s.utfall==="pågår").length,label:"Arkiverte saker",bg:"#FEF3C7",color:C.amber,ikon:"⏳"},
-        ].map((s,i)=>(
+          {n:arkivSaker.filter((s: any)=>s.utfall==="seier").length,label:"Seire",bg:"#D1FAE5",color:C.green,ikon:"🏆"},
+          {n:arkivSaker.filter((s: any)=>s.utfall==="tap").length,label:"Tapte saker",bg:"#FEE2E2",color:C.red,ikon:"❌"},
+          {n:arkivSaker.filter((s: any)=>s.utfall==="pågår").length,label:"Arkiverte saker",bg:"#FEF3C7",color:C.amber,ikon:"⏳"},
+        ].map((s: any,i: any)=>(
           <div key={i} style={{background:s.bg,borderRadius:14,padding:"16px 20px",border:`1px solid ${C.border}`}}>
             <div style={{display:"flex",justifyContent:"space-between"}}>
               <div style={{fontSize:28,fontWeight:800,color:s.color,fontFamily:"'Playfair Display',serif"}}>{s.n}</div>
@@ -2659,9 +2572,9 @@ function SaksHistorikkSide({aktivitet=[],historiske=[]}) {
             Ingen arkiverte saker ennå — saker flyttes hit automatisk når fristen utløper.
           </div>
         )}
-        {arkivSaker.map(sak=>{
+        {arkivSaker.map((sak: any)=>{
           const cfg=utfallCfg[sak.utfall];
-          const ki=KATEGORIER.find(k=>k.id===sak.kategori);
+          const ki=KATEGORIER.find((k: any)=>k.id===sak.kategori);
           const åpen=valgt===sak.id;
           return (
             <div key={sak.id} style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,overflow:"hidden"}}>
@@ -2695,7 +2608,7 @@ function SaksHistorikkSide({aktivitet=[],historiske=[]}) {
                   <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:12}}>Tidslinje</div>
                   <div style={{position:"relative",paddingLeft:20}}>
                     <div style={{position:"absolute",left:6,top:6,bottom:6,width:2,background:C.border,borderRadius:99}}/>
-                    {sak.hendelser.map((h,i)=>(
+                    {sak.hendelser.map((h: any,i: any)=>(
                       <div key={i} style={{position:"relative",marginBottom:14}}>
                         <div style={{position:"absolute",left:-17,top:4,width:10,height:10,borderRadius:"50%",background:i===sak.hendelser.length-1?cfg.color:C.border,border:`2px solid ${i===sak.hendelser.length-1?cfg.color:C.border}`}}/>
                         <div style={{fontSize:11,color:C.muted,marginBottom:2}}>{new Date(h.dato).toLocaleDateString("no-NO",{day:"numeric",month:"short",year:"numeric"})}</div>
@@ -2717,207 +2630,7 @@ function SaksHistorikkSide({aktivitet=[],historiske=[]}) {
   );
 }
 
-// ─── MIN SIDE ─────────────────────────────────────────────────────────────
-function MinAktivitetSide({user,setUser,aktivitet,setShowVarselReg,setShowPremium}) {
-  const [tab,setTab]=useState("aktivitet");
-  const [katFilter,setKatFilter]=useState([]);
-  const [nivåFilter,setNivåFilter]=useState([]);
-  const [frekvens,setFrekvens]=useState(user?.varselFrekvens||"straks");
-  const [lagretInn,setLagretInn]=useState(false);
-
-  const typeIkon={horing:"📝",kampanje:"✊",politiker:"👤",pressemelding:"📰"};
-  const typeLabel={horing:"Høringssvar",kampanje:"Underskrift",politiker:"Politikerkontakt",pressemelding:"Pressemelding"};
-
-  function lagreInnstillinger() {
-    setUser(u=>({...u,varselKat:katFilter,varselNivå:nivåFilter,varselFrekvens:frekvens}));
-    setLagretInn(true);
-    setTimeout(()=>setLagretInn(false),2500);
-  }
-
-  return (
-    <div style={{maxWidth:800}}>
-      {/* Brukerprofil */}
-      <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px 24px",marginBottom:24,display:"flex",gap:18,alignItems:"center"}}>
-        <div style={{width:56,height:56,background:C.red,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:24,fontFamily:"'Playfair Display',serif",flexShrink:0}}>
-          {user?.navn?.[0]||"?"}
-        </div>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:800,fontSize:18,fontFamily:"'Playfair Display',serif",color:C.redDark}}>{user?.navn||"Bruker"}</div>
-          <div style={{fontSize:13,color:C.muted,marginTop:2}}>{user?.epost||"Ikke logget inn"}</div>
-          <div style={{display:"flex",gap:8,marginTop:8}}>
-            {user?.plan==="premium"
-              ? <Badge color={C.purple} bg="#EDE9FE">⭐ Premium-abonnent</Badge>
-              : <Badge color={C.muted} bg={C.bgAlt}>Gratis konto</Badge>
-            }
-            {user?.varselEpost
-              ? <Badge color={C.green} bg="#D1FAE5">🔔 Varsler aktive</Badge>
-              : <Badge color={C.amber} bg="#FEF3C7">🔕 Ingen varsler</Badge>
-            }
-          </div>
-        </div>
-        {user?.plan!=="premium"&&(
-          <Btn variant="premium" size="sm" onClick={()=>setShowPremium(true)}>Oppgrader til Premium ⭐</Btn>
-        )}
-      </div>
-
-      {/* Tabs */}
-      <div className="sub-nav" style={{display:"flex",gap:0,marginBottom:24,borderBottom:`1px solid ${C.border}`}}>
-        {[["aktivitet","📋 Min aktivitet"],["varsler","🔔 Varselinnstillinger"],["stats","📊 Min statistikk"]].map(([id,lbl])=>(
-          <button key={id} onClick={()=>setTab(id)}
-            style={{padding:"9px 16px",border:"none",borderBottom:`2.5px solid ${tab===id?C.red:"transparent"}`,background:"none",fontSize:13,color:tab===id?C.red:C.muted,fontWeight:tab===id?700:500,marginBottom:-1,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>
-            {lbl}
-          </button>
-        ))}
-      </div>
-
-      {/* AKTIVITET */}
-      {tab==="aktivitet"&&(
-        <div>
-          {!user?.varselEpost&&(
-            <div style={{background:"#FEF3C7",border:"1px solid #FCD34D",borderRadius:12,padding:"14px 18px",marginBottom:18,display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:14,color:C.amber,marginBottom:3}}>🔕 Du har ikke satt opp e-postvarsler</div>
-                <div style={{fontSize:13,color:C.muted}}>Du går glipp av kritiske saker. Det tar 30 sekunder å sette opp.</div>
-              </div>
-              <Btn variant="primary" size="sm" style={{background:C.amber,flexShrink:0}} onClick={()=>setShowVarselReg(true)}>Aktiver varsler</Btn>
-            </div>
-          )}
-
-          {aktivitet.length===0?(
-            <div style={{textAlign:"center",padding:"48px 0",color:C.muted}}>
-              <div style={{fontSize:36,marginBottom:12}}>📭</div>
-              <div style={{fontSize:14}}>Ingen aktivitet ennå. Mobiliser på en sak for å komme i gang!</div>
-            </div>
-          ):(
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {aktivitet.map((a,i)=>(
-                <Card key={a.id||i} style={{display:"flex",gap:14,alignItems:"flex-start",padding:"14px 18px"}}>
-                  <div style={{width:36,height:36,borderRadius:10,background:a.type==="horing"?"#D1FAE5":a.type==="kampanje"?"#EDE9FE":a.type==="politiker"?"#DBEAFE":"#FEF3C7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
-                    {typeIkon[a.type]||"📌"}
-                  </div>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:600,color:C.text,marginBottom:3}}>{a.tittel}</div>
-                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                      <Badge color={C.muted} style={{fontSize:10}}>{typeLabel[a.type]||a.type}</Badge>
-                      {a.mottaker&&<span style={{fontSize:11,color:C.muted}}>{a.mottaker}</span>}
-                    </div>
-                  </div>
-                  <div style={{textAlign:"right",flexShrink:0}}>
-                    <div style={{fontSize:11,color:C.muted}}>{a.dato}</div>
-                    <Badge color={a.status==="sendt"?C.green:C.amber} bg={a.status==="sendt"?"#D1FAE5":"#FEF3C7"} style={{fontSize:10,marginTop:4}}>
-                      {a.status==="sendt"?"✓ Sendt":"Aktiv"}
-                    </Badge>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* VARSELINNSTILLINGER */}
-      {tab==="varsler"&&(
-        <div>
-          {!user?.varselEpost&&(
-            <div style={{background:C.bgAlt,border:`1px solid ${C.border}`,borderRadius:12,padding:"16px 20px",marginBottom:20,textAlign:"center"}}>
-              <div style={{fontSize:13,color:C.muted,marginBottom:10}}>Du har ikke registrert e-postvarsler ennå.</div>
-              <Btn variant="primary" onClick={()=>setShowVarselReg(true)}>🔔 Sett opp e-postvarsler</Btn>
-            </div>
-          )}
-          {user?.varselEpost&&(
-            <div style={{background:"#D1FAE5",border:"1px solid #6EE7B7",borderRadius:12,padding:"12px 16px",marginBottom:20,fontSize:13,color:C.green}}>
-              ✓ Varsler sendes til <strong>{user.varselEpost}</strong>
-            </div>
-          )}
-
-          <Card style={{marginBottom:16}}>
-            <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Fagfelt (tom = alle)</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {KATEGORIER.map(k=>(
-                <button key={k.id} onClick={()=>setKatFilter(p=>p.includes(k.id)?p.filter(x=>x!==k.id):[...p,k.id])}
-                  style={{padding:"5px 10px",borderRadius:99,border:`1.5px solid ${katFilter.includes(k.id)?C.red:C.border}`,background:katFilter.includes(k.id)?C.red:"none",color:katFilter.includes(k.id)?"#fff":C.text,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
-                  {k.ikon} {k.label}
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          <Card style={{marginBottom:16}}>
-            <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Geografisk nivå</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {[["nasjonalt","🏛 Nasjonalt"],["fylke","🗺 Fylke"],["kommune","📍 Kommune"]].map(([id,lbl])=>(
-                <button key={id} onClick={()=>setNivåFilter(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])}
-                  style={{padding:"8px 16px",borderRadius:8,border:`1.5px solid ${nivåFilter.includes(id)?C.red:C.border}`,background:nivåFilter.includes(id)?C.red:"none",color:nivåFilter.includes(id)?"#fff":C.text,fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:nivåFilter.includes(id)?700:400}}>
-                  {lbl}
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          <Card style={{marginBottom:20}}>
-            <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>Frekvens</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {[["straks","⚡ Straks ved kritiske frister","Kun varsler med under 7 dager igjen og status 'kritisk'"],["daglig","📅 Daglig oppsummering","Én e-post per dag med alle nye saker"],["ukentlig","📬 Ukentlig digest","Én e-post per uke – oversikt over siste 7 dager"]].map(([id,lbl,sub])=>(
-                <div key={id} onClick={()=>setFrekvens(id)}
-                  style={{display:"flex",gap:12,alignItems:"center",padding:"12px 14px",borderRadius:10,border:`1.5px solid ${frekvens===id?C.red:C.border}`,background:frekvens===id?"#FFF0EF":"none",cursor:"pointer"}}>
-                  <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${frekvens===id?C.red:C.border}`,background:frekvens===id?C.red:"none",flexShrink:0}}/>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{lbl}</div>
-                    <div style={{fontSize:11,color:C.muted}}>{sub}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <div style={{display:"flex",gap:10,alignItems:"center"}}>
-            <Btn variant="primary" style={{flex:1}} onClick={lagreInnstillinger}>Lagre innstillinger</Btn>
-            {lagretInn&&<span style={{fontSize:13,color:C.green,fontWeight:700}}>✓ Lagret!</span>}
-          </div>
-        </div>
-      )}
-
-      {/* STATISTIKK */}
-      {tab==="stats"&&(
-        <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:24}}>
-            {[
-              {n:aktivitet.filter(a=>a.type==="horing").length,label:"Høringssvar sendt",bg:"#D1FAE5",color:C.green,ikon:"📝"},
-              {n:aktivitet.filter(a=>a.type==="kampanje").length,label:"Kampanjer signert",bg:"#EDE9FE",color:C.purple,ikon:"✊"},
-              {n:aktivitet.filter(a=>a.type==="politiker").length,label:"Politikere kontaktet",bg:"#DBEAFE",color:C.blue,ikon:"👤"},
-            ].map((s,i)=>(
-              <div key={i} style={{background:s.bg,borderRadius:14,padding:"16px 20px",border:`1px solid ${C.border}`}}>
-                <div style={{display:"flex",justifyContent:"space-between"}}>
-                  <div style={{fontSize:28,fontWeight:800,color:s.color,fontFamily:"'Playfair Display',serif"}}>{s.n}</div>
-                  <span style={{fontSize:20}}>{s.ikon}</span>
-                </div>
-                <div style={{fontSize:12,color:C.muted,marginTop:4}}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-          <Card>
-            <div style={{fontSize:13,fontWeight:700,marginBottom:14}}>Aktivitet per type</div>
-            {[["horing","📝 Høringssvar","#D1FAE5",C.green],["kampanje","✊ Signaturer","#EDE9FE",C.purple],["politiker","👤 Politikerkontakt","#DBEAFE",C.blue]].map(([type,lbl,bg,color])=>{
-              const n=aktivitet.filter(a=>a.type===type).length;
-              const maks=Math.max(...["horing","kampanje","politiker"].map(t=>aktivitet.filter(a=>a.type===t).length),1);
-              return (
-                <div key={type} style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-                  <div style={{width:130,fontSize:13}}>{lbl}</div>
-                  <div style={{flex:1,background:C.bgAlt,borderRadius:99,height:8,overflow:"hidden"}}>
-                    <div style={{background:color,width:`${n/maks*100}%`,height:"100%",borderRadius:99,transition:"width .4s"}}/>
-                  </div>
-                  <div style={{fontSize:13,fontWeight:700,color,width:24,textAlign:"right"}}>{n}</div>
-                </div>
-              );
-            })}
-            {aktivitet.length===0&&<div style={{textAlign:"center",fontSize:13,color:C.muted,padding:"20px 0"}}>Ingen aktivitet registrert ennå.</div>}
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-}
-function PremiumModal({user,onClose,onLogin}) {
+function PremiumModal({user,onClose,onLogin}: any) {
   const [plan,setPlan]=useState("monthly");
   const [loading,setLoading]=useState(false);
   const [feil,setFeil]=useState("");
@@ -2939,7 +2652,7 @@ function PremiumModal({user,onClose,onLogin}) {
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:C.bgCard,borderRadius:20,width:"100%",maxWidth:480,overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.35)"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:C.bgCard,borderRadius:20,width:"100%",maxWidth:480,overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.35)"}} onClick={(e: any)=>e.stopPropagation()}>
         <div style={{background:"linear-gradient(135deg,#4C1D95,#6D28D9)",padding:"28px 28px 24px",color:"#fff"}}>
           <div style={{fontSize:10,fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",opacity:.7,marginBottom:8}}>Kulturvarsling</div>
           <h2 style={{fontSize:22,fontWeight:800,fontFamily:"'Playfair Display',serif",marginBottom:6}}>⭐ Premium-verktøy</h2>
@@ -2947,7 +2660,7 @@ function PremiumModal({user,onClose,onLogin}) {
         </div>
         <div style={{padding:"24px 28px"}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
-            {[["monthly","99 kr/mnd","Månedlig"],["yearly","790 kr/år","Årlig – spar 20%"]].map(([id,pris,label])=>(
+            {[["monthly","99 kr/mnd","Månedlig"],["yearly","790 kr/år","Årlig – spar 20%"]].map(([id,pris,label]: any)=>(
               <button key={id} onClick={()=>setPlan(id)} style={{padding:"14px",borderRadius:12,border:`2px solid ${plan===id?C.purple:C.border}`,background:plan===id?"#F5F3FF":C.bgCard,cursor:"pointer",textAlign:"center",fontFamily:"inherit"}}>
                 <div style={{fontWeight:800,fontSize:18,color:plan===id?C.purple:C.text}}>{pris}</div>
                 <div style={{fontSize:12,color:C.muted,marginTop:2}}>{label}</div>
@@ -2955,7 +2668,7 @@ function PremiumModal({user,onClose,onLogin}) {
             ))}
           </div>
           <div style={{marginBottom:20}}>
-            {["📊 Budsjettolkning: forstå kommunens kulturbudsjett og sammenlign med nabokommuner","✍️ AI-utkast til profesjonelt høringssvar","📈 Historiske trender, statistikk og dataeksport","📅 Fristkalender rett inn i din kalender (ICS)","⚡ E-postvarsel straks ved kritisk sak"].map((f,i)=>(
+            {["📊 Budsjettolkning: forstå kommunens kulturbudsjett og sammenlign med nabokommuner","✍️ AI-utkast til profesjonelt høringssvar","📈 Historiske trender, statistikk og dataeksport","📅 Fristkalender rett inn i din kalender (ICS)","⚡ E-postvarsel straks ved kritisk sak"].map((f: any,i: any)=>(
               <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,fontSize:13,color:C.text}}>
                 <span style={{color:C.green,fontWeight:700}}>✓</span>{f}
               </div>
@@ -2980,7 +2693,7 @@ function PremiumModal({user,onClose,onLogin}) {
 }
 
 // ─── KOMMUNE LOGIN ────────────────────────────────────────────────────────
-function KommuneLogin({setScreen,setKommune}) {
+function KommuneLogin({setScreen,setKommune}: any) {
   const [epost,setEpost]=useState("");
   const [pw,setPw]=useState("");
   const [kom,setKom]=useState("Oslo");
@@ -2999,13 +2712,13 @@ function KommuneLogin({setScreen,setKommune}) {
         <Card>
           <div style={{marginBottom:14}}>
             <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:".04em"}}>Kommune</div>
-            <select value={kom} onChange={e=>setKom(e.target.value)}
+            <select value={kom} onChange={(e: any)=>setKom(e.target.value)}
               style={{width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,color:C.text,background:C.bgCard,fontFamily:"inherit"}}>
-              {kommuner.map(k=><option key={k}>{k}</option>)}
+              {kommuner.map((k: any)=><option key={k}>{k}</option>)}
             </select>
           </div>
-          <Input label="Tjenstlig e-post" placeholder="saksbehandler@kommune.no" value={epost} onChange={e=>setEpost(e.target.value)} type="email"/>
-          <Input label="Passord" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} type="password"/>
+          <Input label="Tjenstlig e-post" placeholder="saksbehandler@kommune.no" value={epost} onChange={(e: any)=>setEpost(e.target.value)} type="email"/>
+          <Input label="Passord" placeholder="••••••••" value={pw} onChange={(e: any)=>setPw(e.target.value)} type="password"/>
           <Btn variant="kom" size="lg" style={{width:"100%",marginTop:4}} onClick={()=>{setKommune({navn:"Saksbehandler Hansen",kommune:kom,epost});setScreen("kommune-app");}}>
             Logg inn som {kom} kommune →
           </Btn>
@@ -3022,7 +2735,7 @@ function KommuneLogin({setScreen,setKommune}) {
 }
 
 // ─── KOMMUNE APP ──────────────────────────────────────────────────────────
-function KommuneApp({kommune,setScreen}) {
+function KommuneApp({kommune,setScreen}: any) {
   const [view,setView]=useState("oversikt");
   const [høringer,setHøringer]=useState(KOM_HØRINGER_INIT);
   const [visPubliser,setVisPubliser]=useState(false);
@@ -3034,13 +2747,13 @@ function KommuneApp({kommune,setScreen}) {
     {id:"statistikk",label:"Statistikk"},
   ];
 
-  const totalVarslet=høringer.reduce((s,h)=>s+h.varslet,0);
-  const totalSvar=høringer.reduce((s,h)=>s+h.svar,0);
+  const totalVarslet=høringer.reduce((s: any,h: any)=>s+h.varslet,0);
+  const totalSvar=høringer.reduce((s: any,h: any)=>s+h.svar,0);
 
   return (
     <div style={{minHeight:"100vh",background:C.komBg,fontFamily:"'DM Sans',sans-serif",color:C.text}}>
       <style>{css}</style>
-      {visPubliser&&<PubliserModal onClose={()=>setVisPubliser(false)} onPubliser={h=>{setHøringer(p=>[{...h,id:p.length+1,publisert:new Date().toISOString().split("T")[0],status:"aktiv",svar:0,varslet:Math.floor(Math.random()*200)+50},...p]);setVisPubliser(false);setView("høringer");}}/>}
+      {visPubliser&&<PubliserModal onClose={()=>setVisPubliser(false)} onPubliser={(h: any)=>{setHøringer((p: any)=>[{...h,id:p.length+1,publisert:new Date().toISOString().split("T")[0],status:"aktiv",svar:0,varslet:Math.floor(Math.random()*200)+50},...p]);setVisPubliser(false);setView("høringer");}}/>}
 
       <header style={{background:C.komBlue,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(0,0,0,.15)"}}>
         <div style={{maxWidth:1100,margin:"0 auto",padding:"0 24px",display:"flex",alignItems:"center",height:58,gap:20}}>
@@ -3051,7 +2764,7 @@ function KommuneApp({kommune,setScreen}) {
             <span style={{fontWeight:800,fontSize:15,fontFamily:"'Playfair Display',serif",color:"#fff"}}>Kulturvarsling – {kommune?.kommune}</span>
           </div>
           <nav style={{display:"flex",gap:2,flex:1}}>
-            {VIEWS.map(v=>(
+            {VIEWS.map((v: any)=>(
               <button key={v.id} onClick={()=>setView(v.id)}
                 style={{padding:"6px 14px",borderRadius:7,border:"none",background:view===v.id?"rgba(255,255,255,.2)":"none",color:"#fff",fontSize:13,cursor:"pointer",fontWeight:view===v.id?700:400,opacity:view===v.id?1:.75,fontFamily:"inherit"}}>
                 {v.label}
@@ -3086,8 +2799,8 @@ function KommuneApp({kommune,setScreen}) {
   );
 }
 
-function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPubliser}) {
-  const aktive=høringer.filter(h=>h.status==="aktiv").length;
+function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPubliser}: any) {
+  const aktive=høringer.filter((h: any)=>h.status==="aktiv").length;
   return (
     <div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:28}}>
@@ -3096,7 +2809,7 @@ function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPublise
           {n:totalVarslet,label:"Aktører varslet",bg:"#EDE9FE",color:C.purple,ikon:"🔔"},
           {n:totalSvar,label:"Innspill mottatt",bg:"#D1FAE5",color:C.green,ikon:"📝"},
           {n:`${Math.round(totalSvar/Math.max(1,totalVarslet)*100)}%`,label:"Responsrate",bg:"#FEF3C7",color:C.amber,ikon:"📊"},
-        ].map((s,i)=>(
+        ].map((s: any,i: any)=>(
           <div key={i} style={{background:s.bg,borderRadius:14,padding:"16px 20px",border:`1px solid ${C.komBorder}`}}>
             <div style={{display:"flex",justifyContent:"space-between"}}>
               <div style={{fontSize:26,fontWeight:800,color:s.color,fontFamily:"'Playfair Display',serif"}}>{s.n}</div>
@@ -3118,11 +2831,11 @@ function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPublise
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
         <div>
           <div style={{fontSize:14,fontWeight:700,marginBottom:12,color:C.text}}>Aktive høringer</div>
-          {høringer.filter(h=>h.status==="aktiv").map(h=><HøringRad key={h.id} h={h}/>)}
+          {høringer.filter((h: any)=>h.status==="aktiv").map((h: any)=><HøringRad key={h.id} h={h}/>)}
         </div>
         <div>
           <div style={{fontSize:14,fontWeight:700,marginBottom:12,color:C.text}}>Siste innspill</div>
-          {KOM_SVAR_MOCK.slice(0,3).map(s=>(
+          {KOM_SVAR_MOCK.slice(0,3).map((s: any)=>(
             <Card key={s.id} style={{marginBottom:10,padding:"12px 14px"}}>
               <div style={{fontWeight:600,fontSize:13}}>{s.org}</div>
               <div style={{fontSize:12,color:C.muted,marginTop:2,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{s.tekst}</div>
@@ -3139,8 +2852,8 @@ function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPublise
   );
 }
 
-function HøringRad({h}) {
-  const ki=KATEGORIER.find(k=>k.id===h.kategori);
+function HøringRad({h}: any) {
+  const ki=KATEGORIER.find((k: any)=>k.id===h.kategori);
   return (
     <Card style={{marginBottom:10,padding:"12px 16px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -3160,15 +2873,15 @@ function HøringRad({h}) {
   );
 }
 
-function KommuneHøringer({høringer,setVisPubliser}) {
+function KommuneHøringer({høringer,setVisPubliser}: any) {
   return (
     <div>
       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
         <Btn variant="kom" onClick={()=>setVisPubliser(true)}>+ Publiser ny høring</Btn>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {høringer.map(h=>{
-          const ki=KATEGORIER.find(k=>k.id===h.kategori);
+        {høringer.map((h: any)=>{
+          const ki=KATEGORIER.find((k: any)=>k.id===h.kategori);
           return (
             <Card key={h.id} style={{borderLeft:`4px solid ${h.status==="aktiv"?C.komBlue:C.border}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -3185,7 +2898,7 @@ function KommuneHøringer({høringer,setVisPubliser}) {
                 </div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:14}}>
-                {[["🔔",h.varslet,"Aktører varslet",C.purple],["📝",h.svar,"Innspill mottatt",C.green],["📊",`${Math.round(h.svar/Math.max(1,h.varslet)*100)}%`,"Responsrate",C.amber]].map(([ik,n,lbl,c])=>(
+                {[["🔔",h.varslet,"Aktører varslet",C.purple],["📝",h.svar,"Innspill mottatt",C.green],["📊",`${Math.round(h.svar/Math.max(1,h.varslet)*100)}%`,"Responsrate",C.amber]].map(([ik,n,lbl,c]: any)=>(
                   <div key={lbl} style={{background:C.bgAlt,borderRadius:9,padding:"10px 12px",textAlign:"center"}}>
                     <div style={{fontSize:18}}>{ik}</div>
                     <div style={{fontWeight:800,fontSize:16,color:c}}>{n}</div>
@@ -3203,25 +2916,25 @@ function KommuneHøringer({høringer,setVisPubliser}) {
 
 function KommuneSvar() {
   const [valgtHøring,setValgtHøring]=useState("alle");
-  const [svar,setSvar]=useState(KOM_SVAR_MOCK.map(s=>({...s})));
-  const [svarTekst,setSvarTekst]=useState({});
-  const [åpenSvar,setÅpenSvar]=useState(null);
-  const [sendt,setSendt]=useState({});
+  const [svar,setSvar]=useState(KOM_SVAR_MOCK.map((s: any)=>({...s})));
+  const [svarTekst,setSvarTekst]=useState<Record<string, any>>({});
+  const [åpenSvar,setÅpenSvar]=useState<any>(null);
+  const [sendt,setSendt]=useState<Record<string, any>>({});
   const TAGGER=["Støtte","Motstand","Nøytral","Detaljert","Kort","Forslag"];
-  const [tags,setTags]=useState({});
+  const [tags,setTags]=useState<Record<string, any>>({});
 
-  const filtered=valgtHøring==="alle"?svar:svar.filter(s=>s.høringId===parseInt(valgtHøring));
+  const filtered=valgtHøring==="alle"?svar:svar.filter((s: any)=>s.høringId===parseInt(valgtHøring));
 
-  function merkLest(id){ setSvar(s=>s.map(x=>x.id===id?{...x,status:"lest"}:x)); }
-  function sendSvar(id){
-    setSendt(p=>({...p,[id]:true}));
+  function merkLest(id: any){ setSvar((s: any)=>s.map((x: any)=>x.id===id?{...x,status:"lest"}:x)); }
+  function sendSvar(id: any){
+    setSendt((p: any)=>({...p,[id]:true}));
     setÅpenSvar(null);
     merkLest(id);
   }
-  function toggleTag(svId,t){ setTags(p=>({...p,[svId]:p[svId]?.includes(t)?p[svId].filter(x=>x!==t):[...(p[svId]||[]),t]})); }
+  function toggleTag(svId: any,t: any){ setTags((p: any)=>({...p,[svId]:p[svId]?.includes(t)?p[svId].filter((x: any)=>x!==t):[...(p[svId]||[]),t]})); }
 
   function eksporter(){
-    const csv=["Org,Dato,Høring,Status,Tags,Tekst",...filtered.map(s=>`"${s.org}","${s.dato}","Høring #${s.høringId}","${s.status}","${(tags[s.id]||[]).join("|")}","${s.tekst.replace(/"/g,"'")}"`)].join("\n");
+    const csv=["Org,Dato,Høring,Status,Tags,Tekst",...filtered.map((s: any)=>`"${s.org}","${s.dato}","Høring #${s.høringId}","${s.status}","${(tags[s.id]||[]).join("|")}","${s.tekst.replace(/"/g,"'")}"`)].join("\n");
     const b=new Blob([csv],{type:"text/csv"});
     const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="innspill.csv";a.click();
   }
@@ -3231,7 +2944,7 @@ function KommuneSvar() {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <span style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".04em"}}>Filtrer:</span>
-          {[["alle","Alle"],...KOM_HØRINGER_INIT.map(h=>[String(h.id),h.tittel.slice(0,22)+"..."])].map(([id,lbl])=>(
+          {[["alle","Alle"],...KOM_HØRINGER_INIT.map((h: any)=>[String(h.id),h.tittel.slice(0,22)+"..."])].map(([id,lbl]: any)=>(
             <button key={id} onClick={()=>setValgtHøring(id)}
               style={{padding:"5px 12px",borderRadius:99,border:"1.5px solid "+(valgtHøring===id?C.komBlue:C.border),background:valgtHøring===id?C.komBlue:"none",color:valgtHøring===id?"#fff":C.muted,fontSize:12,cursor:"pointer",fontWeight:valgtHøring===id?700:400,fontFamily:"inherit"}}>
               {lbl}
@@ -3242,9 +2955,9 @@ function KommuneSvar() {
           ⬇ Eksporter CSV
         </button>
       </div>
-      <div style={{fontSize:12,color:C.muted,marginBottom:12}}>{filtered.length} innspill · {filtered.filter(s=>s.status==="ny").length} uleste</div>
+      <div style={{fontSize:12,color:C.muted,marginBottom:12}}>{filtered.length} innspill · {filtered.filter((s: any)=>s.status==="ny").length} uleste</div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {filtered.map(s=>(
+        {filtered.map((s: any)=>(
           <Card key={s.id} style={{borderLeft:"4px solid "+(s.status==="ny"?C.red:C.border)}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
               <div>
@@ -3258,7 +2971,7 @@ function KommuneSvar() {
             <p style={{fontSize:13,color:C.text,lineHeight:1.6,margin:"0 0 10px"}}>{s.tekst}</p>
             {/* Tagging */}
             <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>
-              {TAGGER.map(t=>(
+              {TAGGER.map((t: any)=>(
                 <button key={t} onClick={()=>toggleTag(s.id,t)}
                   style={{padding:"3px 9px",borderRadius:99,border:"1.5px solid "+(tags[s.id]?.includes(t)?C.komBlue:C.border),background:tags[s.id]?.includes(t)?C.komBlue:"none",color:tags[s.id]?.includes(t)?"#fff":C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit",fontWeight:tags[s.id]?.includes(t)?700:400}}>
                   {t}
@@ -3267,7 +2980,7 @@ function KommuneSvar() {
             </div>
             {åpenSvar===s.id?(
               <div>
-                <textarea value={svarTekst[s.id]||""} onChange={e=>setSvarTekst(p=>({...p,[s.id]:e.target.value}))} rows={3} placeholder={"Svar til "+s.org+"..."}
+                <textarea value={svarTekst[s.id]||""} onChange={(e: any)=>setSvarTekst((p: any)=>({...p,[s.id]:e.target.value}))} rows={3} placeholder={"Svar til "+s.org+"..."}
                   style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1px solid "+C.border,fontSize:12,lineHeight:1.6,resize:"vertical",boxSizing:"border-box",fontFamily:"inherit",marginBottom:8}}/>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={()=>sendSvar(s.id)} style={{padding:"8px 16px",background:C.komBlue,color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Send svar</button>
@@ -3289,13 +3002,13 @@ function KommuneSvar() {
   );
 }
 
-function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
+function KommuneStatistikk({høringer,totalVarslet,totalSvar}: any) {
   return (
     <div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:20}}>
         <Card>
           <div style={{fontSize:13,fontWeight:700,marginBottom:14,color:C.text}}>📊 Innspill per høring</div>
-          {høringer.map(h=>(
+          {høringer.map((h: any)=>(
             <div key={h.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
               <div style={{fontSize:12,color:C.text,width:160,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.tittel}</div>
               <div style={{flex:1,background:C.bgAlt,borderRadius:99,height:7,overflow:"hidden"}}>
@@ -3307,7 +3020,7 @@ function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
         </Card>
         <Card>
           <div style={{fontSize:13,fontWeight:700,marginBottom:14,color:C.text}}>🔔 Varsling per høring</div>
-          {høringer.map(h=>(
+          {høringer.map((h: any)=>(
             <div key={h.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
               <div style={{fontSize:12,color:C.text,width:160,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.tittel}</div>
               <div style={{flex:1,background:C.bgAlt,borderRadius:99,height:7,overflow:"hidden"}}>
@@ -3321,7 +3034,7 @@ function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
       <Card style={{background:"linear-gradient(135deg,#EEF2FF,#E0E7FF)",border:"1px solid #C7D2FE"}}>
         <div style={{fontSize:13,fontWeight:700,color:C.komBlue,marginBottom:12}}>📈 Sammendragsrapport</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
-          {[[totalVarslet,"Aktører nådd","via Kulturvarsling"],[totalSvar,"Innspill mottatt","fra feltet"],[`${Math.round(totalSvar/Math.max(1,totalVarslet)*100)}%`,"Gjennomsnittlig responsrate","vs 8% for e-post"]].map(([n,lbl,sub])=>(
+          {[[totalVarslet,"Aktører nådd","via Kulturvarsling"],[totalSvar,"Innspill mottatt","fra feltet"],[`${Math.round(totalSvar/Math.max(1,totalVarslet)*100)}%`,"Gjennomsnittlig responsrate","vs 8% for e-post"]].map(([n,lbl,sub]: any)=>(
             <div key={lbl} style={{textAlign:"center"}}>
               <div style={{fontSize:28,fontWeight:800,color:C.komBlue,fontFamily:"'Playfair Display',serif"}}>{n}</div>
               <div style={{fontSize:13,fontWeight:600,color:C.text,marginTop:4}}>{lbl}</div>
@@ -3339,7 +3052,7 @@ function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
 }
 
 // ─── PUBLISER MODAL ───────────────────────────────────────────────────────
-function PubliserModal({onClose,onPubliser}) {
+function PubliserModal({onClose,onPubliser}: any) {
   const [tittel,setTittel]=useState("");
   const [beskrivelse,setBeskrivelse]=useState("");
   const [frist,setFrist]=useState("");
@@ -3352,7 +3065,7 @@ function PubliserModal({onClose,onPubliser}) {
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:C.bgCard,borderRadius:18,width:"100%",maxWidth:560,boxShadow:"0 24px 64px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:C.bgCard,borderRadius:18,width:"100%",maxWidth:560,boxShadow:"0 24px 64px rgba(0,0,0,.3)"}} onClick={(e: any)=>e.stopPropagation()}>
         <div style={{background:C.komBlue,borderRadius:"18px 18px 0 0",padding:"20px 24px",color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontWeight:800,fontSize:16,fontFamily:"'Playfair Display',serif"}}>Publiser ny høring</div>
@@ -3364,17 +3077,17 @@ function PubliserModal({onClose,onPubliser}) {
         <div style={{padding:"24px"}}>
           {steg===1&&(
             <div>
-              <Input label="Tittel på høringen" placeholder="Eks: Revisjon av tilskudd til lokale kulturlokaler" value={tittel} onChange={e=>setTittel(e.target.value)}/>
-              <Input label="Beskrivelse" placeholder="Beskriv hva høringen handler om og hva dere ønsker innspill på..." value={beskrivelse} onChange={e=>setBeskrivelse(e.target.value)} rows={4}/>
+              <Input label="Tittel på høringen" placeholder="Eks: Revisjon av tilskudd til lokale kulturlokaler" value={tittel} onChange={(e: any)=>setTittel(e.target.value)}/>
+              <Input label="Beskrivelse" placeholder="Beskriv hva høringen handler om og hva dere ønsker innspill på..." value={beskrivelse} onChange={(e: any)=>setBeskrivelse(e.target.value)} rows={4}/>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 <div>
                   <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:".04em"}}>Fagfelt</div>
-                  <select value={kategori} onChange={e=>setKategori(e.target.value)}
+                  <select value={kategori} onChange={(e: any)=>setKategori(e.target.value)}
                     style={{width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,color:C.text,background:C.bgCard,fontFamily:"inherit"}}>
-                    {KATEGORIER.map(k=><option key={k.id} value={k.id}>{k.ikon} {k.label}</option>)}
+                    {KATEGORIER.map((k: any)=><option key={k.id} value={k.id}>{k.ikon} {k.label}</option>)}
                   </select>
                 </div>
-                <Input label="Høringsfrist" value={frist} onChange={e=>setFrist(e.target.value)} type="date"/>
+                <Input label="Høringsfrist" value={frist} onChange={(e: any)=>setFrist(e.target.value)} type="date"/>
               </div>
               <Btn variant="kom" size="lg" style={{width:"100%",marginTop:4}} onClick={()=>setSteg(2)} disabled={!tittel||!frist}>
                 Neste: forhåndsvisning →
@@ -3389,12 +3102,12 @@ function PubliserModal({onClose,onPubliser}) {
                 <div style={{fontSize:14,fontWeight:700,marginBottom:5}}>{tittel||"(ingen tittel)"}</div>
                 <div style={{fontSize:13,color:C.muted,lineHeight:1.5,marginBottom:8}}>{beskrivelse||"(ingen beskrivelse)"}</div>
                 <div style={{display:"flex",gap:6}}>
-                  {KATEGORIER.find(k=>k.id===kategori)&&<Badge color={C.muted}>{KATEGORIER.find(k=>k.id===kategori)?.ikon} {KATEGORIER.find(k=>k.id===kategori)?.label}</Badge>}
+                  {KATEGORIER.find((k: any)=>k.id===kategori)&&<Badge color={C.muted}>{KATEGORIER.find((k: any)=>k.id===kategori)?.ikon} {KATEGORIER.find((k: any)=>k.id===kategori)?.label}</Badge>}
                   {frist&&<Badge color={C.amber} bg="#FEF3C7">Frist {new Date(frist).toLocaleDateString("no-NO",{day:"numeric",month:"short"})}</Badge>}
                 </div>
               </div>
               <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13,color:C.green}}>
-                🔔 <strong>Kulturvarsling vil automatisk varsle</strong> alle registrerte aktører innen "{KATEGORIER.find(k=>k.id===kategori)?.label}" om denne høringen.
+                🔔 <strong>Kulturvarsling vil automatisk varsle</strong> alle registrerte aktører innen "{KATEGORIER.find((k: any)=>k.id===kategori)?.label}" om denne høringen.
               </div>
               <div style={{display:"flex",gap:10}}>
                 <Btn variant="secondary" style={{flex:1}} onClick={()=>setSteg(1)}>← Rediger</Btn>
@@ -3417,7 +3130,7 @@ export default function App() {
 
   useEffect(()=>{
     // Gjenopprett sesjon ved refresh
-    sb.auth.getSession().then(async ({data:{session}})=>{
+    sb.auth.getSession().then(async ({data:{session}}: any)=>{
       if(session?.user) {
         const profil = await hentProfil(session.user.id);
         setUser({
@@ -3436,7 +3149,7 @@ export default function App() {
     });
 
     // Lytt på auth-endringer (utlogging, token-refresh)
-    const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = sb.auth.onAuthStateChange((event: any, session: any) => {
       if(event==="SIGNED_OUT" || !session) setUser(null);
     });
     return () => subscription.unsubscribe();
@@ -3461,7 +3174,7 @@ export default function App() {
         const profil=await hentProfil(session.user.id);
         if(profil?.plan==="premium"){
           clearInterval(intervall);
-          setUser(u=>u?{...u,plan:"premium"}:u);
+          setUser((u: any)=>u?{...u,plan:"premium"}:u);
           showToast("⭐ Premium aktivert!","ok");
           return;
         }
@@ -3480,7 +3193,7 @@ export default function App() {
       <div style={{textAlign:"center"}}>
         <img src="/logo.png" alt="Kulturvarsling" style={{width:48,height:48,objectFit:"contain",marginBottom:16,opacity:.7}}/>
         <div style={{display:"flex",gap:6,justifyContent:"center"}}>
-          {[0,1,2].map(i=>(
+          {[0,1,2].map((i: any)=>(
             <div key={i} style={{width:8,height:8,borderRadius:"50%",background:C.red,opacity:.3,animation:`pulse 1.2s ${i*0.2}s infinite`}}/>
           ))}
         </div>
