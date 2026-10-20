@@ -591,8 +591,9 @@ export function dedupEtterInnhold<T extends InnholdNokkelInn>(
 }
 
 /**
- * Backfill skal ikke skrive om tittel, sammendrag, kategori, frist eller
- * status når manuelt_redigert er satt. Kolonnen kommer fra Regjeringen-sporet.
+ * Backfill skal ikke skrive om tittel, sammendrag, kategori, frist,
+ * møtedato eller status når manuelt_redigert er satt, heller ikke når
+ * feltet er tomt. Kolonnen kommer fra Regjeringen-sporet.
  */
 export function utenManuelleTekstfelt<T extends Record<string, unknown>>(
   rad: T,
@@ -604,6 +605,7 @@ export function utenManuelleTekstfelt<T extends Record<string, unknown>>(
   delete kopi.sammendrag;
   delete kopi.kategori;
   delete kopi.frist;
+  delete kopi.motedato;
   delete kopi.status;
   return kopi;
 }

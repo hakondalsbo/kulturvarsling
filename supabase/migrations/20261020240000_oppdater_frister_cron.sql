@@ -2,16 +2,18 @@
 -- status normal: manglende frist er ikke kritisk. Passert dag blir passert.
 -- Idempotent. Skriver ikke tittel, sammendrag eller kategori.
 --
--- Rader med manuelt_redigert beholder frist og status. Disse fem
--- godkjente radene får heller ikke ny frist, status eller kategori:
--- 80653f79, 1cf0dfd3, de0dc5a6, b70f9ea5 og 90a26730.
+-- Rader med manuelt_redigert får ingen automatisk frist, møtedato eller
+-- status, heller ikke når feltet er tomt. kilde_id kan fylles fra NULL
+-- i 20261020220000. Disse fem godkjente radene får heller ikke ny frist,
+-- status eller kategori: 80653f79, 1cf0dfd3, de0dc5a6, b70f9ea5 og 90a26730.
 -- Høringssetningen «Høringsfristen er 23. november 2026» fanges av
 -- trekkHoringsfrist for nye saker. Backfillen setter ikke den datoen på
 -- den godkjente raden.
 --
 -- Møtedatoene under er lest 2026-10-20 fra eInnsyn Moetemappe.moetedato og
--- Bergen agendapunkter.moteDato. Bare tomme motedato fylles. Møtedato er
--- ikke et redaktørfelt.
+-- Bergen agendapunkter.moteDato. Bare tomme motedato på rader uten
+-- manuelt_redigert fylles. de0dc5a6 er redigert for hånd og får ikke
+-- møtedato 2026-10-27.
 --
 -- Daglig jobb klones fra hent-saker-daglig og kjøres 06:30 UTC.
 -- x-cron-secret skrives ikke inn her.
@@ -70,6 +72,7 @@ from (
     ('ms_01m077v0qnea19zx3eq53ncgvz', date '2026-08-24')
 ) as d(sak, dato)
 where v.motedato is null
+  and v.manuelt_redigert is not true
   and v.kilde ~ ('/moetesak/' || d.sak || '($|[/?#])');
 
 update public.varsler v
@@ -228,6 +231,7 @@ from (
     ('9034514', '267490', date '2026-05-06')
 ) as d(mote, sak, dato)
 where v.motedato is null
+  and v.manuelt_redigert is not true
   and v.kilde ~ ('/mote/' || d.mote || '/sak/' || d.sak || '($|[/?#])');
 
 update public.varsler

@@ -3,8 +3,9 @@
 // pg_cron (oppdater-frister-daglig), ikke via Vercel Cron. Feil i ett
 // oppslag stopper ikke de andre. Skriver frist, motedato og status.
 // Aldri tittel, sammendrag eller kategori. Rader med manuelt_redigert
-// beholder satt frist og status. 80653f79, 1cf0dfd3, de0dc5a6, b70f9ea5
-// og 90a26730 får ikke ny frist, status, kategori, tittel eller sammendrag.
+// får ikke frist, møtedato eller status, heller ikke når feltet er tomt.
+// 80653f79, 1cf0dfd3, de0dc5a6, b70f9ea5 og 90a26730 er stengt selv om
+// flagget skulle mangle.
 
 import { tidligAvslag } from "../hent-saker/kildehelse.ts";
 import { finnHøringsfrist, kalenderdag } from "../hent-saker/logikk.ts";
@@ -29,7 +30,7 @@ import {
   stortingSakId,
   trekkHoringsfrist,
 } from "../hent-saker/frister.ts";
-import { REDAKTOR_FELT_LAAS, skalSkriveFrist } from "../_shared/varselvern.ts";
+import { REDAKTOR_FELT_LAAS, skalSkriveFrist, skalSkriveMotedato } from "../_shared/varselvern.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 
@@ -85,7 +86,7 @@ async function oppdaterFrist(
   id: string,
   frist: string,
 ): Promise<string | null> {
-  const { error } = await supabase.from("varsler").update({ frist }).eq("id", id);
+  const { error } = await supabase.from("varsler").update({ frist }).eq("id", id).eq("manuelt_redigert", false);
   return error ? error.message : null;
 }
 
@@ -94,7 +95,7 @@ async function oppdaterMotedato(
   id: string,
   motedato: string,
 ): Promise<string | null> {
-  const { error } = await supabase.from("varsler").update({ motedato }).eq("id", id);
+  const { error } = await supabase.from("varsler").update({ motedato }).eq("id", id).eq("manuelt_redigert", false);
   return error ? error.message : null;
 }
 
@@ -321,7 +322,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const trengerMote = rader.filter((r) => !r.motedato);
+    const trengerMote = rader.filter((r) => !r.motedato && skalSkriveMotedato(r));
     if (trengerMote.some((r) => bergenMoteOgSak(r.kilde))) {
       const datoer = await hentBergenDatoer();
       for (const rad of trengerMote) {

@@ -660,16 +660,17 @@ test("innholdsdedup beholder første og hopper over allerede lagret møtesak", (
   assert.deepEqual(ut.map((r) => r.id), ["annen"]);
 });
 
-test("manuelt redigerte rader mister ikke tittel, sammendrag eller kategori i en oppdatering", () => {
+test("manuelt redigerte rader mister ikke tittel, sammendrag, kategori, frist eller møtedato", () => {
   const rad = {
     tittel: "Ny tittel fra backfill",
     sammendrag: "Nytt sammendrag",
     kategori: "musikk",
     frist: "2026-11-23",
+    motedato: "2026-10-27",
     status: "viktig",
   };
   assert.deepEqual(utenManuelleTekstfelt(rad, false), rad);
-  assert.deepEqual(utenManuelleTekstfelt(rad, true), {});
+  assert.deepEqual(utenManuelleTekstfelt({ ...rad, frist: null, motedato: null }, true), {});
 });
 
 // ─── kilde_id og konsistent kilde_nokkel ──────────────────────────────────────

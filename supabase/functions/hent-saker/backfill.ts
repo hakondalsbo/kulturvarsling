@@ -98,7 +98,7 @@ function leggTil(
 
 /**
  * Rene reglene for hva backfillen skriver. Eksisterende kilde-URL hopper over
- * innsetting. Tekstfelt på manuelt_redigert røres ikke, men en tom frist settes.
+ * innsetting. manuelt_redigert får ikke frist, status eller innholdsfelt, heller ikke når fristen er tom.
  */
 export function planleggBackfill(input: {
   items: RssItem[];

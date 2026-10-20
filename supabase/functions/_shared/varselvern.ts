@@ -1,9 +1,9 @@
 // Vern av redaktørfelt. Backfill, klartekst, fristoppdatering og
 // backfill-geografi skal bruke oppdaterVarsel før de skriver til varsler.
-// Tittel, sammendrag og kategori låses når manuelt_redigert er satt.
-// Tom frist kan fylles på andre redaktørrader. Satt frist og status skal
-// ikke overskrives. Disse fem godkjente radene får aldri ny tittel,
-// sammendrag, kategori, frist eller status.
+// manuelt_redigert stenger tittel, sammendrag, kategori, frist, møtedato
+// og status, også når feltet er tomt. kilde_id kan fortsatt fylles fra NULL
+// i backfill-migrasjonen. Disse fem godkjente radene er stengt selv om
+// flagget skulle mangle.
 
 export const AVVIST_SAMMENDRAG = "Automatisk avvist av relevansfilteret";
 
@@ -20,8 +20,7 @@ export const REDAKTOR_FELT_LAAS = [
 
 const REDAKTOR_FELT_LAAS_SETT = new Set<string>(REDAKTOR_FELT_LAAS);
 
-const TEKSTFELT = ["tittel", "sammendrag", "kategori"] as const;
-const REDAKTOR_FELT = ["tittel", "sammendrag", "kategori", "frist", "status"] as const;
+const REDAKTOR_FELT = ["tittel", "sammendrag", "kategori", "frist", "motedato", "status"] as const;
 
 export type VarselVern = {
   id?: string;
@@ -34,18 +33,23 @@ export function erRedaktorFeltLaast(id: string | null | undefined): boolean {
   return !!id && REDAKTOR_FELT_LAAS_SETT.has(id);
 }
 
-/** Satt frist på en redaktørrad overskrives ikke. De fem godkjente radene hoppes over helt. */
+function erAutomatiskFeltStengt(rad: VarselVern): boolean {
+  return erRedaktorFeltLaast(rad.id) || !!rad.manuelt_redigert;
+}
+
+/** Redaktørrad får ikke frist, heller ikke når feltet er tomt. */
 export function skalSkriveFrist(rad: VarselVern): boolean {
-  if (erRedaktorFeltLaast(rad.id)) return false;
-  if (rad.manuelt_redigert && rad.frist) return false;
-  return true;
+  return !erAutomatiskFeltStengt(rad);
+}
+
+/** Redaktørrad får ikke møtedato, heller ikke når feltet er tomt. */
+export function skalSkriveMotedato(rad: VarselVern): boolean {
+  return !erAutomatiskFeltStengt(rad);
 }
 
 /** Deterministisk status gjelder bare rader redaktøren ikke har tatt. */
 export function skalSkriveStatus(rad: VarselVern): boolean {
-  if (erRedaktorFeltLaast(rad.id)) return false;
-  if (rad.manuelt_redigert) return false;
-  return true;
+  return !erAutomatiskFeltStengt(rad);
 }
 
 /**
@@ -69,6 +73,6 @@ export function oppdaterVarsel<T extends Record<string, unknown>>(
   if (!eksisterende.manuelt_redigert || erDataspillKorreksjon(eksisterende)) {
     return kopi as Partial<T>;
   }
-  for (const felt of TEKSTFELT) delete kopi[felt];
+  for (const felt of REDAKTOR_FELT) delete kopi[felt];
   return kopi as Partial<T>;
 }

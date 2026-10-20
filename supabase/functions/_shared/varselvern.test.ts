@@ -5,6 +5,7 @@ import {
   DATASPILL_VARSEL_ID,
   oppdaterVarsel,
   skalSkriveFrist,
+  skalSkriveMotedato,
   skalSkriveStatus,
 } from "./varselvern.ts";
 
@@ -19,6 +20,7 @@ test("godkjente redaktørrader beholder tittel, sammendrag, kategori, frist og s
     sammendrag: "Nytt sammendrag som ikke skal inn",
     kategori: "film",
     frist: "2026-12-01",
+    motedato: "2026-10-27",
     status: "kritisk",
     kommunenr: "4601",
     fylkesnr: "46",
@@ -91,6 +93,36 @@ test("satt frist og status på andre redaktørrader overskrives ikke", () => {
   const rad = { id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", frist: "2026-12-01", manuelt_redigert: true };
   assert.equal(skalSkriveFrist(rad), false);
   assert.equal(skalSkriveStatus(rad), false);
-  assert.equal(skalSkriveFrist({ ...rad, frist: null }), true);
   assert.equal(skalSkriveStatus({ id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", manuelt_redigert: false }), true);
+});
+
+test("tom frist og tom møtedato på en manuelt redigert rad skrives ikke", () => {
+  const rad = {
+    id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    frist: null,
+    motedato: null,
+    manuelt_redigert: true,
+  };
+  assert.equal(skalSkriveFrist(rad), false);
+  assert.equal(skalSkriveMotedato(rad), false);
+  assert.equal(skalSkriveStatus(rad), false);
+  assert.deepEqual(oppdaterVarsel(rad, {
+    frist: "2026-11-23",
+    motedato: "2026-10-27",
+    status: "kritisk",
+    tittel: "Ny tittel",
+    sammendrag: "Nytt sammendrag",
+    kategori: "kulturarv",
+    kilde_id: "2522cd41-b313-443d-9a4a-9dabd9b73119",
+  }), {
+    kilde_id: "2522cd41-b313-443d-9a4a-9dabd9b73119",
+  });
+  const bergenhus = {
+    id: "de0dc5a6-fb44-4d5c-aebd-76b9ea10c085",
+    frist: null,
+    motedato: null,
+    manuelt_redigert: true,
+  };
+  assert.equal(skalSkriveMotedato(bergenhus), false);
+  assert.deepEqual(oppdaterVarsel(bergenhus, { motedato: "2026-10-27", frist: "2026-10-27" }), {});
 });

@@ -180,6 +180,26 @@ test("mediepolitikk publiseres med sammendrag, uten kategori, tittel eller frist
   assert.deepEqual(igjen.oppdateringer, []);
 });
 
+test("tom frist på en manuelt redigert rad fylles ikke", () => {
+  const kilde = "https://www.regjeringen.no/no/dokumenter/horing-om-kulturbygg/id77/";
+  const plan = planleggBackfill({
+    items: [item("Høring om kulturbygg", {
+      kilde,
+      instans: "KUD – høring",
+      frist: "2026-12-01",
+    })],
+    eksisterende: [rad({
+      id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      kilde,
+      frist: null,
+      manuelt_redigert: true,
+    })],
+    nå: NÅ,
+  });
+  assert.deepEqual(plan.oppdateringer, []);
+  assert.deepEqual(plan.nye, []);
+});
+
 test("statsbudsjett 80653f79 beholder redaktørens frist, status og kategori", () => {
   const felles = rad({
     id: STATSBUDSJETT_VARSEL_ID,
