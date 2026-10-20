@@ -1,16 +1,24 @@
 import { kallClaude } from "../_shared/claude.ts";
+import {
+  genererGenerellKlartekst,
+  lagreKlartekstCache,
+  MAKS_KLARTEKST_PER_KJORING,
+} from "../klartekst/generer.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
+  byggVarselRad,
+  dedupEtterInnhold,
   dedupEtterKilde,
   erKulturRelevant,
   erKulturSak,
   erPortefoljesak,
   erRegjeringenRelevant,
   finnHøringsfrist,
+  innholdDedupNokkel,
   kategoriFraTittel,
   kildeNokkel,
-  statusFraFrist,
+  statusForSak,
   stortingsSesjoner,
 } from "./logikk.ts";
 import { hentEInnsynKultursaker } from "./einnsyn.ts";
@@ -384,12 +392,48 @@ function jsonSvar(body: unknown, status = 200): Response {
 async function lagreVarsel(
   supabase: { from: (t: string) => any },
   rad: Record<string, unknown>,
-) {
-  const { error } = await supabase.from("varsler").upsert(rad, {
+): Promise<{ error: { message: string } | null; id: string | null }> {
+  const { data, error } = await supabase.from("varsler").upsert(rad, {
     onConflict: "kilde_nokkel",
     ignoreDuplicates: true,
-  });
-  return error as { message: string } | null;
+  }).select("id").maybeSingle();
+  return {
+    error: error as { message: string } | null,
+    id: typeof data?.id === "string" ? data.id : null,
+  };
+}
+
+// Klartekst etter innsetting. Feil her skal ikke velte resten av kjøringen.
+// Over taket blir raden liggende uten generell klartekst til backfill-klartekst.
+async function skrivKlartekst(
+  supabase: { from: (t: string) => any },
+  varselId: string,
+  item: any,
+  sammendrag: string,
+  niva: string,
+  sted: string | null,
+  apiKey: string,
+): Promise<"ok" | "feil"> {
+  try {
+    const generert = await genererGenerellKlartekst({
+      tittel: item.tittel,
+      sammendrag,
+      instans: item.instans,
+      frist: item.frist ?? null,
+      niva,
+      sted,
+    }, apiKey);
+    if (!generert) return "feil";
+    const cacheFeil = await lagreKlartekstCache(supabase, varselId, generert);
+    if (cacheFeil) {
+      console.error("klartekst_cache:", cacheFeil);
+      return "feil";
+    }
+    return "ok";
+  } catch (e) {
+    console.error("Klartekst etter innsetting:", String(e).slice(0, 200));
+    return "feil";
+  }
 }
 
 // ─── Hoved-handler ────────────────────────────────────────────────────────────
@@ -426,13 +470,21 @@ Deno.serve(async (req: Request) => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     // Hent eksisterende kilder for deduplicering. Feil her avbryter før innhenting.
-    const { data: eks, error: eksFeil } = await supabase.from("varsler").select("kilde");
+    // Innholdsnøkkelen (instans, tittel, frist, sak-id) fanger samme sak på ny URL.
+    const { data: eks, error: eksFeil } = await supabase
+      .from("varsler")
+      .select("kilde, instans, tittel, frist");
     if (eksFeil) {
       return jsonSvar({ feil: "Eksisterende saker kunne ikke hentes. Ingen innhenting startet." }, 503);
     }
     const eksKilder = new Set(
       (eks ?? [])
         .map((v: any) => kildeNokkel(v.kilde))
+        .filter((n: string | null): n is string => !!n),
+    );
+    const eksInnhold = new Set(
+      (eks ?? [])
+        .map((v: any) => innholdDedupNokkel(v))
         .filter((n: string | null): n is string => !!n),
     );
 
@@ -486,7 +538,11 @@ Deno.serve(async (req: Request) => {
     });
     // Samme normaliserte URL to ganger i én kjøring (to sesjoner, eller samme
     // sak to ganger) blir én rad. Det var slik p=200362 og p=200367 ble doblet.
-    const nye = dedupEtterKilde(kandidater, eksKilder);
+    // Deretter samme instans, normalisert tittel og frist: møtesaken som
+    // ligger på flere URL-er settes inn én gang. Vi oppdaterer ikke eksisterende
+    // rader, så manuelt redigert tittel, sammendrag og kategori blir stående.
+    const etterUrl = dedupEtterKilde(kandidater, eksKilder);
+    const nye = dedupEtterInnhold(etterUrl, eksInnhold);
 
     console.log(
       `Totalt hentet: ${alle.length}, nye og relevante: ${nye.length}`,
@@ -495,6 +551,12 @@ Deno.serve(async (req: Request) => {
     let antallLagret = 0;
     const lagretPerAdapter = new Map<string, number>();
     const driftFeil: string[] = [];
+    const varsletManglendeKilde = new Set<string>();
+    const merkManglendeKilde = (adapter: string | undefined, kildeId: unknown) => {
+      if (kildeId != null || !adapter || varsletManglendeKilde.has(adapter)) return;
+      varsletManglendeKilde.add(adapter);
+      driftFeil.push(`${adapter}: ingen kilde_id i kilderegisteret`);
+    };
 
     // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
     // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke
@@ -505,6 +567,10 @@ Deno.serve(async (req: Request) => {
     const MAKS_CLAUDE_SAKER = 25;
     let claudeSaker = 0;
     let antallAvvist = 0;
+    let klartekstForsok = 0;
+    let klartekstLagret = 0;
+    let klartekstFeilet = 0;
+    let klartekstUtsatt = 0;
 
     for (const item of nye) {
       if (item.adapter === "regjeringen-rss") {
@@ -515,7 +581,7 @@ Deno.serve(async (req: Request) => {
         ? kategoriFraTittel(item.tittel, item.sammendrag_raa ?? "")
         : "scenekunst";
       let niva = item.niva ?? "nasjonalt";
-      let status = statusFraFrist(item.frist);
+      let status = statusForSak(item.frist, item.motedato);
       let sammendrag = item.sammendrag_raa?.slice(0, 400) || item.tittel;
 
       // Bruk Claude for bedre analyse hvis API-nøkkel er satt
@@ -537,24 +603,28 @@ Deno.serve(async (req: Request) => {
           // Husk avvisningen: lagres som UPUBLISERT rad (appen viser kun
           // publisert=true), så samme sak aldri koster en ny AI-vurdering —
           // dedup via kilde-URL stopper den ved neste kjøring.
-          // Porteføljesaker (mediepolitikk, dataspill, KUD-budsjett, høringer)
-          // publiseres likevel, med kildetekst hvis modellen sa nei.
-          const avvistFeil = await lagreVarsel(supabase, {
-            tittel: item.tittel,
-            sammendrag: "Automatisk avvist av relevansfilteret",
-            instans: item.instans,
-            kilde: item.kilde,
-            frist: item.frist ?? null,
+          // Porteføljesaker publiseres i grenen over. Avvisninger lagres
+          // upublisert, med kilde_id, så samme sak ikke vurderes på nytt.
+          const avvistRad = byggVarselRad(item, {
+            publisert: false,
             kategori: analyse.kategori ?? "kulturpolitikk",
             niva: analyse.niva ?? "nasjonalt",
-            sted: "Norge",
             status: "normal",
-            publisert: false,
-          });
-          if (!avvistFeil) {
+            sammendrag: "Automatisk avvist av relevansfilteret",
+            sted: "Norge",
+          }, kilderMap);
+          if (!avvistRad) {
+            driftFeil.push(`${item.tittel.slice(0, 60)}: mangler kilde-URL`);
+            continue;
+          }
+          merkManglendeKilde(item.adapter, avvistRad.kilde_id);
+          const avvist = await lagreVarsel(supabase, avvistRad);
+          if (!avvist.error) {
             antallAvvist++;
             const nokkel = kildeNokkel(item.kilde);
             if (nokkel) eksKilder.add(nokkel);
+            const innhold = innholdDedupNokkel(item);
+            if (innhold) eksInnhold.add(innhold);
           }
           continue;
         }
@@ -563,31 +633,30 @@ Deno.serve(async (req: Request) => {
           // Adaptere som VET nivået sitt (f.eks. Bergen = kommune) overstyres ikke
           if (!item.niva) niva = analyse.niva ?? niva;
           sammendrag = analyse.sammendrag || sammendrag;
-          // Bruk Claude-status kun hvis vi ikke har frist (frist er mer presis)
-          if (!item.frist) status = analyse.status ?? status;
         } else if (analyse.kategori) {
           kategori = analyse.kategori;
         }
+        // Status gjettes ikke. Uten frist og uten møtedato forblir den normal.
+        status = statusForSak(item.frist, item.motedato);
       }
 
-      const error = await lagreVarsel(supabase, {
-        tittel: item.tittel,
-        sammendrag,
-        instans: item.instans,
-        kilde: item.kilde,
-        frist: item.frist ?? null,
+      const rad = byggVarselRad(item, {
+        publisert: true,
         kategori,
         niva,
-        sted: item.sted ?? (niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
         status,
-        publisert: true,
-        sakstype: item.sakstype ?? null,
-        kommunenr: item.kommunenr ?? null,
-        fylkesnr: item.fylkesnr ?? null,
-      });
+        sammendrag,
+        sted: item.sted ?? (niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
+      }, kilderMap);
+      if (!rad) {
+        driftFeil.push(`${item.tittel.slice(0, 60)}: mangler kilde-URL`);
+        continue;
+      }
+      merkManglendeKilde(item.adapter, rad.kilde_id);
+      const lagret = await lagreVarsel(supabase, rad);
 
-      if (error) {
-        driftFeil.push(`${item.tittel}: ${error.message}`);
+      if (lagret.error) {
+        driftFeil.push(`${item.tittel}: ${lagret.error.message}`);
       } else {
         antallLagret++;
         lagretPerAdapter.set(
@@ -596,6 +665,30 @@ Deno.serve(async (req: Request) => {
         );
         const nokkel = kildeNokkel(item.kilde);
         if (nokkel) eksKilder.add(nokkel);
+        const innhold = innholdDedupNokkel(item);
+        if (innhold) eksInnhold.add(innhold);
+        // Relevans er Haiku. Klartekst er Sonnet, samme modell som klartekst-funksjonen.
+        if (anthropicKey && lagret.id) {
+          if (klartekstForsok >= MAKS_KLARTEKST_PER_KJORING) {
+            klartekstUtsatt++;
+          } else {
+            klartekstForsok++;
+            const utfall = await skrivKlartekst(
+              supabase,
+              lagret.id,
+              item,
+              sammendrag,
+              niva,
+              (rad.sted as string | null) ?? null,
+              anthropicKey,
+            );
+            if (utfall === "ok") klartekstLagret++;
+            else {
+              klartekstFeilet++;
+              driftFeil.push(`${item.tittel.slice(0, 60)}: klartekst utilgjengelig`);
+            }
+          }
+        }
       }
     }
 
@@ -666,6 +759,9 @@ Deno.serve(async (req: Request) => {
       nye_og_relevante: nye.length,
       lagret: antallLagret,
       avvist_av_filter: antallAvvist,
+      klartekst_lagret: klartekstLagret,
+      klartekst_feilet: klartekstFeilet || undefined,
+      klartekst_utsatt: klartekstUtsatt || undefined,
       feil: feil.length > 0 ? feil.slice(0, 10) : undefined,
       kilde_status: kildeStatus,
     };

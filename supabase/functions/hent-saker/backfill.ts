@@ -16,7 +16,10 @@ import { hentFeeder, hentRegjeringenSide, parseOgBerik, REGJERINGEN_FEEDS } from
 import {
   AVVIST_SAMMENDRAG,
   DATASPILL_VARSEL_ID,
+  erRedaktorFeltLaast,
   oppdaterVarsel,
+  skalSkriveFrist,
+  skalSkriveStatus,
   type VarselVern,
 } from "../_shared/varselvern.ts";
 
@@ -95,7 +98,7 @@ function leggTil(
 
 /**
  * Rene reglene for hva backfillen skriver. Eksisterende kilde-URL hopper over
- * innsetting. Tekstfelt på manuelt_redigert røres ikke, men en tom frist settes.
+ * innsetting. manuelt_redigert får ikke frist, status eller innholdsfelt, heller ikke når fristen er tom.
  */
 export function planleggBackfill(input: {
   items: RssItem[];
@@ -122,15 +125,18 @@ export function planleggBackfill(input: {
   for (const item of relevante) {
     const n = kildeNokkel(item.kilde);
     const rad = n ? etterKilde.get(n) : undefined;
-    if (!rad || rad.frist || !item.frist) continue;
-    leggTil(oppdateringer, rad.id, oppdaterVarsel(rad, {
-      frist: item.frist,
-      status: statusFraFrist(item.frist, nå),
-    }));
+    if (!rad || rad.frist || !item.frist || !skalSkriveFrist(rad)) continue;
+    const felt: Record<string, unknown> = { frist: item.frist };
+    if (skalSkriveStatus(rad)) felt.status = statusFraFrist(item.frist, nå);
+    leggTil(oppdateringer, rad.id, oppdaterVarsel(rad, felt));
   }
 
   const dataspill = input.eksisterende.find((r) => r.id === DATASPILL_VARSEL_ID);
-  if (dataspill && dataspill.sammendrag === AVVIST_SAMMENDRAG) {
+  if (
+    dataspill &&
+    dataspill.sammendrag === AVVIST_SAMMENDRAG &&
+    !erRedaktorFeltLaast(dataspill.id)
+  ) {
     const frist = dataspill.frist ?? DATASPILL_FRIST;
     leggTil(oppdateringer, dataspill.id, oppdaterVarsel(dataspill, {
       sammendrag: DATASPILL_SAMMENDRAG,
@@ -150,12 +156,13 @@ export function planleggBackfill(input: {
     }));
   }
 
+  // 80653f79 er godkjent med frist 28.10 og status viktig. skalSkriveFrist
+  // er false for den id-en, også om fristen skulle mangle.
   const budsjett = input.eksisterende.find((r) => r.id === STATSBUDSJETT_VARSEL_ID);
-  if (budsjett && !budsjett.frist) {
-    leggTil(oppdateringer, budsjett.id, oppdaterVarsel(budsjett, {
-      frist: STATSBUDSJETT_FRIST,
-      status: statusFraFrist(STATSBUDSJETT_FRIST, nå),
-    }));
+  if (budsjett && !budsjett.frist && skalSkriveFrist(budsjett)) {
+    const felt: Record<string, unknown> = { frist: STATSBUDSJETT_FRIST };
+    if (skalSkriveStatus(budsjett)) felt.status = statusFraFrist(STATSBUDSJETT_FRIST, nå);
+    leggTil(oppdateringer, budsjett.id, oppdaterVarsel(budsjett, felt));
   }
 
   return { nye, oppdateringer };

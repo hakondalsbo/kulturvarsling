@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta } from "./avis.tsx";
 import { kommuneLoginSynlig } from "./kommunelogin.ts";
 import { PREMIUM_AAR_KR, PREMIUM_MAANED_KR, sparProsentArlig } from "./priser.ts";
+import { dagerTilFrist, fristEtikett } from "./frist.ts";
 import { geografiskFraNivaa, leggTilUtvalg, nivaaFraGeografisk, preferanserFraProfil, utvalgErDekket } from "./preferanser.ts";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
@@ -23,7 +24,7 @@ async function lastVarsler() {
   return data.map(v => ({
     ...v,
     nivå: v.niva,  // map db snake_case → app camelCase
-    dager: v.dager ?? Math.max(0, Math.floor((new Date(v.frist) - new Date()) / 86400000))
+    dager: dagerTilFrist(v.frist)
   }));
 }
 
@@ -917,6 +918,8 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     (!v.frist && v.opprettet && (Date.now()-new Date(v.opprettet).getTime()) > 90*86400000);
   const aktiveVarsler = useMemo(()=>varsler.filter(v=>!erHistorisk(v)),[varsler]);
   const historiskeVarsler = useMemo(()=>varsler.filter(erHistorisk),[varsler]);
+  // Alle frister skal vise passerte frister. Gamle saker uten frist blir i historikken.
+  const fristSynlige = useMemo(()=>varsler.filter((v: any)=>v.frist || v.status==="passert" || !erHistorisk(v)),[varsler]);
 
   useEffect(()=>{
     async function lastData() {
@@ -946,7 +949,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     const kanalen = sb.channel("varsler-live")
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"varsler",filter:"publisert=eq.true"},(payload)=>{
         const v = payload.new;
-        const nytt = {...v, nivå:v.niva, dager:v.dager??Math.max(0,Math.floor((new Date(v.frist)-new Date())/86400000))};
+        const nytt = {...v, nivå:v.niva, dager:dagerTilFrist(v.frist)};
         setVarsler(prev=>[nytt,...prev]);
         showToast(`Nytt varsel: ${v.tittel.slice(0,60)}…`,"info");
       })
@@ -1119,7 +1122,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
 
       <main>
         {view==="forside"   &&<BrukerForside setView={gå} varsler={aktiveVarsler} kampanjer={kampanjer} setShowPremium={setShowPremium} isPremium={isPremium} fulgte={fulgte} toggleFølg={toggleFølg} onLogin={()=>setScreen("bruker-login")} dataLastet={dataLastet} user={user} minFylke={user?.fylkesnr} onVelgFylke={(fnr)=>{setUser(u=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}/>}
-        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={aktiveVarsler} kampanjerData={kampanjer} minFylke={user?.fylkesnr} fagfelt={user?.fagfelt||[]} varslerAktive={!!user?.varslerAktive} geografisk={user?.geografisk||[]} onToggleVarsler={toggleVarsler}/>}
+        {view==="varsler"   &&<BrukerVarsler fulgte={fulgte} toggleFølg={toggleFølg} varslerData={fristSynlige} kampanjerData={kampanjer} minFylke={user?.fylkesnr} fagfelt={user?.fagfelt||[]} varslerAktive={!!user?.varslerAktive} geografisk={user?.geografisk||[]} onToggleVarsler={toggleVarsler}/>}
         {view==="kilder"    &&<KildeHelseSide onBack={()=>gå("forside")}/>}
         {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&(
           <div className="avis-wrap avis-annet">
@@ -1298,7 +1301,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
                     <div style={{flex:1}}>
                       <div style={{display:"flex",gap:5,marginBottom:5,flexWrap:"wrap"}}>
                         {ki&&<Badge color={C.muted} style={{fontSize:10}}>{ki.ikon} {ki.label}</Badge>}
-                        <Badge color={bc} bg={bc+"15"} style={{fontSize:10}}>{v.dager}d igjen</Badge>
+                        <Badge color={bc} bg={bc+"15"} style={{fontSize:10}}>{fristEtikett(v)}</Badge>
                       </div>
                       <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{v.tittel}</div>
                       <div style={{fontSize:12,color:C.muted}}>{v.instans}</div>
@@ -1551,7 +1554,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div style={{flex:1}}>
               <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                <Badge color={sak.status==="kritisk"?C.red:sak.status==="viktig"?C.amber:C.green} bg={sak.status==="kritisk"?"#FEE2E2":sak.status==="viktig"?"#FEF3C7":"#F0FDF4"}>{sak.dager}d igjen</Badge>
+                <Badge color={sak.status==="passert"||(sak.frist&&dagerTilFrist(sak.frist)<0)?C.muted:sak.status==="kritisk"?C.red:sak.status==="viktig"?C.amber:C.green} bg={sak.status==="passert"||(sak.frist&&dagerTilFrist(sak.frist)<0)?"#F3F4F6":sak.status==="kritisk"?"#FEE2E2":sak.status==="viktig"?"#FEF3C7":"#F0FDF4"}>{fristEtikett(sak)}</Badge>
                 {ki&&<Badge color={C.muted}>{ki.ikon} {ki.label}</Badge>}
                 <NivåBadge nivå={sak.nivå} sted={sak.sted}/>
               </div>
@@ -2378,7 +2381,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
                       <div style={{fontSize:12,color:C.muted,lineHeight:1.4}}>{v.sammendrag}</div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
-                      <Badge color={v.status==="kritisk"?C.red:v.status==="viktig"?C.amber:C.green} bg={v.status==="kritisk"?"#FEE2E2":v.status==="viktig"?"#FEF3C7":"#F0FDF4"}>{v.dager}d igjen</Badge>
+                      <Badge color={v.status==="passert"?C.muted:v.status==="kritisk"?C.red:v.status==="viktig"?C.amber:C.green} bg={v.status==="passert"?"#F3F4F6":v.status==="kritisk"?"#FEE2E2":v.status==="viktig"?"#FEF3C7":"#F0FDF4"}>{fristEtikett(v)}</Badge>
                       <div style={{fontSize:10,color:C.muted,marginTop:3}}>{v.instans}</div>
                     </div>
                   </div>

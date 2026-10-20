@@ -4,7 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  begrensBatch,
   byggPrompt,
+  generellProfilNokkel,
+  KLARTEKST_MODELL,
   lagProfilNokkel,
   parseKlartekstSvar,
   trekkUtTekst,
@@ -22,6 +25,16 @@ test("samme profil gir samme nøkkel uansett rekkefølge og casing", () => {
 test("tom profil gir stabil standardnøkkel", () => {
   assert.equal(lagProfilNokkel(null), "ukjent|alle|hele-landet");
   assert.equal(lagProfilNokkel({ fagfelt: [], org_type: "", fylke: "" }), "ukjent|alle|hele-landet");
+  assert.equal(generellProfilNokkel(), "ukjent|alle|hele-landet");
+  assert.equal(KLARTEKST_MODELL, "claude-sonnet-5");
+});
+
+test("backfill-batch klemmes til 1..20", () => {
+  assert.equal(begrensBatch(undefined), 8);
+  assert.equal(begrensBatch("3"), 3);
+  assert.equal(begrensBatch(100), 20);
+  assert.equal(begrensBatch(0), 1);
+  assert.equal(begrensBatch("nei"), 8);
 });
 
 test("fylke inngår i nøkkelen som fylkesnummer", () => {

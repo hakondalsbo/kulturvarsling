@@ -38,6 +38,7 @@ export function mapBergenAgendapunkt(punkt: BergenAgendapunkt): {
   instans: string;
   kilde: string;
   frist: null;
+  motedato: string | null;
   sammendrag_raa: string;
   kilde_id: string;
   publisert_dato: string | null;
@@ -60,6 +61,7 @@ export function mapBergenAgendapunkt(punkt: BergenAgendapunkt): {
     kilde:
       `https://www.bergen.kommune.no/politikk/politiskeutvalg/${punkt.utvalgId}/mote/${punkt.moteId}/sak/${punkt.kildeId}`,
     frist: null,
+    motedato: punkt.moteDato?.slice(0, 10) ?? null,
     sammendrag_raa: `Politisk sak i ${utvalg}, Bergen kommune${møte}${saksnr}.`,
     kilde_id: `bergen-${punkt.kildeId}-${punkt.moteId}`,
     publisert_dato: punkt.moteDato ?? null,
