@@ -3,6 +3,7 @@
 // 5 nyeste artiklene, så den daglige kjøringen må ikke hoppes over i travle uker.
 // «Innvilgede saker DD.MM.ÅÅ-DD.MM.ÅÅ» er sametingsrådets tildelingslister.
 
+import { trekkHoringsfrist } from "./frister.ts";
 import { type RssItem } from "./logikk.ts";
 import {
   feilFraUnntak,
@@ -25,6 +26,7 @@ export function mapSametingetItem(item: RssItem): RssItem & {
   );
   return {
     ...item,
+    frist: trekkHoringsfrist(`${item.tittel}\n${item.sammendrag_raa}`),
     kilde_id: `sametinget-${item.kilde}`,
     sakstype: erTildeling ? "tildeling" : null,
     // Tildelingslistene («Innvilgede saker 06.07.26-12.07.26») mangler kulturord

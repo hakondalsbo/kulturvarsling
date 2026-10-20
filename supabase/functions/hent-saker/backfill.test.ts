@@ -204,33 +204,53 @@ test("mediepolitikk publiseres med sammendrag, uten kategori, tittel eller frist
   assert.deepEqual(igjen.oppdateringer, []);
 });
 
-test("statsbudsjett 80653f79 får frist 28.10 uten å røre tekst, også når manuelt_redigert", () => {
+test("tom frist på en manuelt redigert rad fylles ikke", () => {
+  const kilde = "https://www.regjeringen.no/no/dokumenter/horing-om-kulturbygg/id77/";
+  const plan = planleggBackfill({
+    items: [item("Høring om kulturbygg", {
+      kilde,
+      instans: "KUD – høring",
+      frist: "2026-12-01",
+    })],
+    eksisterende: [rad({
+      id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      kilde,
+      frist: null,
+      manuelt_redigert: true,
+    })],
+    nå: NÅ,
+  });
+  assert.deepEqual(plan.oppdateringer, []);
+  assert.deepEqual(plan.nye, []);
+});
+
+test("statsbudsjett 80653f79 beholder redaktørens frist, status og kategori", () => {
   const felles = rad({
     id: STATSBUDSJETT_VARSEL_ID,
-    tittel: "Statsbudsjettet 2027 (kapitler fordelt til familie- og kulturkomiteen)",
+    tittel: "Statsbudsjett 2027",
     sammendrag: "Ekte sammendrag om litteraturkapitlene.",
-    kategori: "litteratur",
-    frist: null,
+    kategori: "kulturpolitikk",
+    frist: STATSBUDSJETT_FRIST,
     manuelt_redigert: true,
     kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200445",
   });
-  const plan = planleggBackfill({ items: [], eksisterende: [felles], nå: NÅ });
-  assert.deepEqual(plan.oppdateringer, [{
-    id: STATSBUDSJETT_VARSEL_ID,
-    felt: { frist: STATSBUDSJETT_FRIST, status: "viktig" },
-  }]);
   assert.equal(STATSBUDSJETT_FRIST, "2026-10-28");
-
-  const satt = planleggBackfill({
-    items: [],
-    eksisterende: [{ ...felles, frist: "2026-10-28" }],
-    nå: NÅ,
-  });
-  assert.deepEqual(satt.oppdateringer, []);
+  assert.deepEqual(
+    planleggBackfill({ items: [], eksisterende: [felles], nå: NÅ }).oppdateringer,
+    [],
+  );
+  assert.deepEqual(
+    planleggBackfill({
+      items: [],
+      eksisterende: [{ ...felles, frist: null }],
+      nå: NÅ,
+    }).oppdateringer,
+    [],
+  );
 });
 
-test("dataspillhøringen får sammendrag, frist og publisering, og er deretter i ro", () => {
-  const åpen = planleggBackfill({
+test("dataspillhøringen 90a26730 overskrives ikke", () => {
+  const plan = planleggBackfill({
     items: [],
     eksisterende: [rad({
       id: DATASPILL_VARSEL_ID,
@@ -242,14 +262,7 @@ test("dataspillhøringen får sammendrag, frist og publisering, og er deretter i
     })],
     nå: NÅ,
   });
-  assert.deepEqual(åpen.oppdateringer[0].felt, {
-    sammendrag: DATASPILL_SAMMENDRAG,
-    frist: DATASPILL_FRIST,
-    publisert: true,
-    kategori: "spill",
-    status: "normal",
-    manuelt_redigert: true,
-  });
+  assert.deepEqual(plan.oppdateringer, []);
 
   const rettet = planleggBackfill({
     items: [],
@@ -277,7 +290,7 @@ test("høringslisten som ikke svarer gir ingen frist og en tydelig feil", async 
   assert.equal(utfordring.feil, "Høringslisten manglet treff");
 });
 
-test("tom høringsfrist settes fra listen, også når manuelt_redigert, og en satt frist blir stående", () => {
+test("tom høringsfrist settes fra listen bare når raden ikke er manuelt redigert", () => {
   const horing = rad({
     id: "horing-1",
     tittel: "Høring - forslag til endringer i kringkastingsforskriften",
@@ -288,10 +301,19 @@ test("tom høringsfrist settes fra listen, også når manuelt_redigert, og en sa
     sammendrag: "Redaktørens tekst",
     kategori: "film",
   });
+  const åpen = rad({
+    id: "horing-apen",
+    tittel: "Høring - pengespillforskriften",
+    instans: "KUD – høring",
+    kilde: "https://www.regjeringen.no/no/dokumenter/pengespill/id3171815/",
+    frist: null,
+    manuelt_redigert: false,
+  });
   const plan = planleggTommeHoringsfrister({
     eksisterende: [
       horing,
-      { ...horing, id: "har-frist", frist: "2026-11-01" },
+      åpen,
+      { ...åpen, id: "har-frist", frist: "2026-11-01" },
       rad({
         id: "nyhet",
         tittel: "Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap",
@@ -300,12 +322,12 @@ test("tom høringsfrist settes fra listen, også når manuelt_redigert, og en sa
         frist: null,
       }),
     ],
-    frister: new Map([["3173432", "2026-11-12"], ["8", "2026-12-01"]]),
+    frister: new Map([["3173432", "2026-11-12"], ["3171815", "2026-11-29"], ["8", "2026-12-01"]]),
     nå: NÅ,
   });
   assert.deepEqual(plan, [{
-    id: "horing-1",
-    felt: { frist: "2026-11-12", status: "normal" },
+    id: "horing-apen",
+    felt: { frist: "2026-11-29", status: "normal" },
   }]);
 });
 

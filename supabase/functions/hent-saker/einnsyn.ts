@@ -21,6 +21,7 @@ export type EInnsynMoetesak = {
   journalenhet?: string;
   moetesaksaar?: number;
   moetesakssekvensnummer?: number;
+  moetedato?: string | null;
 };
 
 // Geografi utledet fra organet saken hører til (fylles av slåOppGeo).
@@ -142,6 +143,7 @@ export function mapEInnsynItem(
   instans: string;
   kilde: string;
   frist: null;
+  motedato: string | null;
   sammendrag_raa: string;
   kilde_id: string;
   publisert_dato: string | null;
@@ -162,6 +164,7 @@ export function mapEInnsynItem(
     instans: organ,
     kilde: `https://einnsyn.no/moetesak/${item.id}`,
     frist: null,
+    motedato: item.moetedato ? String(item.moetedato).slice(0, 10) : null,
     sammendrag_raa: `Politisk møtesak hos ${organ}${saksref}, publisert via eInnsyn.`,
     kilde_id: `einnsyn-${item.id}`,
     publisert_dato: item.publisertDato ? item.publisertDato.split("T")[0] : null,

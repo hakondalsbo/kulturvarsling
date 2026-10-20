@@ -5,6 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  adapterFraKildeUrl,
+  byggVarselRad,
+  dedupEtterInnhold,
   dedupEtterKilde,
   dekodXml,
   erKulturRelevant,
@@ -20,10 +23,15 @@ import {
   sakstypeFraSak,
   erRegjeringenRelevant,
   finnHøringsfrist,
+  innholdDedupNokkel,
   kildeNokkel,
+  kildeUuidForAdapter,
   normaliserKildeUrl,
   parseRegjeringenFrist,
+  utenManuelleTekstfelt,
   parseStortingetDato,
+  kalenderdag,
+  statusForSak,
   statusFraFrist,
   parseRssItems,
   stortingsSesjoner,
@@ -92,12 +100,24 @@ test("frist langt frem er normal", () => {
   assert.equal(statusFraFrist(omDager(60), NÅ), "normal");
 });
 
-test("utløpt frist er normal (ikke kritisk)", () => {
-  assert.equal(statusFraFrist(omDager(-5), NÅ), "normal");
+test("utløpt frist er passert, ikke kritisk", () => {
+  assert.equal(statusFraFrist(omDager(-1), NÅ), "passert");
+  assert.equal(statusFraFrist(omDager(-5), NÅ), "passert");
+});
+
+test("frist i dag er fortsatt kritisk", () => {
+  assert.equal(statusFraFrist(kalenderdag(NÅ), NÅ), "kritisk");
 });
 
 test("manglende frist er normal", () => {
   assert.equal(statusFraFrist(null, NÅ), "normal");
+});
+
+test("status uten frist er normal, og passert møte er passert", () => {
+  assert.equal(statusForSak(null, null, NÅ), "normal");
+  assert.equal(statusForSak(null, "2026-06-01", NÅ), "passert");
+  assert.equal(statusForSak("2026-11-23", "2026-06-01", NÅ), "normal");
+  assert.equal(statusForSak(null, kalenderdag(NÅ), NÅ), "kritisk");
 });
 
 test("ugyldig dato krasjer ikke, blir normal", () => {
@@ -675,4 +695,258 @@ test("RSS dekoder &amp; og dedup treffer rader som fortsatt har entiteten", () =
     [kildeNokkel(kodet)!],
   );
   assert.deepEqual(ut, []);
+});
+
+test("innholdsnøkkel slår sammen møtesak med ulik URL og skiller Stortinget-saker", () => {
+  const ostfold = {
+    instans: "Østfold fylkeskommune",
+    tittel: "Tilskuddsordninger kultur og idrett - orientering om tildelinger 2026",
+    frist: null,
+  };
+  assert.equal(
+    innholdDedupNokkel({
+      ...ostfold,
+      kilde: "https://einnsyn.no/moetesak/ms_01m20gmwb2ebbt19bpqjxp7v3v",
+    }),
+    innholdDedupNokkel({
+      ...ostfold,
+      kilde: "https://einnsyn.no/moetesak/ms_01m22y2538ezjr23mbf5z13jd8",
+    }),
+  );
+  assert.equal(
+    innholdDedupNokkel({
+      instans: "Bergen bystyre, Bergen kommune",
+      tittel: "Overføring av landbruksoppgaver til myndighetsnivå 1 i Byrådsavdeling for næring, kultur og idrett",
+      frist: null,
+      kilde: "https://www.bergen.kommune.no/politikk/politiskeutvalg/571424/mote/9064081/sak/269441",
+    }),
+    innholdDedupNokkel({
+      instans: "Bergen bystyre, Bergen kommune",
+      tittel: "Overføring av landbruksoppgaver til myndighetsnivå 1 i Byrådsavdeling for næring, kultur og idrett",
+      frist: null,
+      kilde: "https://www.bergen.kommune.no/politikk/politiskeutvalg/571424/mote/9064089/sak/270599",
+    }),
+  );
+  assert.equal(
+    innholdDedupNokkel({
+      instans: "Bydel Ullern",
+      tittel: "Årshjul Ullern kultur - og oppvekstkomite 2026",
+      frist: null,
+      kilde: "https://einnsyn.no/moetesak/ms_a",
+    }),
+    innholdDedupNokkel({
+      instans: "Bydel Ullern",
+      tittel: "Årshjul Ullern kultur- og oppvekstkomite 2026",
+      frist: null,
+      kilde: "https://einnsyn.no/moetesak/ms_b",
+    }),
+  );
+
+  const stortingTittel =
+    "Endringer i åndsverkloven mv. (gjennomføring av nett- og videresendingsdirektivet)";
+  assert.notEqual(
+    innholdDedupNokkel({
+      instans: "Familie- og kulturkomiteen, Stortinget",
+      tittel: stortingTittel,
+      frist: null,
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200242",
+    }),
+    innholdDedupNokkel({
+      instans: "Familie- og kulturkomiteen, Stortinget",
+      tittel: stortingTittel,
+      frist: null,
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200243",
+    }),
+  );
+  assert.notEqual(
+    innholdDedupNokkel({
+      instans: "Stortinget",
+      tittel: "Høring om kulturloven",
+      frist: "2026-11-01",
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=1",
+    }),
+    innholdDedupNokkel({
+      instans: "Stortinget",
+      tittel: "Høring om kulturloven",
+      frist: "2026-12-01",
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=1",
+    }),
+  );
+  assert.notEqual(
+    innholdDedupNokkel({
+      instans: "Regjeringen",
+      tittel: "Høring",
+      frist: null,
+      kilde: "https://www.regjeringen.no/no/dokumenter/horing/id111/",
+    }),
+    innholdDedupNokkel({
+      instans: "Regjeringen",
+      tittel: "Høring",
+      frist: null,
+      kilde: "https://www.regjeringen.no/no/dokumenter/horing/id222/",
+    }),
+  );
+});
+
+test("innholdsdedup beholder første og hopper over allerede lagret møtesak", () => {
+  const lagret = innholdDedupNokkel({
+    instans: "Østfold fylkeskommune",
+    tittel: "Tilskuddsordninger kultur og idrett - orientering om tildelinger 2026",
+    frist: null,
+    kilde: "https://einnsyn.no/moetesak/ms_eldst",
+  });
+  const ut = dedupEtterInnhold(
+    [
+      {
+        id: "ny-url",
+        instans: "Østfold fylkeskommune",
+        tittel: "Tilskuddsordninger kultur og idrett - orientering om tildelinger 2026",
+        frist: null,
+        kilde: "https://einnsyn.no/moetesak/ms_ny",
+      },
+      {
+        id: "annen",
+        instans: "Bergen bystyre, Bergen kommune",
+        tittel: "Annen sak",
+        frist: null,
+        kilde: "https://www.bergen.kommune.no/politikk/sak/1",
+      },
+    ],
+    lagret ? [lagret] : [],
+  );
+  assert.deepEqual(ut.map((r) => r.id), ["annen"]);
+});
+
+test("manuelt redigerte rader mister ikke tittel, sammendrag, kategori, frist eller møtedato", () => {
+  const rad = {
+    tittel: "Ny tittel fra backfill",
+    sammendrag: "Nytt sammendrag",
+    kategori: "musikk",
+    frist: "2026-11-23",
+    motedato: "2026-10-27",
+    status: "viktig",
+  };
+  assert.deepEqual(utenManuelleTekstfelt(rad, false), rad);
+  assert.deepEqual(utenManuelleTekstfelt({ ...rad, frist: null, motedato: null }, true), {});
+});
+
+// ─── kilde_id og konsistent kilde_nokkel ──────────────────────────────────────
+
+const REGISTER = new Map([
+  ["stortinget-saker", { id: "11111111-1111-1111-1111-111111111111" }],
+  ["stortinget-ventede", { id: "22222222-2222-2222-2222-222222222222" }],
+  ["regjeringen-rss", { id: "33333333-3333-3333-3333-333333333333" }],
+  ["einnsyn", { id: "44444444-4444-4444-4444-444444444444" }],
+  ["bergen", { id: "55555555-5555-5555-5555-555555555555" }],
+  ["kulturdirektoratet", { id: "66666666-6666-6666-6666-666666666666" }],
+  ["sametinget", { id: "77777777-7777-7777-7777-777777777777" }],
+]);
+
+test("adapterFraKildeUrl mapper kjente vertsnavn og lar ukjente være", () => {
+  assert.equal(
+    adapterFraKildeUrl("https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200367"),
+    "stortinget-saker",
+  );
+  assert.equal(
+    adapterFraKildeUrl("https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/ventede-saker/#sak-110"),
+    "stortinget-ventede",
+  );
+  assert.equal(
+    adapterFraKildeUrl("https://www.regjeringen.no/no/dokumenter/nou-2025-3/id3092679/?utm_source=rss"),
+    "regjeringen-rss",
+  );
+  assert.equal(adapterFraKildeUrl("https://einnsyn.no/moetesak/ms_abc"), "einnsyn");
+  assert.equal(
+    adapterFraKildeUrl("https://www.bergen.kommune.no/politikk/politiskeutvalg/573732/mote/1"),
+    "bergen",
+  );
+  assert.equal(
+    adapterFraKildeUrl("https://www.kulturdirektoratet.no/vedtak#NKF-IAB-2026-03-24"),
+    "kulturdirektoratet",
+  );
+  assert.equal(adapterFraKildeUrl("https://sametinget.no/aktuelt/liste.aspx"), "sametinget");
+  assert.equal(
+    adapterFraKildeUrl("https://www.stavanger.kommune.no/nytt-teater-og-museum/"),
+    null,
+  );
+  assert.equal(adapterFraKildeUrl("  "), null);
+  assert.equal(adapterFraKildeUrl(null), null);
+});
+
+test("innsettingsrad setter kilde_id og normalisert kilde, aldri kilde_nokkel", () => {
+  const rad = byggVarselRad(
+    {
+      tittel: "Sak",
+      adapter: "stortinget-saker",
+      instans: "Stortinget",
+      kilde: "HTTPS://WWW.STORTINGET.NO/no/Saker-og-publikasjoner/Saker/Sak/?p=200367",
+      frist: "2026-11-01",
+      sakstype: "høring",
+      kommunenr: null,
+      fylkesnr: null,
+    },
+    {
+      publisert: true,
+      kategori: "kulturarv",
+      niva: "nasjonalt",
+      status: "viktig",
+      sammendrag: "Kort",
+    },
+    REGISTER,
+  );
+  assert.ok(rad);
+  assert.equal(rad.kilde_id, "11111111-1111-1111-1111-111111111111");
+  assert.equal(
+    rad.kilde,
+    "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak?p=200367",
+  );
+  assert.equal("kilde_nokkel" in rad, false);
+  assert.equal(rad.publisert, true);
+  assert.equal(rad.sakstype, "høring");
+});
+
+test("avvist rad får kilde_id, men ikke sakstype-feltene", () => {
+  const rad = byggVarselRad(
+    {
+      tittel: "Avvist",
+      adapter: "bergen",
+      kilde: "https://www.bergen.kommune.no/politikk/sak/1",
+      instans: "Bergen kommune",
+    },
+    {
+      publisert: false,
+      kategori: "kulturpolitikk",
+      niva: "kommune",
+      status: "normal",
+      sammendrag: "Automatisk avvist av relevansfilteret",
+      sted: "Norge",
+    },
+    REGISTER,
+  );
+  assert.ok(rad);
+  assert.equal(rad.kilde_id, "55555555-5555-5555-5555-555555555555");
+  assert.equal("sakstype" in rad, false);
+  assert.equal(rad.kilde_nokkel, undefined);
+});
+
+test("mangler register-rad blir kilde_id null, ukjent URL droppes", () => {
+  assert.equal(kildeUuidForAdapter("bergen", new Map()), null);
+  assert.equal(
+    byggVarselRad(
+      { tittel: "Uten lenke", adapter: "bergen", kilde: "  " },
+      { publisert: true, kategori: "musikk", niva: "kommune", status: "normal", sammendrag: "x" },
+      REGISTER,
+    ),
+    null,
+  );
+  const utenRegister = byggVarselRad(
+    {
+      tittel: "Teater",
+      kilde: "https://www.stavanger.kommune.no/nytt-teater-og-museum/",
+    },
+    { publisert: true, kategori: "scenekunst", niva: "kommune", status: "normal", sammendrag: "x" },
+    REGISTER,
+  );
+  assert.ok(utenRegister);
+  assert.equal(utenRegister.kilde_id, null);
 });

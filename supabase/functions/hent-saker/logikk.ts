@@ -414,17 +414,44 @@ export function innenInnhentingsvindu(
 
 // ─── Bestem status ut fra frist ───────────────────────────────────────────────
 // `nå` kan injiseres i tester; produksjon bruker klokka.
-// Regner i KALENDERDAGER (ikke millisekunder) — ellers ville status avhenge av
-// hvilket klokkeslett cronen kjører, siden frister er rene datoer.
+// Kalenderdager i Europe/Oslo. Passert frist blir «passert».
+/** Kalenderdag i Europe/Oslo, YYYY-MM-DD. Frister er rene datoer. */
+export function kalenderdag(nå: number, tidssone = "Europe/Oslo"): string {
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: tidssone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(nå));
+}
+
 export function statusFraFrist(frist: string | null, nå: number = Date.now()): string {
   if (!frist) return "normal";
-  const fristMs = new Date(frist).getTime();
-  if (Number.isNaN(fristMs)) return "normal"; // ugyldig dato skal aldri krasje pipeline
-  const idagMs = new Date(new Date(nå).toISOString().split("T")[0]).getTime();
-  const dager = Math.round((fristMs - idagMs) / 86400000);
-  if (dager < 0) return "normal"; // allerede utløpt
+  const fristDato = frist.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fristDato)) return "normal";
+  const idag = kalenderdag(nå);
+  if (fristDato < idag) return "passert";
+  const dager = Math.round(
+    (Date.parse(`${fristDato}T00:00:00Z`) - Date.parse(`${idag}T00:00:00Z`)) / 86400000,
+  );
   if (dager <= 7) return "kritisk";
   if (dager <= 21) return "viktig";
+  return "normal";
+}
+
+/**
+ * Status kommer bare fra frist, ellers møtedato. Ingen av delene er normal:
+ * manglende frist er ikke kritisk, og en passert dag er passert.
+ */
+export function statusForSak(
+  frist: string | null | undefined,
+  motedato: string | null | undefined,
+  nå: number = Date.now(),
+): string {
+  const fristIso = frist?.slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fristIso)) return statusFraFrist(fristIso, nå);
+  const moteIso = motedato?.slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(moteIso)) return statusFraFrist(moteIso, nå);
   return "normal";
 }
 
@@ -619,6 +646,95 @@ export function kildeNokkel(raw: string | null | undefined): string | null {
   return normaliserKildeUrl(dekodXml(raw));
 }
 
+/**
+ * Adapter i kilderegisteret ut fra kilde-URL. Samme regler som
+ * public.adapter_fra_kilde. Stavanger-frø og andre ukjente vertsnavn
+ * blir null — de skal ikke gjettes inn i en annen kilde.
+ */
+export function adapterFraKildeUrl(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const s = raw.trim().toLowerCase();
+  if (!s) return null;
+  if (s.includes("stortinget.no") && (s.includes("ventede-saker") || s.includes("#sak-"))) {
+    return "stortinget-ventede";
+  }
+  if (s.includes("stortinget.no")) return "stortinget-saker";
+  if (s.includes("regjeringen.no")) return "regjeringen-rss";
+  if (s.includes("einnsyn.no")) return "einnsyn";
+  if (s.includes("bergen.kommune.no")) return "bergen";
+  if (s.includes("kulturdirektoratet.no")) return "kulturdirektoratet";
+  if (s.includes("sametinget.no")) return "sametinget";
+  return null;
+}
+
+export function kildeUuidForAdapter(
+  adapter: string | null | undefined,
+  register: { get(key: string): { id: string } | undefined },
+): string | null {
+  if (!adapter) return null;
+  const id = register.get(adapter)?.id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+export type VarselRadInn = {
+  tittel: string;
+  kilde?: string | null;
+  instans?: string | null;
+  frist?: string | null;
+  niva?: string | null;
+  sted?: string | null;
+  sakstype?: string | null;
+  kommunenr?: string | null;
+  fylkesnr?: string | null;
+  adapter?: string | null;
+  motedato?: string | null;
+};
+
+/**
+ * Rad klar for insert/upsert. kilde lagres normalisert, så generert
+ * kilde_nokkel blir den samme strengen for alle adaptere. kilde_nokkel
+ * sendes aldri med. kilde_id er UUID fra kilderegisteret, ikke adapterens
+ * egen streng-id.
+ */
+export function byggVarselRad(
+  item: VarselRadInn,
+  felt: {
+    publisert: boolean;
+    kategori: string;
+    niva: string;
+    status: string;
+    sammendrag: string;
+    sted?: string | null;
+  },
+  register: { get(key: string): { id: string } | undefined },
+): Record<string, unknown> | null {
+  const kilde = kildeNokkel(item.kilde ?? null);
+  if (!kilde || !item.tittel) return null;
+  const rad: Record<string, unknown> = {
+    tittel: item.tittel,
+    sammendrag: felt.sammendrag,
+    instans: item.instans ?? "",
+    kilde,
+    frist: item.frist ?? null,
+    kategori: felt.kategori,
+    niva: felt.niva,
+    sted: felt.sted ?? item.sted ?? (felt.niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
+    status: felt.status,
+    publisert: felt.publisert,
+    motedato: item.motedato ?? null,
+    kilde_id: kildeUuidForAdapter(
+      item.adapter ?? adapterFraKildeUrl(item.kilde),
+      register,
+    ),
+  };
+  if (felt.publisert) {
+    rad.sakstype = item.sakstype ?? null;
+    rad.kommunenr = item.kommunenr ?? null;
+    rad.fylkesnr = item.fylkesnr ?? null;
+  }
+  return rad;
+}
+
 /** Første treff per normalisert kilde-URL. Rader uten URL droppes. */
 export function dedupEtterKilde<T extends { kilde?: string | null }>(
   items: T[],
@@ -633,6 +749,98 @@ export function dedupEtterKilde<T extends { kilde?: string | null }>(
     ut.push(item);
   }
   return ut;
+}
+
+/**
+ * Sammenligningstekst for innholdsduplikater.
+ * Må holde seg lik public.normaliser_innhold_tekst.
+ * Små bokstaver, æøå beholdes, tegnsetting og ekstra mellomrom blir ett mellomrom.
+ */
+export function normaliserInnholdTekst(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const s = raw.toLowerCase().replace(/[^0-9a-zæøå]+/g, " ").trim();
+  return s || null;
+}
+
+/**
+ * Sak-id som gjør at like titler fortsatt er ulike saker.
+ * Stortinget p=, regjeringsdokument id og fragment på Kulturdirektoratet
+ * eller ventede saker. Møte-URL-er (eInnsyn, Bergen) inngår ikke:
+ * samme sak i flere møter er ett innhold.
+ * Må holde seg lik public.innhold_dedup_nokkel.
+ */
+export function stabilSakId(kilde: string | null | undefined): string {
+  if (!kilde) return "";
+  if (/stortinget\.no/i.test(kilde) && !/ventede-saker/i.test(kilde)) {
+    const sak = kilde.match(/[?&]p=(\d+)/i);
+    if (sak) return `p=${sak[1]}`;
+  }
+  if (/regjeringen\.no/i.test(kilde)) {
+    const dok = kilde.match(/\/id(\d+)/i);
+    if (dok) return `id${dok[1]}`;
+  }
+  if (/kulturdirektoratet\.no/i.test(kilde)) {
+    const hash = kilde.indexOf("#");
+    if (hash >= 0) return kilde.slice(hash).toLowerCase();
+  }
+  if (/stortinget\.no/i.test(kilde)) {
+    const lav = kilde.toLowerCase();
+    const i = lav.indexOf("#sak-");
+    if (i >= 0) return lav.slice(i);
+  }
+  return "";
+}
+
+export type InnholdNokkelInn = {
+  instans?: string | null;
+  tittel?: string | null;
+  frist?: string | null;
+  kilde?: string | null;
+};
+
+/** instans + normalisert tittel + fristdato + stabil sak-id. Uten frist er datodelen tom. */
+export function innholdDedupNokkel(item: InnholdNokkelInn): string | null {
+  const instans = normaliserInnholdTekst(item.instans);
+  const tittel = normaliserInnholdTekst(item.tittel);
+  if (!instans || !tittel) return null;
+  const dato = item.frist ? String(item.frist).slice(0, 10) : "";
+  return `${instans}|${tittel}|${dato}|${stabilSakId(item.kilde)}`;
+}
+
+/** Første treff per innholdsnøkkel. Rader uten nøkkel beholdes. */
+export function dedupEtterInnhold<T extends InnholdNokkelInn>(
+  items: T[],
+  allerede: Iterable<string> = [],
+): T[] {
+  const sett = new Set(allerede);
+  const ut: T[] = [];
+  for (const item of items) {
+    const nokkel = innholdDedupNokkel(item);
+    if (nokkel && sett.has(nokkel)) continue;
+    if (nokkel) sett.add(nokkel);
+    ut.push(item);
+  }
+  return ut;
+}
+
+/**
+ * Backfill skal ikke skrive om tittel, sammendrag, kategori, frist,
+ * møtedato eller status når manuelt_redigert er satt, heller ikke når
+ * feltet er tomt. Kolonnen kommer fra Regjeringen-sporet.
+ */
+export function utenManuelleTekstfelt<T extends Record<string, unknown>>(
+  rad: T,
+  manueltRedigert: boolean,
+): T {
+  if (!manueltRedigert) return rad;
+  const kopi = { ...rad };
+  delete kopi.tittel;
+  delete kopi.sammendrag;
+  delete kopi.kategori;
+  delete kopi.frist;
+  delete kopi.motedato;
+  delete kopi.status;
+  return kopi;
 }
 
 /** Følg gjeldende sesjon og behold fjoråret for saker som fortsatt behandles. */

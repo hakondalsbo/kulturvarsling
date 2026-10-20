@@ -1,9 +1,11 @@
 -- Additivt. Ingen UPDATE av eksisterende varsler.
 -- 1) Nyhet/tale om samme sak kan peke på hovedsaken uten å publiseres.
--- 2) manuelt_redigert forkaster ikke lenger tekstendringer i stillhet.
---    Vanlig UPDATE som rører tittel, sammendrag eller kategori feiler tydelig.
+-- 2) manuelt_redigert forkaster ikke lenger feltendringer i stillhet.
+--    Vanlig UPDATE som rører tittel, sammendrag, kategori, frist, møtedato
+--    eller status feiler tydelig, også når feltet var tomt.
 --    overstyr_varsel setter en transaksjonslokal variabel triggeren godtar,
 --    og skriver hvem/hva/når i varsel_endringslogg. Bare service_role og admin.
+--    Andre kolonner, som kilde_id, kan fortsatt fylles.
 
 alter table public.varsler
   add column if not exists hovedsak_id uuid references public.varsler(id) on delete set null;
@@ -45,18 +47,14 @@ begin
     end if;
   end if;
 
-  -- Dataspillhøringen kan ha fått flagget mens sammendraget fortsatt er
-  -- avvisningsteksten. Den ene korreksjonen får skrive teksten. Etterpå
-  -- gjelder vernet.
   if old.manuelt_redigert
-     and not (
-       old.id::text = '90a26730-e886-4a10-a1e5-a08aedaabd17'
-       and old.sammendrag = 'Automatisk avvist av relevansfilteret'
-     )
      and (
        new.tittel is distinct from old.tittel
        or new.sammendrag is distinct from old.sammendrag
        or new.kategori is distinct from old.kategori
+       or new.frist is distinct from old.frist
+       or new.motedato is distinct from old.motedato
+       or new.status is distinct from old.status
      )
   then
     if coalesce(pg_catalog.current_setting('app.varsel_overstyr', true), '') = '1' then
@@ -73,8 +71,20 @@ begin
         insert into public.varsel_endringslogg (varsel_id, felt, fra_verdi, til_verdi, hvem)
         values (old.id, 'kategori', old.kategori, new.kategori, hvem);
       end if;
+      if new.frist is distinct from old.frist then
+        insert into public.varsel_endringslogg (varsel_id, felt, fra_verdi, til_verdi, hvem)
+        values (old.id, 'frist', old.frist::text, new.frist::text, hvem);
+      end if;
+      if new.motedato is distinct from old.motedato then
+        insert into public.varsel_endringslogg (varsel_id, felt, fra_verdi, til_verdi, hvem)
+        values (old.id, 'motedato', old.motedato::text, new.motedato::text, hvem);
+      end if;
+      if new.status is distinct from old.status then
+        insert into public.varsel_endringslogg (varsel_id, felt, fra_verdi, til_verdi, hvem)
+        values (old.id, 'status', old.status, new.status, hvem);
+      end if;
     else
-      raise exception 'Kan ikke endre tittel, sammendrag eller kategori fordi saken er manuelt redigert. Bruk overstyr_varsel.'
+      raise exception 'Kan ikke endre tittel, sammendrag, kategori, frist, møtedato eller status fordi saken er manuelt redigert. Bruk overstyr_varsel.'
         using errcode = '42501';
     end if;
   end if;
@@ -84,7 +94,7 @@ end
 $fn$;
 
 comment on function public.vern_manuelt_redigerte_felt() is
-  'BEFORE UPDATE: feiler tydelig hvis tittel, sammendrag eller kategori endres på en manuelt redigert sak. Slipper endringen gjennom bare når overstyr_varsel har satt app.varsel_overstyr i transaksjonen, og logger da feltet.';
+  'BEFORE UPDATE: feiler tydelig hvis tittel, sammendrag, kategori, frist, møtedato eller status endres på en manuelt redigert sak, også når feltet var tomt. Slipper endringen gjennom bare når overstyr_varsel har satt app.varsel_overstyr i transaksjonen, og logger da feltet.';
 
 revoke all on function public.vern_manuelt_redigerte_felt() from public;
 revoke all on function public.vern_manuelt_redigerte_felt() from anon;
@@ -96,7 +106,10 @@ create or replace function public.overstyr_varsel(
   p_tittel text,
   p_sammendrag text,
   p_kategori text,
-  p_hvem text
+  p_hvem text,
+  p_frist date default null,
+  p_motedato date default null,
+  p_status text default null
 ) returns void
 language plpgsql
 security definer
@@ -113,6 +126,10 @@ begin
     raise exception 'overstyr_varsel krever hvem som gjør endringen'
       using errcode = '22023';
   end if;
+  if p_status is not null and p_status not in ('kritisk', 'viktig', 'normal', 'passert') then
+    raise exception 'overstyr_varsel godtar bare status kritisk, viktig, normal eller passert'
+      using errcode = '23514';
+  end if;
 
   perform set_config('app.varsel_overstyr', '1', true);
   perform set_config('app.varsel_hvem', left(btrim(p_hvem), 200), true);
@@ -121,7 +138,10 @@ begin
   set
     tittel = coalesce(p_tittel, tittel),
     sammendrag = coalesce(p_sammendrag, sammendrag),
-    kategori = coalesce(p_kategori, kategori)
+    kategori = coalesce(p_kategori, kategori),
+    frist = coalesce(p_frist, frist),
+    motedato = coalesce(p_motedato, motedato),
+    status = coalesce(p_status, status)
   where id = p_id;
 
   if not found then
@@ -131,10 +151,10 @@ begin
 end
 $fn$;
 
-comment on function public.overstyr_varsel(uuid, text, text, text, text) is
-  'Admin-overstyring av låst tittel, sammendrag og kategori. Setter app.varsel_overstyr for transaksjonen og logger via triggeren. SECURITY DEFINER, bare service_role og admin.';
+comment on function public.overstyr_varsel(uuid, text, text, text, text, date, date, text) is
+  'Eneste vei til å endre låst tittel, sammendrag, kategori, frist, møtedato eller status. Null-argument lar feltet stå. Setter app.varsel_overstyr for transaksjonen og logger via triggeren. SECURITY DEFINER, bare service_role og admin.';
 
-revoke all on function public.overstyr_varsel(uuid, text, text, text, text) from public;
-revoke all on function public.overstyr_varsel(uuid, text, text, text, text) from anon;
-revoke all on function public.overstyr_varsel(uuid, text, text, text, text) from authenticated;
-grant execute on function public.overstyr_varsel(uuid, text, text, text, text) to service_role;
+revoke all on function public.overstyr_varsel(uuid, text, text, text, text, date, date, text) from public;
+revoke all on function public.overstyr_varsel(uuid, text, text, text, text, date, date, text) from anon;
+revoke all on function public.overstyr_varsel(uuid, text, text, text, text, date, date, text) from authenticated;
+grant execute on function public.overstyr_varsel(uuid, text, text, text, text, date, date, text) to service_role;

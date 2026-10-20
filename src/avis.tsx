@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { utvalgErDekket } from "./preferanser.ts";
 
 /**
  * Presentasjon for Kulturavisen v2.
- * Ingen datahenting og ingen endring av følg-/innspill-/del-flyten:
- * flatene får saker inn og kaller tilbake når noen trykker.
+ * Ingen datahenting: flatene får saker inn og kaller tilbake når noen trykker.
  */
 
 export type Sak = {
@@ -129,17 +129,9 @@ export function datoMeta(antall: number | null, nå = new Date()) {
 }
 
 function erHaster(s: Sak, nå: Date) {
-  if (s.frist) {
-    const d = dagerTil(s.frist, nå);
-    if (d >= 0 && d <= 7) return true;
-  }
-  return s.status === "kritisk";
-}
-
-function harNærFrist(s: Sak, nå: Date, dager: number) {
-  if (!s.frist) return false;
+  if (!s.frist || s.status === "passert") return false;
   const d = dagerTil(s.frist, nå);
-  return d >= 0 && d <= dager;
+  return d >= 0 && d <= 7;
 }
 
 function erSnart(s: Sak, nå: Date) {
@@ -160,7 +152,7 @@ function datoDeler(iso: string) {
 }
 
 function omDager(s: Sak, nå: Date) {
-  if (!s.frist) return "ingen frist";
+  if (!s.frist) return s.status === "passert" ? "passert" : "ingen frist";
   const d = dagerTil(s.frist, nå);
   if (d < 0) return "frist passert";
   if (d === 0) return "i dag";
@@ -182,9 +174,16 @@ function kortDato(iso?: string | null) {
   return `${dag}. ${mnd}`;
 }
 
-type UkeNokkel = "denne" | "neste" | "senere" | "uten";
+type UkeNokkel = "denne" | "neste" | "senere" | "passert" | "uten";
+
+function erPassert(s: Sak, nå: Date) {
+  if (s.status === "passert" && !s.frist) return true;
+  if (!s.frist) return false;
+  return dagerTil(s.frist, nå) < 0 || s.status === "passert";
+}
 
 function ukeNokkel(s: Sak, nå: Date): UkeNokkel {
+  if (erPassert(s, nå)) return "passert";
   if (!s.frist) return "uten";
   const frist = dagStart(new Date(`${s.frist}T12:00:00`));
   const start = mandag(nå);
@@ -209,6 +208,7 @@ function ukeTekst(nokkel: UkeNokkel, nå: Date) {
   if (nokkel === "denne") return { tittel: "Denne uka", under: `${fmt(start)}–${fmt(slutt)}` };
   if (nokkel === "neste") return { tittel: "Neste uke", under: `${fmt(neste)} – ${fmt(nesteSlutt)}` };
   if (nokkel === "senere") return { tittel: "Senere", under: "frister lenger fram" };
+  if (nokkel === "passert") return { tittel: "Passert", under: "frist eller møte er ute" };
   return { tittel: "Uten frist", under: "nyeste først" };
 }
 
@@ -393,8 +393,8 @@ export function ForsideAvis({
           ) : (
             <>
               <div className="avis-kicker avis-versal">
-                {harNærFrist(lead, nå, 14) ? <b>Haster</b> : erSnart(lead, nå) ? <b className="snart">Snart</b> : null}
-                {(harNærFrist(lead, nå, 14) || erSnart(lead, nå)) ? " · " : null}
+                {erHaster(lead, nå) ? <b>Haster</b> : erSnart(lead, nå) ? <b className="snart">Snart</b> : null}
+                {(erHaster(lead, nå) || erSnart(lead, nå)) ? " · " : null}
                 {fagLabel(lead.kategori)} · {nivaaTekst(lead)}
               </div>
               <h1>{lead.tittel}</h1>
@@ -604,6 +604,9 @@ export function VarselArkiv({
   minFylke,
   fylker,
   prioriterteFag,
+  varslerAktive = false,
+  geografisk = [],
+  onToggleVarsler,
 }: {
   saker: Sak[];
   fulgte: Array<string | number>;
@@ -612,6 +615,9 @@ export function VarselArkiv({
   minFylke: string | null;
   fylker: Fylke[];
   prioriterteFag: string[];
+  varslerAktive?: boolean;
+  geografisk?: string[];
+  onToggleVarsler?: (kat: string, geo: Geo) => void;
 }) {
   const nå = new Date();
   const [kat, setKat] = useState("alle");
@@ -716,7 +722,7 @@ export function VarselArkiv({
     document.getElementById(`vis-${ids[n]}`)?.focus();
   }
 
-  const grupper: UkeNokkel[] = ["denne", "neste", "senere", "uten"];
+  const grupper: UkeNokkel[] = ["denne", "neste", "senere", "passert", "uten"];
   const bucket = new Map<UkeNokkel, Sak[]>();
   for (const n of grupper) bucket.set(n, []);
   const sortert = [...filtrert].sort((a, b) => {
@@ -736,13 +742,27 @@ export function VarselArkiv({
   }
 
   const aktivFagId = kat === "alle" ? "fag-alle" : `fag-${kat}`;
+  const varslerDekket = utvalgErDekket(varslerAktive, prioriterteFag, geografisk, kat, geo);
 
   return (
     <section className="avis-varsler" id="varsler">
       <div className="avis-wrap">
         <div className="avis-varsler-hode">
           <h2>Varsler</h2>
-          <p>sortert etter frist</p>
+          <div className="avis-varsler-status">
+            <p>sortert etter frist</p>
+            {onToggleVarsler ? (
+              <button
+                type="button"
+                className={varslerDekket ? "avis-varselknapp aktiv" : "avis-varselknapp"}
+                aria-pressed={varslerDekket}
+                onClick={() => onToggleVarsler(kat, geo)}
+              >
+                {varslerDekket ? "Varsler aktive" : "Slå på varsler"}
+              </button>
+            ) : null}
+            <span className="avis-varsel-omfang">{kat === "alle" ? "Alle fag" : fagLabel(kat)} · {geoKnappTekst(geo)}</span>
+          </div>
         </div>
 
         <div className="avis-fagfest">
@@ -892,8 +912,8 @@ export function VarselArkiv({
               <tbody>
                 {(utvidet ? sortert : sortert.slice(0, 12)).map((s) => (
                   <tr key={s.id}>
-                    <td className={`f${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}`}>
-                      {s.frist ? kortDato(s.frist) : <><span className="avis-frist-strek">–</span><span className="avis-frist-uten">Uten frist</span></>}
+                    <td className={`f${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}${erPassert(s, nå) ? " passert" : ""}`}>
+                      {s.frist ? <>{kortDato(s.frist)}{erPassert(s, nå) ? <span className="avis-frist-uten"> Passert</span> : null}</> : erPassert(s, nå) ? <span className="avis-frist-uten">Passert</span> : <><span className="avis-frist-strek">–</span><span className="avis-frist-uten">Uten frist</span></>}
                     </td>
                     <td className="t">
                       <button type="button" onClick={() => onÅpne(s, "info")}>
@@ -913,13 +933,13 @@ export function VarselArkiv({
               if (liste.length === 0) return null;
               const vist = utvidet ? liste : liste.slice(0, 4);
               const tekst = ukeTekst(n, nå);
-              const haster = n !== "uten" && liste.some((s) => erHaster(s, nå));
+              const haster = n !== "uten" && n !== "passert" && liste.some((s) => erHaster(s, nå));
               return (
-                <div key={n} className={haster ? "avis-uke haster" : "avis-uke"}>
+                <div key={n} className={haster ? "avis-uke haster" : n === "passert" ? "avis-uke passert" : "avis-uke"}>
                   <h3>{tekst.tittel}<small>{tekst.under}</small></h3>
                   <div>
                     {vist.map((s) => (
-                      <article key={s.id} className={`avis-sak${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}`}>
+                      <article key={s.id} className={`avis-sak${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}${erPassert(s, nå) ? " passert" : ""}`}>
                         <div className={`dato${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}`}>
                           {s.frist ? kortDato(s.frist) : "–"}
                           <small>{omDager(s, nå)}</small>

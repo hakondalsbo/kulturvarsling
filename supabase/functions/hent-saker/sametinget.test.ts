@@ -38,6 +38,15 @@ test("ukentlig tildelingsliste får sakstype tildeling", () => {
   assert.equal(items[0].publisert_dato, "2026-07-13");
 });
 
+test("høringssetningen i RSS blir frist", () => {
+  const rss = parseRssItems(`<?xml version="1.0"?><rss><channel><item>
+    <title>Høring: Behov for samiske tilbud</title>
+    <link>https://sametinget.no/aktuelt/horing-behov.55024.aspx</link>
+    <description>Høringsfristen er 23. november 2026.</description>
+  </item></channel></rss>`, "Sametinget").map(mapSametingetItem);
+  assert.equal(rss[0].frist, "2026-11-23");
+});
+
 test("øvrige nyheter får ikke sakstype, men går til Claude-vurdering", () => {
   assert.equal(items[1].sakstype, null);
   // Forhåndsgodkjent = hopper over nøkkelordfilteret (tildelingslistene mangler

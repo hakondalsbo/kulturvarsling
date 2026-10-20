@@ -112,6 +112,26 @@ export function normaliserProfil(profil: unknown): Profil {
   };
 }
 
+/** Samme modell som klartekst-funksjonen. Relevansfilteret i hent-saker bruker Haiku. */
+export const KLARTEKST_MODELL = "claude-sonnet-5";
+export const KLARTEKST_MAKS_TOKENS = 2000;
+
+/** Tom profil: ukjent org, alle fagfelt, hele landet. */
+export function generellProfilNokkel(): string {
+  return lagProfilNokkel(null);
+}
+
+/** Batch for backfill. Ugyldig verdi faller tilbake til standard, og taket er hardt. */
+export function begrensBatch(verdi: unknown, standard = 8, maks = 20): number {
+  const n = typeof verdi === "number"
+    ? verdi
+    : typeof verdi === "string" && verdi.trim() !== ""
+    ? Number(verdi)
+    : standard;
+  if (!Number.isFinite(n)) return standard;
+  return Math.min(maks, Math.max(1, Math.floor(n)));
+}
+
 export type KlartekstSvar = {
   hva_skjer: string;
   hvem_pavirkes: string;
