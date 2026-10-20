@@ -54,7 +54,7 @@ export async function hentSametingetSaker(): Promise<AdapterUtfall> {
     }
     const items = samlet.items.map((item) => mapSametingetItem(item));
     console.log(`Sametinget: ${items.length} nyheter hentet`);
-    return okUtfall(items, samlet.raattAntall, items.length);
+    return okUtfall(items, samlet.raattAntall, items.length, res.status);
   } catch (e) {
     console.error("Sametinget feil:", e);
     return feilUtfall(feilFraUnntak(e, FEED));

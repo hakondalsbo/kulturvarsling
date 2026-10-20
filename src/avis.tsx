@@ -68,6 +68,7 @@ export function tolkKildeStatus(status: string | null | undefined) {
   if (s === "ok" || s === "ok_nye") return { frisk: true, tone: "ok" as const, tekst: "Frisk" };
   if (s === "ok_ingen_nye") return { frisk: true, tone: "tom" as const, tekst: "Ingen nye sist" };
   if (s === "tom") return { frisk: true, tone: "tom" as const, tekst: "Tomt svar" };
+  if (s === "feil_tomt_svar") return { frisk: false, tone: "feil" as const, tekst: "Alarm: tomt svar" };
   if (s === "delvis") return { frisk: false, tone: "tom" as const, tekst: "Delvis" };
   if (!s) return { frisk: false, tone: "feil" as const, tekst: "Ukjent" };
   return { frisk: false, tone: "feil" as const, tekst: "Feil" };
@@ -313,8 +314,8 @@ export function KildeDetaljer({ kilder, lastet }: { kilder: KildeRad[]; lastet: 
       )}
       <p className="forklaring">
         «Ingen nye sist» betyr at kilden svarte med treff, men ingenting nytt ble lagt inn etter filter og dedup.
-        «Tomt svar» betyr at kilden svarte uten råtreff. «Delvis» betyr at noe svarte og noe feilet.
-        «Feil» er et kall som feilet – ikke et tomt treff. En kilde som svikter tre netter på rad flagges automatisk.
+        «Tomt svar» er et ekte 0 fra en kilde som kan være tom. «Alarm: tomt svar» er en kilde som vanligvis har treff, og som svarte 0 rå – det er ikke «ingen nye».
+        «Delvis» betyr at noe svarte og noe feilet. «Feil» er et kall som feilet. En kilde som svikter tre netter på rad flagges automatisk.
       </p>
     </div>
   );

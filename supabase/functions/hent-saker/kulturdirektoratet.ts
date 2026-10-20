@@ -247,7 +247,7 @@ export async function hentKulturdirektoratetTildelinger(): Promise<AdapterUtfall
     console.log(
       `Kulturdirektoratet: ${rader.length} vedtaksrader, ${items.length} tildelingsrunder siste halvår`,
     );
-    return okUtfall(items, rader.length, items.length);
+    return okUtfall(items, rader.length, items.length, csvRes.status);
   } catch (e) {
     console.error("Kulturdirektoratet feil:", e);
     return feilUtfall(feilFraUnntak(e, vedtakUrl));

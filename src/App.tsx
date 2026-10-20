@@ -122,13 +122,45 @@ async function signKampanje(kampanjeId, brukerId, navn, epost) {
 }
 
 async function sendFeedbackDB(brukerId, type, tekst, sakTittel) {
-  const { error } = await sb.from("feedback").insert({
-    bruker_id: brukerId ?? null,
-    type,
-    tekst,
-    sak_tittel: sakTittel ?? null
-  });
-  return error;
+  const { data } = await sb.auth.getSession();
+  const token = data?.session?.access_token ?? null;
+  const innlogget = data?.session?.user?.id ?? null;
+  // Kolonnene er public.feedback: bruker_id, type, tekst, sak_tittel.
+  // id, status ('ny') og opprettet har default. type må være en av
+  // feil | mangler | utdatert | forslag | annet.
+  // Prefer return=minimal: return=representation krever SELECT-policy, og den
+  // finnes ikke. Da svarer API-et 42501 og raden lagres ikke.
+  const bruker_id = token && innlogget ? innlogget : null;
+  if (brukerId && bruker_id && brukerId !== bruker_id) {
+    console.error("Feedback: bruker_id fra kalleren matchet ikke sesjonen, bruker sesjonen");
+  }
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/feedback`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON,
+        Authorization: `Bearer ${token ?? SUPABASE_ANON}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        bruker_id,
+        type,
+        tekst,
+        sak_tittel: sakTittel ?? null,
+      }),
+    });
+  } catch (e) {
+    return { message: "Kunne ikke nå serveren. Prøv igjen." };
+  }
+  if (res.ok) return null;
+  let message = `Kunne ikke lagre tilbakemeldingen (HTTP ${res.status}).`;
+  try {
+    const body = await res.json();
+    if (typeof body?.message === "string" && body.message.trim()) message = body.message;
+  } catch { /* tom feilkropp */ }
+  return { message };
 }
 
 // ─── Tokens ────────────────────────────────────────────────────────────────
