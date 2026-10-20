@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { utvalgErDekket } from "./preferanser.ts";
 
 /**
  * Presentasjon for Kulturavisen v2.
- * Ingen datahenting og ingen endring av følg-/innspill-/del-flyten:
- * flatene får saker inn og kaller tilbake når noen trykker.
+ * Ingen datahenting: flatene får saker inn og kaller tilbake når noen trykker.
  */
 
 export type Sak = {
@@ -604,6 +604,9 @@ export function VarselArkiv({
   minFylke,
   fylker,
   prioriterteFag,
+  varslerAktive = false,
+  geografisk = [],
+  onToggleVarsler,
 }: {
   saker: Sak[];
   fulgte: Array<string | number>;
@@ -612,6 +615,9 @@ export function VarselArkiv({
   minFylke: string | null;
   fylker: Fylke[];
   prioriterteFag: string[];
+  varslerAktive?: boolean;
+  geografisk?: string[];
+  onToggleVarsler?: (kat: string, geo: Geo) => void;
 }) {
   const nå = new Date();
   const [kat, setKat] = useState("alle");
@@ -736,13 +742,27 @@ export function VarselArkiv({
   }
 
   const aktivFagId = kat === "alle" ? "fag-alle" : `fag-${kat}`;
+  const varslerDekket = utvalgErDekket(varslerAktive, prioriterteFag, geografisk, kat, geo);
 
   return (
     <section className="avis-varsler" id="varsler">
       <div className="avis-wrap">
         <div className="avis-varsler-hode">
           <h2>Varsler</h2>
-          <p>sortert etter frist</p>
+          <div className="avis-varsler-status">
+            <p>sortert etter frist</p>
+            {onToggleVarsler ? (
+              <button
+                type="button"
+                className={varslerDekket ? "avis-varselknapp aktiv" : "avis-varselknapp"}
+                aria-pressed={varslerDekket}
+                onClick={() => onToggleVarsler(kat, geo)}
+              >
+                {varslerDekket ? "Varsler aktive" : "Slå på varsler"}
+              </button>
+            ) : null}
+            <span className="avis-varsel-omfang">{kat === "alle" ? "Alle fag" : fagLabel(kat)} · {geoKnappTekst(geo)}</span>
+          </div>
         </div>
 
         <div className="avis-fagfest">
