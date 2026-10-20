@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, type CSSProperties } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta } from "./avis.tsx";
+import { byttPremiumVerktøy, sakerJegFølger } from "./app-logikk.ts";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase → Settings → API
@@ -997,7 +998,7 @@ function BrukerApp({user,setUser,setScreen}: any) {
             {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
             {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
             {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
-            {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
+            {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} varslerData={varsler} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
             {view==="premium"   &&<PremiumVerktøy varslerData={varsler} user={user}/>}
           </div>
         )}
@@ -1036,7 +1037,7 @@ function FølgKnapp({sakId,fulgte,toggleFølg,size="sm"}: any) {
 }
 
 // ─── MIN PROFIL SIDE ─────────────────────────────────────────────────────────
-function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselReg,setShowPremium,setShowOnboarding,setShowPersonvern}: any) {
+function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,varslerData=[],setShowVarselReg,setShowPremium,setShowOnboarding,setShowPersonvern}: any) {
   const [tab,setTab]=useState("profil");
   const [redigerOrg,setRedigerOrg]=useState(false);
   const [orgVal,setOrgVal]=useState(user?.org||"");
@@ -1145,7 +1146,7 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
             </div>
           ):(
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {varslerData.filter((v: any)=>fulgte.includes(v.id)).map((v: any)=>{
+              {sakerJegFølger(varslerData, fulgte).map((v: any)=>{
                 const ki=KATEGORIER.find((k: any)=>k.id===v.kategori);
                 const bc=({kritisk:"#DC2626",viktig:"#D97706",normal:"#16A34A"} as Record<string, string>)[v.status];
                 return (
@@ -2277,7 +2278,7 @@ function PremiumVerktøy({varslerData=[],user=null}: any) {
 
       <div style={{display:"flex",gap:10,marginBottom:24,flexWrap:"wrap"}}>
         {tools.map((t: any)=>(
-          <button key={t.id} onClick={()=>{setTool(t.id);setAnalyse("");}}
+          <button key={t.id} onClick={()=>{const neste=byttPremiumVerktøy(t.id);setTool(neste.tool);setResultat(neste.resultat);}}
             style={{padding:"9px 16px",borderRadius:10,border:`1.5px solid ${tool===t.id?C.purple:C.border}`,background:tool===t.id?"#EDE9FE":C.bgCard,color:tool===t.id?C.purple:C.muted,fontSize:13,cursor:"pointer",fontWeight:tool===t.id?700:500,fontFamily:"inherit"}}>
             {t.label}
           </button>
