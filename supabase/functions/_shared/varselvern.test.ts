@@ -8,7 +8,7 @@ import {
   skalSkriveStatus,
 } from "./varselvern.ts";
 
-test("manuelt_redigert beskytter tittel, sammendrag og kategori", () => {
+test("godkjente redaktørrader beholder tittel, sammendrag, kategori, frist og status", () => {
   const rad = {
     id: "80653f79-b471-49ed-b7c3-e98a118531af",
     sammendrag: "Ekte sammendrag om litteraturkapitlene.",
@@ -18,16 +18,14 @@ test("manuelt_redigert beskytter tittel, sammendrag og kategori", () => {
     tittel: "Ny tittel som ikke skal inn",
     sammendrag: "Nytt sammendrag som ikke skal inn",
     kategori: "film",
-    frist: "2026-10-28",
-    status: "viktig",
+    frist: "2026-12-01",
+    status: "kritisk",
     kommunenr: "4601",
     fylkesnr: "46",
     niva: "kommune",
     sted: "Bergen",
   });
   assert.deepEqual(ut, {
-    frist: "2026-10-28",
-    status: "viktig",
     kommunenr: "4601",
     fylkesnr: "46",
     niva: "kommune",
@@ -43,7 +41,7 @@ test("uflagget rad slipper tekstfeltene igjennom", () => {
   assert.deepEqual(ut, { tittel: "Ny", sammendrag: "Ny tekst", kategori: "spill" });
 });
 
-test("dataspillhøringen kan korrigeres mens sammendraget fortsatt er avvisningsteksten", () => {
+test("dataspillhøringen 90a26730 overskrives ikke, heller ikke fra avvisningsteksten", () => {
   const åpen = oppdaterVarsel(
     {
       id: DATASPILL_VARSEL_ID,
@@ -55,22 +53,11 @@ test("dataspillhøringen kan korrigeres mens sammendraget fortsatt er avvisnings
       sammendrag: "Ordentlig sammendrag.",
       kategori: "spill",
       frist: "2027-01-12",
+      status: "normal",
       publisert: true,
     },
   );
-  assert.equal(åpen.sammendrag, "Ordentlig sammendrag.");
-  assert.equal(åpen.kategori, "spill");
-  assert.equal(åpen.frist, "2027-01-12");
-
-  const låst = oppdaterVarsel(
-    {
-      id: DATASPILL_VARSEL_ID,
-      sammendrag: "Ordentlig sammendrag.",
-      manuelt_redigert: true,
-    },
-    { sammendrag: "Skal ikke overskrive", kategori: "film", frist: "2027-01-12" },
-  );
-  assert.deepEqual(låst, { frist: "2027-01-12" });
+  assert.deepEqual(åpen, { publisert: true });
 });
 
 test("godkjente redaktørrader får ikke ny frist eller status", () => {
@@ -84,11 +71,20 @@ test("godkjente redaktørrader får ikke ny frist eller status", () => {
     frist: "2026-11-23",
     manuelt_redigert: true,
   };
+  const flere = [
+    "de0dc5a6-fb44-4d5c-aebd-76b9ea10c085",
+    "b70f9ea5-b8f2-4a1d-8c6a-2ccf1ec4bf8c",
+    "90a26730-e886-4a10-a1e5-a08aedaabd17",
+  ];
   assert.equal(skalSkriveFrist(budsjett), false);
   assert.equal(skalSkriveStatus(budsjett), false);
   assert.equal(skalSkriveFrist({ ...budsjett, frist: null, manuelt_redigert: false }), false);
   assert.equal(skalSkriveFrist(sametinget), false);
   assert.equal(skalSkriveStatus(sametinget), false);
+  for (const id of flere) {
+    assert.equal(skalSkriveFrist({ id, frist: null, manuelt_redigert: false }), false);
+    assert.equal(skalSkriveStatus({ id, manuelt_redigert: true }), false);
+  }
 });
 
 test("satt frist og status på andre redaktørrader overskrives ikke", () => {

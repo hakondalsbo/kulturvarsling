@@ -205,8 +205,8 @@ test("statsbudsjett 80653f79 beholder redaktørens frist, status og kategori", (
   );
 });
 
-test("dataspillhøringen får sammendrag, frist og publisering, og er deretter i ro", () => {
-  const åpen = planleggBackfill({
+test("dataspillhøringen 90a26730 overskrives ikke", () => {
+  const plan = planleggBackfill({
     items: [],
     eksisterende: [rad({
       id: DATASPILL_VARSEL_ID,
@@ -218,14 +218,7 @@ test("dataspillhøringen får sammendrag, frist og publisering, og er deretter i
     })],
     nå: NÅ,
   });
-  assert.deepEqual(åpen.oppdateringer[0].felt, {
-    sammendrag: DATASPILL_SAMMENDRAG,
-    frist: DATASPILL_FRIST,
-    publisert: true,
-    kategori: "spill",
-    status: "normal",
-    manuelt_redigert: true,
-  });
+  assert.deepEqual(plan.oppdateringer, []);
 
   const rettet = planleggBackfill({
     items: [],

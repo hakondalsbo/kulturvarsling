@@ -16,6 +16,7 @@ import { hentFeeder, hentRegjeringenSide, parseOgBerik, REGJERINGEN_FEEDS } from
 import {
   AVVIST_SAMMENDRAG,
   DATASPILL_VARSEL_ID,
+  erRedaktorFeltLaast,
   oppdaterVarsel,
   skalSkriveFrist,
   skalSkriveStatus,
@@ -131,7 +132,11 @@ export function planleggBackfill(input: {
   }
 
   const dataspill = input.eksisterende.find((r) => r.id === DATASPILL_VARSEL_ID);
-  if (dataspill && dataspill.sammendrag === AVVIST_SAMMENDRAG) {
+  if (
+    dataspill &&
+    dataspill.sammendrag === AVVIST_SAMMENDRAG &&
+    !erRedaktorFeltLaast(dataspill.id)
+  ) {
     const frist = dataspill.frist ?? DATASPILL_FRIST;
     leggTil(oppdateringer, dataspill.id, oppdaterVarsel(dataspill, {
       sammendrag: DATASPILL_SAMMENDRAG,

@@ -2,9 +2,9 @@
 -- status normal: manglende frist er ikke kritisk. Passert dag blir passert.
 -- Idempotent. Skriver ikke tittel, sammendrag eller kategori.
 --
--- Rader med manuelt_redigert beholder frist og status. Det gjelder også
--- 80653f79 (frist 2026-10-28, status viktig, kategori kulturpolitikk) og
--- 1cf0dfd3 (frist 2026-11-23, status normal), godkjent 2026-10-20.
+-- Rader med manuelt_redigert beholder frist og status. Disse fem
+-- godkjente radene får heller ikke ny frist, status eller kategori:
+-- 80653f79, 1cf0dfd3, de0dc5a6, b70f9ea5 og 90a26730.
 -- Høringssetningen «Høringsfristen er 23. november 2026» fanges av
 -- trekkHoringsfrist for nye saker. Backfillen setter ikke den datoen på
 -- den godkjente raden.
@@ -28,7 +28,10 @@ where frist is distinct from date '2026-11-23'
   and manuelt_redigert is not true
   and id not in (
     '80653f79-b471-49ed-b7c3-e98a118531af',
-    '1cf0dfd3-4fc8-4fc0-976f-d733db4b7aae'
+    '1cf0dfd3-4fc8-4fc0-976f-d733db4b7aae',
+    'de0dc5a6-fb44-4d5c-aebd-76b9ea10c085',
+    'b70f9ea5-b8f2-4a1d-8c6a-2ccf1ec4bf8c',
+    '90a26730-e886-4a10-a1e5-a08aedaabd17'
   )
   and kilde ilike '%sametinget.no/aktuelt/horing-behov-for-samiske-tilbud-ordninger-og-tiltak-i-sor-norge-valgkrets.55024.aspx%';
 
@@ -247,7 +250,10 @@ where status is distinct from (
   and manuelt_redigert is not true
   and id not in (
     '80653f79-b471-49ed-b7c3-e98a118531af',
-    '1cf0dfd3-4fc8-4fc0-976f-d733db4b7aae'
+    '1cf0dfd3-4fc8-4fc0-976f-d733db4b7aae',
+    'de0dc5a6-fb44-4d5c-aebd-76b9ea10c085',
+    'b70f9ea5-b8f2-4a1d-8c6a-2ccf1ec4bf8c',
+    '90a26730-e886-4a10-a1e5-a08aedaabd17'
   );
 
 comment on column public.varsler.status is

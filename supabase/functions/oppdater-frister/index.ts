@@ -3,7 +3,8 @@
 // pg_cron (oppdater-frister-daglig), ikke via Vercel Cron. Feil i ett
 // oppslag stopper ikke de andre. Skriver frist, motedato og status.
 // Aldri tittel, sammendrag eller kategori. Rader med manuelt_redigert
-// beholder satt frist og status. 80653f79 og 1cf0dfd3 skrives ikke.
+// beholder satt frist og status. 80653f79, 1cf0dfd3, de0dc5a6, b70f9ea5
+// og 90a26730 får ikke ny frist, status, kategori, tittel eller sammendrag.
 
 import { tidligAvslag } from "../hent-saker/kildehelse.ts";
 import { finnHøringsfrist, kalenderdag } from "../hent-saker/logikk.ts";
