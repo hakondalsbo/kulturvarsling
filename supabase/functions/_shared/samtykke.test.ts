@@ -187,7 +187,7 @@ test("organisasjon er lik i funksjoner og nettleser", () => {
   const nyhetsbrev = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
   assert.deepEqual(lesOrgKonstanter(js), lesOrgKonstanter(ts));
   assert.equal(lesOrgKonstanter(js).behandlingsansvarlig, behandlingsansvarlig);
-  assert.equal(behandlingsansvarlig, "KULTURVARSLING AS");
+  assert.equal(behandlingsansvarlig, "Kulturvarsling AS");
   assert.equal(orgnr, "936 282 881");
   assert.equal(poststed, "Oslo");
   assert.doesNotMatch(js, /PLASSHOLDER/);
@@ -199,19 +199,19 @@ test("organisasjon er lik i funksjoner og nettleser", () => {
   assert.doesNotMatch(html, /Åndsverkstedet AS/);
   assert.equal(
     avsender(behandlingsansvarlig),
-    '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
+    '"Kulturvarsling AS" <nyhetsbrev@kulturvarsling.no>',
   );
   assert.equal(
     lesAvsender(behandlingsansvarlig, { get: () => undefined }),
-    '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
+    '"Kulturvarsling AS" <nyhetsbrev@kulturvarsling.no>',
   );
   assert.equal(
     lesAvsender(behandlingsansvarlig, { get: () => "  " }),
-    '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
+    '"Kulturvarsling AS" <nyhetsbrev@kulturvarsling.no>',
   );
   assert.equal(
     lesAvsender(behandlingsansvarlig, { get: () => LEVERT }),
-    `"KULTURVARSLING AS" <${LEVERT}>`,
+    `"Kulturvarsling AS" <${LEVERT}>`,
   );
   assert.equal(
     avsender("Åndsverkstedet AS", "Kulturvarsling <post@example.com>"),
@@ -232,7 +232,7 @@ test("personvernsiden dekker pliktene og navngir behandlingsansvarlig", () => {
   for (const del of ["Nyhetsbrev", "Varsler", "Konto", "Behandlingsgrunnlag", "Lagringstid", "Dine rettigheter", "Kontakt"]) {
     assert.match(html, new RegExp(del));
   }
-  assert.equal(behandlingsansvarlig, "KULTURVARSLING AS");
+  assert.equal(behandlingsansvarlig, "Kulturvarsling AS");
   assert.equal(orgnr, "936 282 881");
   assert.match(html, new RegExp(PERSONVERN_VERSJON));
   assert.match(html, /papir\.css/);

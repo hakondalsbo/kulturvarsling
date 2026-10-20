@@ -399,7 +399,7 @@ function PersonvernModal({onClose}) {
             ✓ Kulturvarsling.no behandler dine data i henhold til GDPR og norsk personopplysningslov.
           </div>
           {[
-            ["Hvem er behandlingsansvarlig?","Åndsverkstedet AS er behandlingsansvarlig for alle personopplysninger som samles inn gjennom Kulturvarsling.no. Kontakt: kontakt@kulturvarsling.no"],
+            ["Hvem er behandlingsansvarlig?","Kulturvarsling AS (org.nr. 936 282 881) er behandlingsansvarlig for alle personopplysninger som samles inn gjennom Kulturvarsling.no. Kontakt: kontakt@kulturvarsling.no"],
             ["Hvilke data samler vi inn?","Vi samler inn e-postadresse, navn og organisasjonstilknytning ved registrering. Ved bruk av tjenesten lagres hvilke saker du følger, kampanjer du har signert, og høringssvar du har sendt. Vi samler ikke inn sensitiv informasjon."],
             ["Hva bruker vi dataene til?","E-postadresse brukes til å sende varselnotifikasjoner du selv har aktivert. Navn og organisasjon brukes til å identifisere deg i høringssvar. Vi deler aldri dine data med tredjeparter til kommersielle formål."],
             ["Cookies og sporingsverktøy","Vi bruker kun funksjonelle informasjonskapsler som er nødvendige for at tjenesten skal fungere. Vi bruker ingen annonse- eller atferdssporingsverktøy."],
@@ -918,7 +918,7 @@ function BrukerApp({user,setUser,setScreen}) {
       {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
       <footer style={{borderTop:`1px solid ${C.border}`,padding:"20px 24px",textAlign:"center",fontSize:12,color:C.muted,background:C.bgCard}}>
         <div style={{display:"flex",justifyContent:"center",gap:20,flexWrap:"wrap"}}>
-          <span>© 2026 Åndsverkstedet AS</span>
+          <span>© 2026 Kulturvarsling AS (org.nr. 936 282 881)</span>
           <button onClick={()=>setShowPersonvern(true)} style={{background:"none",border:"none",color:C.red,fontSize:12,fontWeight:600,cursor:"pointer"}}>🔒 Personvern</button>
           <button onClick={()=>setShowFeedback(true)} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>📬 Gi tilbakemelding</button>
           <span>kontakt@kulturvarsling.no</span>
