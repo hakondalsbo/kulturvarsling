@@ -35,7 +35,10 @@ test("profilskriving er update uten id, plan eller stripe_customer_id", () => {
   assert.match(fullfor, /upsertProfil\(user\.id,/);
   assert.match(fullfor, /personvern_akseptert_at: naa/);
   assert.match(fullfor, /personvern_versjon: PERSONVERN_VERSJON/);
+  assert.match(fullfor, /varsler_aktive: true/);
+  assert.match(fullfor, /geografisk,/);
   assert.doesNotMatch(fullfor, /\bplan\b/);
   assert.doesNotMatch(fullfor, /stripe_customer_id/);
   assert.doesNotMatch(fullfor, /\bid:/);
+  assert.doesNotMatch(registrer, /\bplan\b/);
 });
