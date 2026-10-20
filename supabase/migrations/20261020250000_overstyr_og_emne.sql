@@ -4,7 +4,7 @@
 --    Vanlig UPDATE som rører tittel, sammendrag, kategori, frist, møtedato
 --    eller status feiler tydelig, også når feltet var tomt.
 --    overstyr_varsel setter en transaksjonslokal variabel triggeren godtar,
---    og skriver hvem/hva/når i varsel_endringslogg. Bare service_role og admin.
+--    og skriver hvem/hva/når i varsel_endringslogg. Bare service_role og postgres.
 --    Andre kolonner, som kilde_id, kan fortsatt fylles.
 
 alter table public.varsler
@@ -32,6 +32,8 @@ revoke all on table public.varsel_endringslogg from public;
 revoke all on table public.varsel_endringslogg from anon;
 revoke all on table public.varsel_endringslogg from authenticated;
 grant select, insert on table public.varsel_endringslogg to service_role;
+
+revoke update, delete, truncate on public.varsel_endringslogg from service_role, anon, authenticated;
 
 create or replace function public.vern_manuelt_redigerte_felt()
 returns trigger
@@ -116,10 +118,14 @@ security definer
 set search_path = public, pg_catalog
 as $fn$
 declare
-  rolle text := coalesce(nullif(current_setting('request.jwt.claim.role', true), ''), session_user);
+  rolle text := coalesce(
+    nullif(current_setting('request.jwt.claims', true), '')::json->>'role',
+    nullif(current_setting('request.jwt.claim.role', true), ''),
+    session_user
+  );
 begin
-  if rolle not in ('service_role', 'postgres', 'supabase_admin') then
-    raise exception 'overstyr_varsel kan bare kalles av service_role eller admin'
+  if rolle not in ('service_role', 'postgres') then
+    raise exception 'overstyr_varsel kan bare kalles av service_role eller postgres'
       using errcode = '42501';
   end if;
   if p_hvem is null or length(btrim(p_hvem)) = 0 then
@@ -152,7 +158,7 @@ end
 $fn$;
 
 comment on function public.overstyr_varsel(uuid, text, text, text, text, date, date, text) is
-  'Eneste vei til å endre låst tittel, sammendrag, kategori, frist, møtedato eller status. Null-argument lar feltet stå. Setter app.varsel_overstyr for transaksjonen og logger via triggeren. SECURITY DEFINER, bare service_role og admin.';
+  'Eneste vei til å endre låst tittel, sammendrag, kategori, frist, møtedato eller status. Null-argument lar feltet stå. Setter app.varsel_overstyr for transaksjonen og logger via triggeren. SECURITY DEFINER, bare service_role og postgres.';
 
 revoke all on function public.overstyr_varsel(uuid, text, text, text, text, date, date, text) from public;
 revoke all on function public.overstyr_varsel(uuid, text, text, text, text, date, date, text) from anon;

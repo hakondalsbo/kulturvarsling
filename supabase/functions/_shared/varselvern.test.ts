@@ -138,11 +138,71 @@ test("overstyring er security definer, logger hvem, og triggeren feiler i stedet
   assert.match(sql, /new\.frist is distinct from old\.frist/);
   assert.match(sql, /new\.motedato is distinct from old\.motedato/);
   assert.match(sql, /new\.status is distinct from old\.status/);
+  assert.match(sql, /revoke update, delete, truncate on public\.varsel_endringslogg from service_role, anon, authenticated/);
   assert.match(sql, /grant execute on function public\.overstyr_varsel\(uuid, text, text, text, text, date, date, text\) to service_role/);
   assert.match(sql, /revoke all on function public\.overstyr_varsel\(uuid, text, text, text, text, date, date, text\) from authenticated/);
   assert.match(sql, /p_status not in \('kritisk', 'viktig', 'normal', 'passert'\)/);
   assert.doesNotMatch(sql, /update public\.varsler\s+set[\s\S]*manuelt_redigert/i);
   assert.doesNotMatch(sql, /feil_manglende_frist/);
+});
+
+/** Samme coalesce som overstyr_varsel. Tom streng hoppes over. claims-JSON vinner over den gamle innstillingen. */
+function rolleFraKall(input: {
+  jwtClaims: string | null;
+  jwtClaimRole: string | null;
+  sessionUser: string;
+}): string {
+  const claims = input.jwtClaims == null || input.jwtClaims === "" ? null : input.jwtClaims;
+  const fraClaims = claims == null
+    ? null
+    : (JSON.parse(claims) as { role?: string | null }).role ?? null;
+  const gammel = input.jwtClaimRole == null || input.jwtClaimRole === "" ? null : input.jwtClaimRole;
+  return fraClaims ?? gammel ?? input.sessionUser;
+}
+
+function overstyrTillatt(rolle: string): boolean {
+  return rolle === "service_role" || rolle === "postgres";
+}
+
+test("rollesjekken leser claims-JSON og faller tilbake til den gamle innstillingen", () => {
+  const sql = readFileSync("supabase/migrations/20261020250000_overstyr_og_emne.sql", "utf8");
+  assert.match(
+    sql,
+    /coalesce\(\s*nullif\(current_setting\('request\.jwt\.claims', true\), ''\)::json->>'role',\s*nullif\(current_setting\('request\.jwt\.claim\.role', true\), ''\),\s*session_user\s*\)/,
+  );
+  assert.match(sql, /rolle not in \('service_role', 'postgres'\)/);
+  assert.doesNotMatch(sql, /supabase_admin/);
+
+  assert.equal(overstyrTillatt(rolleFraKall({
+    jwtClaims: '{"role":"service_role"}',
+    jwtClaimRole: null,
+    sessionUser: "authenticator",
+  })), true);
+  assert.equal(overstyrTillatt(rolleFraKall({
+    jwtClaims: "",
+    jwtClaimRole: "service_role",
+    sessionUser: "authenticator",
+  })), true);
+  assert.equal(overstyrTillatt(rolleFraKall({
+    jwtClaims: null,
+    jwtClaimRole: null,
+    sessionUser: "authenticator",
+  })), false);
+  assert.equal(overstyrTillatt(rolleFraKall({
+    jwtClaims: null,
+    jwtClaimRole: null,
+    sessionUser: "postgres",
+  })), true);
+  assert.equal(overstyrTillatt(rolleFraKall({
+    jwtClaims: '{"role":"authenticated"}',
+    jwtClaimRole: "service_role",
+    sessionUser: "postgres",
+  })), false);
+  assert.equal(overstyrTillatt(rolleFraKall({
+    jwtClaims: null,
+    jwtClaimRole: null,
+    sessionUser: "supabase_admin",
+  })), false);
 });
 
 test("manglende høringsfrist er kjørestatus, ikke en varsler.status", () => {
