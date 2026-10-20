@@ -3,12 +3,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
   byggVarselRad,
+  dedupEtterInnhold,
   dedupEtterKilde,
   erKulturRelevant,
   erKulturSak,
   erPortefoljesak,
   erRegjeringenRelevant,
   finnHøringsfrist,
+  innholdDedupNokkel,
   kategoriFraTittel,
   kildeNokkel,
   statusFraFrist,
@@ -427,13 +429,21 @@ Deno.serve(async (req: Request) => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     // Hent eksisterende kilder for deduplicering. Feil her avbryter før innhenting.
-    const { data: eks, error: eksFeil } = await supabase.from("varsler").select("kilde");
+    // Innholdsnøkkelen (instans, tittel, frist, sak-id) fanger samme sak på ny URL.
+    const { data: eks, error: eksFeil } = await supabase
+      .from("varsler")
+      .select("kilde, instans, tittel, frist");
     if (eksFeil) {
       return jsonSvar({ feil: "Eksisterende saker kunne ikke hentes. Ingen innhenting startet." }, 503);
     }
     const eksKilder = new Set(
       (eks ?? [])
         .map((v: any) => kildeNokkel(v.kilde))
+        .filter((n: string | null): n is string => !!n),
+    );
+    const eksInnhold = new Set(
+      (eks ?? [])
+        .map((v: any) => innholdDedupNokkel(v))
         .filter((n: string | null): n is string => !!n),
     );
 
@@ -487,7 +497,11 @@ Deno.serve(async (req: Request) => {
     });
     // Samme normaliserte URL to ganger i én kjøring (to sesjoner, eller samme
     // sak to ganger) blir én rad. Det var slik p=200362 og p=200367 ble doblet.
-    const nye = dedupEtterKilde(kandidater, eksKilder);
+    // Deretter samme instans, normalisert tittel og frist: møtesaken som
+    // ligger på flere URL-er settes inn én gang. Vi oppdaterer ikke eksisterende
+    // rader, så manuelt redigert tittel, sammendrag og kategori blir stående.
+    const etterUrl = dedupEtterKilde(kandidater, eksKilder);
+    const nye = dedupEtterInnhold(etterUrl, eksInnhold);
 
     console.log(
       `Totalt hentet: ${alle.length}, nye og relevante: ${nye.length}`,
@@ -564,6 +578,8 @@ Deno.serve(async (req: Request) => {
             antallAvvist++;
             const nokkel = kildeNokkel(item.kilde);
             if (nokkel) eksKilder.add(nokkel);
+            const innhold = innholdDedupNokkel(item);
+            if (innhold) eksInnhold.add(innhold);
           }
           continue;
         }
@@ -604,6 +620,8 @@ Deno.serve(async (req: Request) => {
         );
         const nokkel = kildeNokkel(item.kilde);
         if (nokkel) eksKilder.add(nokkel);
+        const innhold = innholdDedupNokkel(item);
+        if (innhold) eksInnhold.add(innhold);
       }
     }
 

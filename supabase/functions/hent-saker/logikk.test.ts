@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   adapterFraKildeUrl,
   byggVarselRad,
+  dedupEtterInnhold,
   dedupEtterKilde,
   dekodXml,
   erKulturRelevant,
@@ -15,10 +16,12 @@ import {
   ekstraFristside,
   erRegjeringenRelevant,
   finnHøringsfrist,
+  innholdDedupNokkel,
   kildeNokkel,
   kildeUuidForAdapter,
   normaliserKildeUrl,
   parseRegjeringenFrist,
+  utenManuelleTekstfelt,
   parseStortingetDato,
   statusFraFrist,
   parseRssItems,
@@ -521,6 +524,141 @@ test("RSS dekoder &amp; og dedup treffer rader som fortsatt har entiteten", () =
     [kildeNokkel(kodet)!],
   );
   assert.deepEqual(ut, []);
+});
+
+test("innholdsnøkkel slår sammen møtesak med ulik URL og skiller Stortinget-saker", () => {
+  const ostfold = {
+    instans: "Østfold fylkeskommune",
+    tittel: "Tilskuddsordninger kultur og idrett - orientering om tildelinger 2026",
+    frist: null,
+  };
+  assert.equal(
+    innholdDedupNokkel({
+      ...ostfold,
+      kilde: "https://einnsyn.no/moetesak/ms_01m20gmwb2ebbt19bpqjxp7v3v",
+    }),
+    innholdDedupNokkel({
+      ...ostfold,
+      kilde: "https://einnsyn.no/moetesak/ms_01m22y2538ezjr23mbf5z13jd8",
+    }),
+  );
+  assert.equal(
+    innholdDedupNokkel({
+      instans: "Bergen bystyre, Bergen kommune",
+      tittel: "Overføring av landbruksoppgaver til myndighetsnivå 1 i Byrådsavdeling for næring, kultur og idrett",
+      frist: null,
+      kilde: "https://www.bergen.kommune.no/politikk/politiskeutvalg/571424/mote/9064081/sak/269441",
+    }),
+    innholdDedupNokkel({
+      instans: "Bergen bystyre, Bergen kommune",
+      tittel: "Overføring av landbruksoppgaver til myndighetsnivå 1 i Byrådsavdeling for næring, kultur og idrett",
+      frist: null,
+      kilde: "https://www.bergen.kommune.no/politikk/politiskeutvalg/571424/mote/9064089/sak/270599",
+    }),
+  );
+  assert.equal(
+    innholdDedupNokkel({
+      instans: "Bydel Ullern",
+      tittel: "Årshjul Ullern kultur - og oppvekstkomite 2026",
+      frist: null,
+      kilde: "https://einnsyn.no/moetesak/ms_a",
+    }),
+    innholdDedupNokkel({
+      instans: "Bydel Ullern",
+      tittel: "Årshjul Ullern kultur- og oppvekstkomite 2026",
+      frist: null,
+      kilde: "https://einnsyn.no/moetesak/ms_b",
+    }),
+  );
+
+  const stortingTittel =
+    "Endringer i åndsverkloven mv. (gjennomføring av nett- og videresendingsdirektivet)";
+  assert.notEqual(
+    innholdDedupNokkel({
+      instans: "Familie- og kulturkomiteen, Stortinget",
+      tittel: stortingTittel,
+      frist: null,
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200242",
+    }),
+    innholdDedupNokkel({
+      instans: "Familie- og kulturkomiteen, Stortinget",
+      tittel: stortingTittel,
+      frist: null,
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200243",
+    }),
+  );
+  assert.notEqual(
+    innholdDedupNokkel({
+      instans: "Stortinget",
+      tittel: "Høring om kulturloven",
+      frist: "2026-11-01",
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=1",
+    }),
+    innholdDedupNokkel({
+      instans: "Stortinget",
+      tittel: "Høring om kulturloven",
+      frist: "2026-12-01",
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=1",
+    }),
+  );
+  assert.notEqual(
+    innholdDedupNokkel({
+      instans: "Regjeringen",
+      tittel: "Høring",
+      frist: null,
+      kilde: "https://www.regjeringen.no/no/dokumenter/horing/id111/",
+    }),
+    innholdDedupNokkel({
+      instans: "Regjeringen",
+      tittel: "Høring",
+      frist: null,
+      kilde: "https://www.regjeringen.no/no/dokumenter/horing/id222/",
+    }),
+  );
+});
+
+test("innholdsdedup beholder første og hopper over allerede lagret møtesak", () => {
+  const lagret = innholdDedupNokkel({
+    instans: "Østfold fylkeskommune",
+    tittel: "Tilskuddsordninger kultur og idrett - orientering om tildelinger 2026",
+    frist: null,
+    kilde: "https://einnsyn.no/moetesak/ms_eldst",
+  });
+  const ut = dedupEtterInnhold(
+    [
+      {
+        id: "ny-url",
+        instans: "Østfold fylkeskommune",
+        tittel: "Tilskuddsordninger kultur og idrett - orientering om tildelinger 2026",
+        frist: null,
+        kilde: "https://einnsyn.no/moetesak/ms_ny",
+      },
+      {
+        id: "annen",
+        instans: "Bergen bystyre, Bergen kommune",
+        tittel: "Annen sak",
+        frist: null,
+        kilde: "https://www.bergen.kommune.no/politikk/sak/1",
+      },
+    ],
+    lagret ? [lagret] : [],
+  );
+  assert.deepEqual(ut.map((r) => r.id), ["annen"]);
+});
+
+test("manuelt redigerte rader mister ikke tittel, sammendrag eller kategori i en oppdatering", () => {
+  const rad = {
+    tittel: "Ny tittel fra backfill",
+    sammendrag: "Nytt sammendrag",
+    kategori: "musikk",
+    frist: "2026-11-23",
+    status: "viktig",
+  };
+  assert.deepEqual(utenManuelleTekstfelt(rad, false), rad);
+  assert.deepEqual(utenManuelleTekstfelt(rad, true), {
+    frist: "2026-11-23",
+    status: "viktig",
+  });
 });
 
 // ─── kilde_id og konsistent kilde_nokkel ──────────────────────────────────────

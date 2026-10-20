@@ -489,6 +489,95 @@ export function dedupEtterKilde<T extends { kilde?: string | null }>(
   return ut;
 }
 
+/**
+ * Sammenligningstekst for innholdsduplikater.
+ * Må holde seg lik public.normaliser_innhold_tekst.
+ * Små bokstaver, æøå beholdes, tegnsetting og ekstra mellomrom blir ett mellomrom.
+ */
+export function normaliserInnholdTekst(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const s = raw.toLowerCase().replace(/[^0-9a-zæøå]+/g, " ").trim();
+  return s || null;
+}
+
+/**
+ * Sak-id som gjør at like titler fortsatt er ulike saker.
+ * Stortinget p=, regjeringsdokument id og fragment på Kulturdirektoratet
+ * eller ventede saker. Møte-URL-er (eInnsyn, Bergen) inngår ikke:
+ * samme sak i flere møter er ett innhold.
+ * Må holde seg lik public.innhold_dedup_nokkel.
+ */
+export function stabilSakId(kilde: string | null | undefined): string {
+  if (!kilde) return "";
+  if (/stortinget\.no/i.test(kilde) && !/ventede-saker/i.test(kilde)) {
+    const sak = kilde.match(/[?&]p=(\d+)/i);
+    if (sak) return `p=${sak[1]}`;
+  }
+  if (/regjeringen\.no/i.test(kilde)) {
+    const dok = kilde.match(/\/id(\d+)/i);
+    if (dok) return `id${dok[1]}`;
+  }
+  if (/kulturdirektoratet\.no/i.test(kilde)) {
+    const hash = kilde.indexOf("#");
+    if (hash >= 0) return kilde.slice(hash).toLowerCase();
+  }
+  if (/stortinget\.no/i.test(kilde)) {
+    const lav = kilde.toLowerCase();
+    const i = lav.indexOf("#sak-");
+    if (i >= 0) return lav.slice(i);
+  }
+  return "";
+}
+
+export type InnholdNokkelInn = {
+  instans?: string | null;
+  tittel?: string | null;
+  frist?: string | null;
+  kilde?: string | null;
+};
+
+/** instans + normalisert tittel + fristdato + stabil sak-id. Uten frist er datodelen tom. */
+export function innholdDedupNokkel(item: InnholdNokkelInn): string | null {
+  const instans = normaliserInnholdTekst(item.instans);
+  const tittel = normaliserInnholdTekst(item.tittel);
+  if (!instans || !tittel) return null;
+  const dato = item.frist ? String(item.frist).slice(0, 10) : "";
+  return `${instans}|${tittel}|${dato}|${stabilSakId(item.kilde)}`;
+}
+
+/** Første treff per innholdsnøkkel. Rader uten nøkkel beholdes. */
+export function dedupEtterInnhold<T extends InnholdNokkelInn>(
+  items: T[],
+  allerede: Iterable<string> = [],
+): T[] {
+  const sett = new Set(allerede);
+  const ut: T[] = [];
+  for (const item of items) {
+    const nokkel = innholdDedupNokkel(item);
+    if (nokkel && sett.has(nokkel)) continue;
+    if (nokkel) sett.add(nokkel);
+    ut.push(item);
+  }
+  return ut;
+}
+
+/**
+ * Backfill og oppdatering skal ikke skrive om tittel, sammendrag eller kategori
+ * når manuelt_redigert er satt. Kolonnen kommer fra Regjeringen-sporet og
+ * kan mangle; da er flagget false og raden skrives som vanlig.
+ */
+export function utenManuelleTekstfelt<T extends Record<string, unknown>>(
+  rad: T,
+  manueltRedigert: boolean,
+): T {
+  if (!manueltRedigert) return rad;
+  const kopi = { ...rad };
+  delete kopi.tittel;
+  delete kopi.sammendrag;
+  delete kopi.kategori;
+  return kopi;
+}
+
 /** Følg gjeldende sesjon og behold fjoråret for saker som fortsatt behandles. */
 export function stortingsSesjoner(nå = Date.now()): string[] {
   const dato = new Intl.DateTimeFormat("sv-SE", {
