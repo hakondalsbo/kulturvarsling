@@ -100,9 +100,11 @@ docs/                    ARKITEKTUR, KILDEKART, VEIKART, FORSLAG,
 ```bash
 npm install
 npm run dev        # lokal utviklingsserver (Vite)
-npm test           # enhetstester (Node --test): edge-logikk + tests/
+npm test           # enhetstester (Node --test) for supabase/functions
 npm run lint       # ESLint, null advarsler tillatt
-npm run build      # tsc -b + vite build
+npm run build      # vite build, samme kommando som Vercel
+npm run typecheck  # tsc -b. Feiler til de kjente feilene er borte
+npm run typecheck:baseline  # feiler bare hvis tsc-feilene blir flere enn tsc-baseline.txt
 ```
 
 Appen laster `@supabase/supabase-js` via esm.sh i `App.tsx`. Supabase anon-nøkkel er offentlig av
