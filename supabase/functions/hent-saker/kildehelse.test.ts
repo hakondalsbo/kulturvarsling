@@ -9,7 +9,9 @@ import {
   feilFraStatus,
   feilFraUnntak,
   klassifiserKjøring,
+  lesSakerListe,
   samleRssSvar,
+  sesjonIdStemmer,
   slåSammenAdapterdeler,
   stortingsesjon,
   tidligAvslag,
@@ -304,12 +306,13 @@ test("feilmelding til kjøringloggen har verken URL eller rå svartekst", () => 
 
 test("to stortingssesjoner: én feil er delvis, og treff fra den andre beholdes", () => {
   const utfall = slåSammenAdapterdeler([
-    { items: [{ id: 1 }], raattAntall: 100, antallEtterFilter: 4, feil: null },
+    { items: [{ id: 1 }], raattAntall: 100, antallEtterFilter: 4, feil: null, httpStatus: 200 },
     {
       items: [],
       raattAntall: 0,
       antallEtterFilter: 0,
       feil: feilFraStatus(500, "https://data.stortinget.no/eksport/saker?sesjonid=2024-2025"),
+      httpStatus: 500,
     },
   ]);
   assert.equal(utfall.forsok, 2);
@@ -349,6 +352,85 @@ test("x-cron-secret sjekkes før metode: mangler, feil og helsesjekk", () => {
   assert.equal(annet?.kind, "tekst");
 
   assert.equal(tidligAvslag("POST", "hemmelig", "hemmelig"), null);
+});
+
+test("vellykket kall beholder http-status, også når ingenting er nytt", () => {
+  const nye = klassifiserKjøring({
+    raattAntall: 854,
+    antallNye: 2,
+    feil: [],
+    forsok: 2,
+    vellykket: 2,
+    httpStatus: 200,
+  });
+  assert.equal(nye.status, "ok_nye");
+  assert.equal(nye.httpStatus, 200);
+  assert.equal(nye.feilmelding, null);
+
+  const ingen = klassifiserKjøring({
+    raattAntall: 854,
+    antallNye: 0,
+    feil: [],
+    forsok: 2,
+    vellykket: 2,
+    httpStatus: 200,
+  });
+  assert.equal(ingen.status, "ok_ingen_nye");
+  assert.equal(ingen.httpStatus, 200);
+});
+
+test("0 rå fra en kilde som normalt har treff er feil_tomt_svar, ikke ok_ingen_nye", () => {
+  const r = klassifiserKjøring({
+    raattAntall: 0,
+    antallNye: 0,
+    feil: [],
+    forsok: 2,
+    vellykket: 2,
+    httpStatus: 200,
+    forventerTreff: true,
+  });
+  assert.equal(r.status, "feil_tomt_svar");
+  assert.notEqual(r.status, "ok_ingen_nye");
+  assert.notEqual(r.status, "tom");
+  assert.equal(r.httpStatus, 200);
+  assert.equal(r.feilmelding, "Kilden svarte uten treff");
+  assertLovligStatus(r.status);
+});
+
+test("0 rå uten forventet treff forblir tom, med http-status", () => {
+  const r = klassifiserKjøring({
+    raattAntall: 0,
+    antallNye: 0,
+    feil: [],
+    forsok: 1,
+    vellykket: 1,
+    httpStatus: 200,
+  });
+  assert.equal(r.status, "tom");
+  assert.equal(r.httpStatus, 200);
+  assert.equal(r.feilmelding, null);
+});
+
+test("Stortinget-liste: array, omslag og feil sesjon", () => {
+  const flat = lesSakerListe({ sesjon_id: "2025-2026", saker_liste: [{ id: 1 }, { id: 2 }] });
+  assert.ok(!("feil" in flat));
+  if (!("feil" in flat)) assert.equal(flat.saker.length, 2);
+
+  const omslag = lesSakerListe({ saker_liste: { sak: [{ id: 9 }] } });
+  assert.ok(!("feil" in omslag));
+  if (!("feil" in omslag)) assert.equal(omslag.saker[0].id, 9);
+
+  const en = lesSakerListe({ saker_liste: { sak: { id: 3 } } });
+  assert.ok(!("feil" in en));
+  if (!("feil" in en)) assert.equal(en.saker.length, 1);
+
+  assert.deepEqual(lesSakerListe({ saker_liste: [] }), { saker: [] });
+  assert.ok("feil" in lesSakerListe({}));
+  assert.ok("feil" in lesSakerListe(null));
+
+  assert.equal(sesjonIdStemmer({ sesjon_id: "2025-2026" }, "2025-2026"), true);
+  assert.equal(sesjonIdStemmer({ sesjon_id: "2026-2027" }, "2025-2026"), false);
+  assert.equal(sesjonIdStemmer({ saker_liste: [] }, "2025-2026"), true);
 });
 
 test("pg_cron-body utlost_av blir supabase_cron", () => {

@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta } from "./avis.tsx";
+import { kommuneLoginSynlig } from "./kommunelogin.ts";
+import { PREMIUM_AAR_KR, PREMIUM_MAANED_KR, sparProsentArlig } from "./priser.ts";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase → Settings → API
@@ -123,13 +125,45 @@ async function signKampanje(kampanjeId, brukerId, navn, epost) {
 }
 
 async function sendFeedbackDB(brukerId, type, tekst, sakTittel) {
-  const { error } = await sb.from("feedback").insert({
-    bruker_id: brukerId ?? null,
-    type,
-    tekst,
-    sak_tittel: sakTittel ?? null
-  });
-  return error;
+  const { data } = await sb.auth.getSession();
+  const token = data?.session?.access_token ?? null;
+  const innlogget = data?.session?.user?.id ?? null;
+  // Kolonnene er public.feedback: bruker_id, type, tekst, sak_tittel.
+  // id, status ('ny') og opprettet har default. type må være en av
+  // feil | mangler | utdatert | forslag | annet.
+  // Prefer return=minimal: return=representation krever SELECT-policy, og den
+  // finnes ikke. Da svarer API-et 42501 og raden lagres ikke.
+  const bruker_id = token && innlogget ? innlogget : null;
+  if (brukerId && bruker_id && brukerId !== bruker_id) {
+    console.error("Feedback: bruker_id fra kalleren matchet ikke sesjonen, bruker sesjonen");
+  }
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/feedback`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON,
+        Authorization: `Bearer ${token ?? SUPABASE_ANON}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        bruker_id,
+        type,
+        tekst,
+        sak_tittel: sakTittel ?? null,
+      }),
+    });
+  } catch (e) {
+    return { message: "Kunne ikke nå serveren. Prøv igjen." };
+  }
+  if (res.ok) return null;
+  let message = `Kunne ikke lagre tilbakemeldingen (HTTP ${res.status}).`;
+  try {
+    const body = await res.json();
+    if (typeof body?.message === "string" && body.message.trim()) message = body.message;
+  } catch { /* tom feilkropp */ }
+  return { message };
 }
 
 // ─── Tokens ────────────────────────────────────────────────────────────────
@@ -380,7 +414,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
             <span className="avis-dato-meta">{datoMeta(varsler.length)}</span>
           </div>
           <div className="avis-dato-hoyre">
-            <button type="button" onClick={()=>setScreen("kommune-login")}>For kommuner</button>
+            {kommuneLoginSynlig && <button type="button" onClick={()=>setScreen("kommune-login")}>For kommuner</button>}
             <button type="button" onClick={()=>setScreen("bruker-login")}>Logg inn</button>
           </div>
         </div>
@@ -817,7 +851,7 @@ function BrukerLogin({setScreen,setUser}) {
           </div>
         </Card>
         <div style={{textAlign:"center",marginTop:12,display:"flex",justifyContent:"center",gap:20}}>
-          <button onClick={()=>setScreen("kommune-login")} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>🏛 Er du fra en kommune?</button>
+          {kommuneLoginSynlig && <button onClick={()=>setScreen("kommune-login")} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>🏛 Er du fra en kommune?</button>}
           <button onClick={()=>setScreen("bruker-app")} style={{background:"none",border:"none",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>← Tilbake</button>
         </div>
       </div>
@@ -954,7 +988,7 @@ function BrukerApp({user,setUser,setScreen}) {
             <KildeTillitsstrip onÅpne={()=>gå("kilder")}/>
           </div>
           <div className="avis-dato-hoyre">
-            <button type="button" onClick={()=>setScreen("kommune-login")}>For kommuner</button>
+            {kommuneLoginSynlig && <button type="button" onClick={()=>setScreen("kommune-login")}>For kommuner</button>}
             {user ? (
               <>
                 <button type="button" onClick={()=>gå("profil")}>{user.org||user.navn||"Min profil"}</button>
@@ -998,7 +1032,7 @@ function BrukerApp({user,setUser,setScreen}) {
           {mer.map(m=>(
             <button type="button" key={m.id} className={view===m.id?"aktiv":undefined} onClick={()=>gå(m.id)}>{m.label}</button>
           ))}
-          <button type="button" onClick={()=>setScreen("kommune-login")}>For kommuner</button>
+          {kommuneLoginSynlig && <button type="button" onClick={()=>setScreen("kommune-login")}>For kommuner</button>}
           {user
             ? <button type="button" onClick={loggUt}>Logg ut</button>
             : <button type="button" onClick={()=>setScreen("bruker-login")}>Logg inn</button>}
@@ -2907,7 +2941,7 @@ function PremiumModal({user,onClose,onLogin}) {
         </div>
         <div style={{padding:"24px 28px"}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
-            {[["monthly","99 kr/mnd","Månedlig"],["yearly","790 kr/år","Årlig – spar 20%"]].map(([id,pris,label])=>(
+            {[["monthly",`${PREMIUM_MAANED_KR} kr/mnd`,"Månedlig"],["yearly",`${PREMIUM_AAR_KR} kr/år`,`Årlig – spar ${sparProsentArlig()} %`]].map(([id,pris,label])=>(
               <button key={id} onClick={()=>setPlan(id)} style={{padding:"14px",borderRadius:12,border:`2px solid ${plan===id?C.purple:C.border}`,background:plan===id?"#F5F3FF":C.bgCard,cursor:"pointer",textAlign:"center",fontFamily:"inherit"}}>
                 <div style={{fontWeight:800,fontSize:18,color:plan===id?C.purple:C.text}}>{pris}</div>
                 <div style={{fontSize:12,color:C.muted,marginTop:2}}>{label}</div>
@@ -3450,8 +3484,8 @@ export default function App() {
 
   if(screen==="bruker-login")    return <><ToastContainer/><BrukerLogin setScreen={setScreen} setUser={setUser}/></>;
   if(screen==="bruker-app")      return <><ToastContainer/><BrukerApp user={user} setUser={setUser} setScreen={setScreen}/></>;
-  if(screen==="kommune-login")   return <><ToastContainer/><KommuneLogin setScreen={setScreen} setKommune={setKommune}/></>;
-  if(screen==="kommune-app")     return <><ToastContainer/><KommuneApp kommune={kommune} setScreen={setScreen}/></>;
+  if(kommuneLoginSynlig && screen==="kommune-login") return <><ToastContainer/><KommuneLogin setScreen={setScreen} setKommune={setKommune}/></>;
+  if(kommuneLoginSynlig && screen==="kommune-app")   return <><ToastContainer/><KommuneApp kommune={kommune} setScreen={setScreen}/></>;
   return <><ToastContainer/><BrukerApp user={user} setUser={setUser} setScreen={setScreen}/></>;
 }
 

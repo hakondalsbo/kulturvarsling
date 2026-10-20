@@ -168,6 +168,71 @@ export function parseRssItems(xml: string, instans: string): RssItem[] {
   return items;
 }
 
+/**
+ * Nøkkel for dedup av varsler.kilde.
+ * Skjema og vert lavere, standardport bort, avsluttende skråstrek i stien
+ * bort, spørringsparametre sortert. Fragmentet beholdes: Kulturdirektoratet
+ * og ventede saker skiller rundene/sakene med #.
+ * Må holde seg lik public.normaliser_kilde_url i migrasjonen.
+ */
+export function normaliserKildeUrl(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  let s = raw.trim();
+  if (!s) return null;
+
+  let fragment = "";
+  const hash = s.indexOf("#");
+  if (hash >= 0) {
+    fragment = s.slice(hash);
+    s = s.slice(0, hash);
+  }
+
+  let query = "";
+  const q = s.indexOf("?");
+  if (q >= 0) {
+    query = s.slice(q + 1);
+    s = s.slice(0, q);
+  }
+  const qNorm = query
+    .split("&")
+    .filter((del) => del.length > 0)
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    .join("&");
+  const hale = `${qNorm ? `?${qNorm}` : ""}${fragment}`;
+
+  const m = s.match(/^(https?):\/\/([^/]*)(.*)$/i);
+  if (!m) {
+    const sti = s.length > 1 ? s.replace(/\/+$/, "") : s;
+    return `${sti}${hale}`;
+  }
+  const scheme = m[1].toLowerCase();
+  const authority = m[2];
+  let path = m[3] ?? "";
+  const at = authority.lastIndexOf("@");
+  const userinfo = at >= 0 ? authority.slice(0, at + 1) : "";
+  let hostport = (at >= 0 ? authority.slice(at + 1) : authority).toLowerCase();
+  if (scheme === "http" && hostport.endsWith(":80")) hostport = hostport.slice(0, -3);
+  if (scheme === "https" && hostport.endsWith(":443")) hostport = hostport.slice(0, -4);
+  if (path.length > 1) path = path.replace(/\/+$/, "");
+  return `${scheme}://${userinfo}${hostport}${path}${hale}`;
+}
+
+/** Første treff per normalisert kilde-URL. Rader uten URL droppes. */
+export function dedupEtterKilde<T extends { kilde?: string | null }>(
+  items: T[],
+  allerede: Iterable<string> = [],
+): T[] {
+  const sett = new Set(allerede);
+  const ut: T[] = [];
+  for (const item of items) {
+    const nokkel = normaliserKildeUrl(item.kilde ?? null);
+    if (!nokkel || sett.has(nokkel)) continue;
+    sett.add(nokkel);
+    ut.push(item);
+  }
+  return ut;
+}
+
 /** Følg gjeldende sesjon og behold fjoråret for saker som fortsatt behandles. */
 export function stortingsSesjoner(nå = Date.now()): string[] {
   const dato = new Intl.DateTimeFormat("sv-SE", {
