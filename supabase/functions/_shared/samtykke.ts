@@ -2,6 +2,13 @@
 // databasekall, slik at filen kan testes med Node.
 
 export const SAMTYKKE_VERSJON = "nyhetsbrev-2026-10";
+/** Teksten de eksisterende venteside-radene faktisk så. */
+export const HISTORISK_VERSJON = "venteside-2026-03-15";
+/** Pause mellom kall til Resend, omtrent to i sekundet. */
+export const BEKREFTELSE_PAUSE_MS = 550;
+/** Ett kall får ikke sende mer enn dette. 110 lanseringsadresser ligger under taket. */
+export const MAKS_BEKREFTELSER_PER_KALL = 200;
+export const FORHANDSVISNING_TOKEN = "00000000-0000-4000-8000-000000000000";
 export const PERSONVERN_VERSJON = "personvern-2026-10";
 export const KILDE_VENTESIDE = "venteside";
 /** Settes ikke av koden. Håkon kan merke gamle rader med denne verdien senere. */
@@ -449,6 +456,188 @@ export function velgVentendeBekreftelser(
     });
   }
   return [...grupper.values()];
+}
+
+export type BekreftMaal = "lansering" | "nye";
+
+export type BekreftOppdrag =
+  | { type: "avvist"; grunn: string }
+  | { type: "torrkjor"; maal: BekreftMaal }
+  | { type: "test"; maal: BekreftMaal; til: string }
+  | { type: "alle"; maal: BekreftMaal };
+
+/**
+ * Tom forespørsel, tom streng og en liste er aldri «alle».
+ * Massesending krever maal og bekreft: "send". Én adresse krever til.
+ */
+export function lesBekreftelsesOppdrag(body: unknown): BekreftOppdrag {
+  const stopp = "Ingenting er sendt.";
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { type: "avvist", grunn: `Tom forespørsel. ${stopp}` };
+  }
+  const felt = body as Record<string, unknown>;
+  if (Array.isArray(felt.til) || Array.isArray(felt.mottakere) || felt.mottakere != null) {
+    return { type: "avvist", grunn: `Mottakerliste godtas ikke. ${stopp}` };
+  }
+  if (felt.til === "" || felt.til === null) {
+    return { type: "avvist", grunn: `Tom mottaker. ${stopp}` };
+  }
+  const maal = felt.maal === "lansering" || felt.maal === "nye" ? felt.maal : null;
+  if (!maal) return { type: "avvist", grunn: `Mangler maal lansering eller nye. ${stopp}` };
+  if (typeof felt.til === "string") {
+    const til = normaliserEpost(felt.til);
+    if (!erGyldigEpost(til)) return { type: "avvist", grunn: `Ugyldig adresse. ${stopp}` };
+    return { type: "test", maal, til };
+  }
+  if (felt.til != null) return { type: "avvist", grunn: `Ugyldig mottaker. ${stopp}` };
+  if (felt.bekreft === "send") return { type: "alle", maal };
+  return { type: "torrkjor", maal };
+}
+
+export function malErUtkast(raw: string): boolean {
+  return /\bUTKAST\b/.test(raw);
+}
+
+export function parseLanseringsmal(raw: string): { emne: string; tekst: string } | { feil: string } {
+  const utenMarkor = raw.replace(/^\uFEFF/, "").split(/\r?\n/)
+    .filter((linje) => linje.trim() !== "UTKAST")
+    .join("\n");
+  const emneTreff = utenMarkor.match(/^Emne:\s*(.+)$/m);
+  if (!emneTreff) return { feil: "Malen mangler Emne:." };
+  const emne = emneTreff[1].trim();
+  if (!emne) return { feil: "Emne er tomt." };
+  const tekst = utenMarkor.replace(/^Emne:\s*.+$/m, "").trim();
+  if (!tekst.includes("{{bekreftelseslenke}}")) return { feil: "Malen mangler {{bekreftelseslenke}}." };
+  if (!tekst.includes("{{avmeldingslenke}}")) return { feil: "Malen mangler {{avmeldingslenke}}." };
+  return { emne, tekst };
+}
+
+export function fyllLanseringsmal(
+  mal: { emne: string; tekst: string },
+  felt: { bekreftelseslenke: string; avmeldingslenke: string; behandlingsansvarlig: string },
+): { emne: string; tekst: string; html: string } {
+  const sett = (verdi: string) => verdi
+    .replaceAll("{{bekreftelseslenke}}", felt.bekreftelseslenke)
+    .replaceAll("{{avmeldingslenke}}", felt.avmeldingslenke)
+    .replaceAll("{{behandlingsansvarlig}}", felt.behandlingsansvarlig);
+  const emne = sett(mal.emne);
+  const tekst = sett(mal.tekst);
+  const htmlTekst = escapeHtml(tekst)
+    .replaceAll(
+      escapeHtml(felt.bekreftelseslenke),
+      `<a href="${escapeHtml(felt.bekreftelseslenke)}">Bekreft påmeldingen</a>`,
+    )
+    .replaceAll(
+      escapeHtml(felt.avmeldingslenke),
+      `<a href="${escapeHtml(felt.avmeldingslenke)}">Meld meg av</a>`,
+    );
+  return {
+    emne,
+    tekst,
+    html: `<!doctype html><html lang="no"><body style="font-family:Georgia,serif;background:#FBF8F2;color:#1C1B19;padding:32px;"><p style="white-space:pre-wrap">${htmlTekst}</p></body></html>`,
+  };
+}
+
+/**
+ * Bryteren av, tørrkjør, UTKAST eller for stor liste sender ingenting.
+ * Testsending av utkast går bare til den ene adressen, og stemples ikke.
+ */
+export function utsendelsesBeslutning(args: {
+  oppdrag: BekreftOppdrag;
+  aktiv: boolean;
+  utkast: boolean;
+  antall: number;
+}): { send: false; grunn: string; sandkasse: boolean } | { send: true; sandkasse: boolean } {
+  const sandkasse = args.oppdrag.type === "test" && (args.utkast || args.antall === 0);
+  if (args.oppdrag.type === "avvist") return { send: false, grunn: args.oppdrag.grunn, sandkasse: false };
+  if (!args.aktiv) {
+    return { send: false, grunn: "UTSENDING_AKTIV er av. Ingenting er sendt.", sandkasse };
+  }
+  if (args.oppdrag.type === "torrkjor") {
+    return { send: false, grunn: "Tørrkjør. Ingenting er sendt.", sandkasse: false };
+  }
+  if (args.oppdrag.type === "alle" && args.oppdrag.maal === "lansering" && args.utkast) {
+    return { send: false, grunn: "Malen er merket UTKAST. Massesending er stoppet. Ingenting er sendt.", sandkasse: false };
+  }
+  if (args.oppdrag.type === "alle" && args.antall > MAKS_BEKREFTELSER_PER_KALL) {
+    return { send: false, grunn: "For mange mottakere til én kjøring. Ingenting er sendt.", sandkasse: false };
+  }
+  if (args.oppdrag.type === "alle" && args.antall === 0) {
+    return { send: false, grunn: "Ingen kvalifiserte mottakere. Ingenting er sendt.", sandkasse: false };
+  }
+  return { send: true, sandkasse };
+}
+
+export type Lanseringsrad = {
+  id: number;
+  epost: string | null;
+  avmeldings_token: string | null;
+  bekreftelses_token: string | null;
+  samtykke_tekst_versjon: string | null;
+  bekreftet_at: string | null;
+  avmeldt_at: string | null;
+  bekreftelse_sendt_at: string | null;
+};
+
+export type Lanseringsvalg = {
+  id: number;
+  epost: string;
+  avmeldings_token: string | null;
+  bekreftelses_token: string | null;
+  ovrigeIder: number[];
+};
+
+/**
+ * Gamle ubekreftede rader med venteside-teksten. Ikke nye skjema,
+ * ikke bekreftede, ikke avmeldte, og aldri en adresse som allerede
+ * har fått lanseringsmail. Laveste id får brevet.
+ */
+export function velgLanseringsmottakere(
+  rader: Lanseringsrad[],
+  allerede: { eposter?: ReadonlySet<string> } = {},
+): Lanseringsvalg[] {
+  const blokkert = new Set<string>();
+  for (const adresse of allerede.eposter ?? []) {
+    const epost = normaliserEpost(adresse);
+    if (erGyldigEpost(epost)) blokkert.add(epost);
+  }
+  for (const rad of rader) {
+    const epost = normaliserEpost(rad.epost ?? "");
+    if (erGyldigEpost(epost) && rad.bekreftelse_sendt_at) blokkert.add(epost);
+  }
+  const grupper = new Map<string, Lanseringsvalg>();
+  const sortert = [...rader].sort((a, b) => a.id - b.id);
+  for (const rad of sortert) {
+    const epost = normaliserEpost(rad.epost ?? "");
+    if (!erGyldigEpost(epost) || blokkert.has(epost)) continue;
+    if (rad.samtykke_tekst_versjon !== HISTORISK_VERSJON) continue;
+    if (rad.bekreftet_at || rad.avmeldt_at || rad.bekreftelse_sendt_at) continue;
+    const finnes = grupper.get(epost);
+    if (finnes) {
+      finnes.ovrigeIder.push(rad.id);
+      continue;
+    }
+    grupper.set(epost, {
+      id: rad.id,
+      epost,
+      avmeldings_token: erUuid(rad.avmeldings_token) ? rad.avmeldings_token : null,
+      bekreftelses_token: erUuid(rad.bekreftelses_token) ? rad.bekreftelses_token : null,
+      ovrigeIder: [],
+    });
+  }
+  return [...grupper.values()];
+}
+
+/** Klikk på bekreftelseslenken. Eksisterende samtykketidspunkt beholdes. */
+export function feltVedBekreftelse(
+  rad: { samtykke_gitt_at: string | null },
+  naa: string,
+): { bekreftet_at: string; avmeldt_at: null; samtykke_gitt_at: string } {
+  return {
+    bekreftet_at: naa,
+    avmeldt_at: null,
+    samtykke_gitt_at: rad.samtykke_gitt_at ?? naa,
+  };
 }
 
 /** Suksess bare når skrivingen faktisk gikk gjennom. */

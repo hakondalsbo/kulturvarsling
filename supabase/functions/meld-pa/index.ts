@@ -21,6 +21,7 @@ import {
   bekreftelsesBrev,
   bekreftelsesSide,
   bekreftelsesutfall,
+  feltVedBekreftelse,
   erBlokkert,
   erUuid,
   escapeHtml,
@@ -217,13 +218,18 @@ Deno.serve(async (req: Request) => {
     if (!skalBekreftes.length) {
       return svar({ ok: true, melding: "Påmeldingen er allerede bekreftet." });
     }
-    const skrevet = await db.from("pamelding")
-      .update({ bekreftet_at: new Date().toISOString(), avmeldt_at: null })
-      .in("id", skalBekreftes);
-    const resultat = svarEtterSkriving(skrevet.error?.message ?? null);
-    if (!resultat.ok) {
-      console.error("bekreft skriv", resultat.feil);
-      return svar({ ok: false, feil: "Kunne ikke lagre bekreftelsen. Ingenting er bekreftet." }, 500);
+    const naaBekreft = new Date().toISOString();
+    for (const id of skalBekreftes) {
+      const rad = data.find((treff) => treff.id === id);
+      if (!rad) continue;
+      const skrevet = await db.from("pamelding")
+        .update(feltVedBekreftelse(rad, naaBekreft))
+        .eq("id", id);
+      const resultat = svarEtterSkriving(skrevet.error?.message ?? null);
+      if (!resultat.ok) {
+        console.error("bekreft skriv", resultat.feil);
+        return svar({ ok: false, feil: "Kunne ikke lagre bekreftelsen. Ingenting er bekreftet." }, 500);
+      }
     }
     return svar({ ok: true, melding: "Påmeldingen er bekreftet. Du kan lukke denne siden." });
   }

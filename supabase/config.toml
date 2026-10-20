@@ -4,8 +4,10 @@
 # IKKE deploy nyhetsbrev fra denne branchen før live-kilden (v5) er hentet
 # og sammenlignet med repoet. En deploy overskriver det som kjører.
 #
-# send-bekreftelser er manuell. Ikke legg den i pg_cron eller annen tidsplan,
-# og ikke kall den før kulturvarsling.no er verifisert som avsender i Resend.
+# send-bekreftelser er manuell. Ikke legg den i pg_cron eller annen tidsplan.
+# Utsending krever UTSENDING_AKTIV=true. Uten bryteren er kallet et tørrkjør.
+# Ikke kall den før kulturvarsling.no er verifisert som avsender i Resend,
+# og ikke før UTKAST er fjernet fra lanseringsmalen.
 #
 # stripe-webhook står her med verify_jwt = false fordi det allerede er slik
 # funksjonen kjører i produksjon (Stripe har ingen Supabase-JWT).
