@@ -147,12 +147,17 @@ test("alle kall feilet er feil, ikke delvis og ikke tom", () => {
 
 // ─── RSS: én død feed stopper ikke resten ─────────────────────────────────────
 
-test("død KUD-feed er fjernet, statsråd-feeden er med", () => {
+test("død KUD-feed er fjernet, statsråd og KUD-tillegg er med", () => {
   const urls = REGJERINGEN_FEEDS.map((f) => f.url);
   assert.equal(urls.some((u) => u.includes("/dep/kud/rss")), false);
-  assert.equal(urls.filter((u) => u.includes("documentType=dokumenter/")).length, 4);
+  assert.equal(urls.filter((u) => u.includes("documentType=dokumenter/")).length, 5);
   assert.equal(urls.some((u) => u.includes("offisieltfrastatsr")), true);
-  assert.equal(urls.length, 5);
+  assert.equal(urls.some((u) => u.includes("aktuelt/nyheter") && u.includes("owner=545")), true);
+  assert.equal(urls.some((u) => u.includes("dokumenter/h") && u.includes("owner=545")), true);
+  assert.equal(urls.some((u) => u.includes("loverogregler/retningslinjer") && u.includes("owner=545")), true);
+  assert.equal(urls.some((u) => u.includes("topic=931/1437") && u.includes("owner=545")), true);
+  assert.equal(REGJERINGEN_FEEDS.filter((f) => f.vindu).length, 4);
+  assert.equal(urls.length, 9);
 });
 
 test("én feilende feed stopper ikke senere feeder", async () => {
