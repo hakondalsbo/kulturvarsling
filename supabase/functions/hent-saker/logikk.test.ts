@@ -5,9 +5,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  dedupEtterKilde,
   erKulturRelevant,
   erKulturSak,
   finnHøringsfrist,
+  normaliserKildeUrl,
   parseStortingetDato,
   statusFraFrist,
   parseRssItems,
@@ -353,4 +355,45 @@ test("kilde_id og instans settes riktig", () => {
 test("tomt/ugyldig RSS gir tom liste, ikke krasj", () => {
   assert.deepEqual(parseRssItems("", "X"), []);
   assert.deepEqual(parseRssItems("<html>404 not found</html>", "X"), []);
+});
+
+test("normalisert kilde-URL slår sammen Stortinget-dubletter og beholder fragment", () => {
+  const a = "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200362";
+  const b = "HTTPS://WWW.STORTINGET.NO/no/Saker-og-publikasjoner/Saker/Sak/?p=200362";
+  assert.equal(normaliserKildeUrl(a), normaliserKildeUrl(b));
+  assert.equal(
+    normaliserKildeUrl("https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200367"),
+    "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak?p=200367",
+  );
+  assert.notEqual(
+    normaliserKildeUrl(a),
+    normaliserKildeUrl("https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200367"),
+  );
+  assert.notEqual(
+    normaliserKildeUrl("https://www.kulturdirektoratet.no/vedtak#FLB-AUDIO-2026-02-20"),
+    normaliserKildeUrl("https://www.kulturdirektoratet.no/vedtak#FLB-CINE-2026-02-20"),
+  );
+  assert.equal(
+    normaliserKildeUrl("https://www.stortinget.no:443/no/Saker/?b=2&a=1"),
+    "https://www.stortinget.no/no/Saker?a=1&b=2",
+  );
+  assert.equal(normaliserKildeUrl("  "), null);
+  assert.equal(normaliserKildeUrl(null), null);
+});
+
+test("dedup beholder første rad per normalisert URL og hopper over allerede lagret", () => {
+  const lagret = normaliserKildeUrl(
+    "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200362",
+  );
+  const ut = dedupEtterKilde(
+    [
+      { id: "ny", kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200367" },
+      { id: "dublett", kilde: "HTTPS://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200367" },
+      { id: "gammel", kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200362" },
+      { id: "runde-a", kilde: "https://www.kulturdirektoratet.no/vedtak#A" },
+      { id: "runde-b", kilde: "https://www.kulturdirektoratet.no/vedtak#B" },
+    ],
+    lagret ? [lagret] : [],
+  );
+  assert.deepEqual(ut.map((r) => r.id), ["ny", "runde-a", "runde-b"]);
 });

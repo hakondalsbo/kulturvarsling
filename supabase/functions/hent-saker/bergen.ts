@@ -110,7 +110,7 @@ export async function hentBergenSaker(): Promise<AdapterUtfall> {
     console.log(
       `Bergen: numTotal=${numTotal ?? "mangler"}, rå=${rå.length}, etter rutinesak-filter=${items.length} (${år})`,
     );
-    return okUtfall(items, rå.length, items.length);
+    return okUtfall(items, rå.length, items.length, res.status);
   } catch (e) {
     console.error("Bergen feil:", e);
     return feilUtfall(feilFraUnntak(e, url));

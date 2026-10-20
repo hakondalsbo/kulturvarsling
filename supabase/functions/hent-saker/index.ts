@@ -2,9 +2,11 @@ import { kallClaude } from "../_shared/claude.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
+  dedupEtterKilde,
   erKulturRelevant,
   erKulturSak,
   finnHøringsfrist,
+  normaliserKildeUrl,
   statusFraFrist,
   stortingsSesjoner,
 } from "./logikk.ts";
@@ -18,8 +20,10 @@ import {
   feilFraUnntak,
   feilUtfall,
   klassifiserKjøring,
+  lesSakerListe,
   lesTekstRespons,
   okUtfall,
+  sesjonIdStemmer,
   slåSammenAdapterdeler,
   tidligAvslag,
   utledKjoertAv,
@@ -39,33 +43,59 @@ import {
 //
 // Begge sesjonene (gjeldende + forrige, Europe/Oslo) blir ETT utfall.
 // Feiler én, fortsetter den andre, og kjøringen klassifiseres som delvis.
+//
+// Stille tomme svar (fram til 20.10): endepunktet paginerer ikke — `side`
+// ignoreres og hele sesjonen kommer i ett JSON-dokument. Et kall som henger
+// eller får XML/feil sesjon_id skal ikke bli 0 råtreff. Tom liste med riktig
+// sesjon_id er et ekte 0, og klassifiseres som feil_tomt_svar når kilden
+// forventer treff.
+const STORTING_TIMEOUT_MS = 25_000;
+
+function tomStortingDel(feil: AdapterDel["feil"], httpStatus: number | null): AdapterDel {
+  return { items: [], raattAntall: 0, antallEtterFilter: 0, feil, httpStatus };
+}
+
 async function hentEnStortingssesjon(
   sesjon: string,
   eksKilder: Set<string>,
 ): Promise<AdapterDel> {
   const url =
-    `https://data.stortinget.no/eksport/saker?sesjonid=${sesjon}&format=json`;
+    `https://data.stortinget.no/eksport/saker?sesjonid=${encodeURIComponent(sesjon)}&format=json`;
   try {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" },
+      signal: AbortSignal.timeout(STORTING_TIMEOUT_MS),
+    });
     const lest = await lesTekstRespons(res, url);
     if ("feil" in lest) {
       console.error(`Stortinget saker ${sesjon}: ${lest.feil.melding}`, url);
-      return { items: [], raattAntall: 0, antallEtterFilter: 0, feil: lest.feil };
+      return tomStortingDel(lest.feil, lest.feil.httpStatus);
     }
-    let data: any;
+    if (lest.tekst.trimStart().startsWith("<")) {
+      const feil = uventetFormat(url, "XML i stedet for JSON");
+      console.error(`Stortinget saker ${sesjon}: ${feil.melding}`, url);
+      return tomStortingDel(feil, res.status);
+    }
+    let data: unknown;
     try {
       data = JSON.parse(lest.tekst);
     } catch (e) {
       const feil = feilFraUnntak(e, url);
       console.error(`Stortinget saker parse ${sesjon}:`, e);
-      return { items: [], raattAntall: 0, antallEtterFilter: 0, feil };
+      return tomStortingDel(feil, res.status);
     }
-    if (!Array.isArray(data?.saker_liste)) {
-      const feil = uventetFormat(url, "mangler saker_liste");
+    if (!sesjonIdStemmer(data, sesjon)) {
+      const feil = uventetFormat(url, "sesjon_id stemmer ikke");
       console.error(`Stortinget saker ${sesjon}: ${feil.melding}`, url);
-      return { items: [], raattAntall: 0, antallEtterFilter: 0, feil };
+      return tomStortingDel(feil, res.status);
     }
-    const alleSaker: any[] = data.saker_liste;
+    const liste = lesSakerListe(data);
+    if ("feil" in liste) {
+      const feil = uventetFormat(url, liste.feil);
+      console.error(`Stortinget saker ${sesjon}: ${feil.melding}`, url);
+      return tomStortingDel(feil, res.status);
+    }
+    const alleSaker: any[] = liste.saker;
     const kultursaker = alleSaker.filter(erKulturSak);
     console.log(
       `Stortinget (${sesjon}): ${alleSaker.length} saker totalt, ${kultursaker.length} kulturrelevante`,
@@ -77,13 +107,17 @@ async function hentEnStortingssesjon(
       const tittel = sak.tittel ?? sak.korttittel ?? "";
       const kilde =
         `https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=${sak.id}`;
-      if (eksKilder.has(kilde)) continue; // detaljoppslag kun for nye saker
+      const nokkel = normaliserKildeUrl(kilde);
+      if (nokkel && eksKilder.has(nokkel)) continue; // detaljoppslag kun for nye saker
 
       let frist: string | null = null;
       const detUrl =
         `https://data.stortinget.no/eksport/sak?sakid=${sak.id}&format=json`;
       try {
-        const detRes = await fetch(detUrl, { headers: { Accept: "application/json" } });
+        const detRes = await fetch(detUrl, {
+          headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" },
+          signal: AbortSignal.timeout(STORTING_TIMEOUT_MS),
+        });
         if (!detRes.ok) {
           const feil = feilFraStatus(detRes.status, detUrl);
           console.error(`Detaljoppslag for sak ${sak.id} feilet: ${feil.melding}`, detUrl);
@@ -92,16 +126,19 @@ async function hentEnStortingssesjon(
             raattAntall: alleSaker.length,
             antallEtterFilter: vurderes.length,
             feil,
+            httpStatus: feil.httpStatus,
           };
         }
         frist = finnHøringsfrist(await detRes.json());
       } catch (e) {
+        const feil = feilFraUnntak(e, detUrl);
         console.error(`Detaljoppslag for sak ${sak.id} feilet:`, e);
         return {
           items,
           raattAntall: alleSaker.length,
           antallEtterFilter: vurderes.length,
-          feil: feilFraUnntak(e, detUrl),
+          feil,
+          httpStatus: feil.httpStatus ?? res.status,
         };
       }
 
@@ -122,10 +159,12 @@ async function hentEnStortingssesjon(
       raattAntall: alleSaker.length,
       antallEtterFilter: vurderes.length,
       feil: null,
+      httpStatus: res.status,
     };
   } catch (e) {
+    const feil = feilFraUnntak(e, url);
     console.error("Stortinget saker feil:", e);
-    return { items: [], raattAntall: 0, antallEtterFilter: 0, feil: feilFraUnntak(e, url) };
+    return tomStortingDel(feil, feil.httpStatus);
   }
 }
 
@@ -143,13 +182,21 @@ async function hentStortingetSaker(eksKilder: Set<string>): Promise<AdapterUtfal
 async function hentVentedeSaker(): Promise<AdapterUtfall> {
   const url = "https://data.stortinget.no/eksport/ventedesaker?format=json";
   try {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" },
+      signal: AbortSignal.timeout(STORTING_TIMEOUT_MS),
+    });
     const lest = await lesTekstRespons(res, url);
     if ("feil" in lest) {
       console.error(`Ventede saker: ${lest.feil.melding}`, url);
       return feilUtfall(lest.feil);
     }
-    let data: any;
+    if (lest.tekst.trimStart().startsWith("<")) {
+      const feil = uventetFormat(url, "XML i stedet for JSON");
+      console.error(`Ventede saker: ${feil.melding}`, url);
+      return feilUtfall(feil);
+    }
+    let data: unknown;
     try {
       data = JSON.parse(lest.tekst);
     } catch (e) {
@@ -157,12 +204,13 @@ async function hentVentedeSaker(): Promise<AdapterUtfall> {
       console.error("Ventede saker parse:", e);
       return feilUtfall(feil);
     }
-    if (!Array.isArray(data?.saker_liste)) {
-      const feil = uventetFormat(url, "mangler saker_liste");
+    const liste = lesSakerListe(data);
+    if ("feil" in liste) {
+      const feil = uventetFormat(url, liste.feil);
       console.error(`Ventede saker: ${feil.melding}`, url);
       return feilUtfall(feil);
     }
-    const saker: any[] = data.saker_liste;
+    const saker: any[] = liste.saker;
     const items: any[] = [];
 
     for (const sak of saker) {
@@ -183,7 +231,7 @@ async function hentVentedeSaker(): Promise<AdapterUtfall> {
     console.log(
       `Ventede saker: ${saker.length} totalt, ${items.length} kulturrelevante`,
     );
-    return okUtfall(items, saker.length, items.length);
+    return okUtfall(items, saker.length, items.length, res.status);
   } catch (e) {
     console.error("Ventede saker feil:", e);
     return feilUtfall(feilFraUnntak(e, url));
@@ -323,6 +371,19 @@ function jsonSvar(body: unknown, status = 200): Response {
   });
 }
 
+// ON CONFLICT (kilde_nokkel) DO NOTHING. kilde_nokkel er generert og skal
+// ikke sendes med. Duplikat i samme kjøring er allerede fjernet før innsetting.
+async function lagreVarsel(
+  supabase: { from: (t: string) => any },
+  rad: Record<string, unknown>,
+) {
+  const { error } = await supabase.from("varsler").upsert(rad, {
+    onConflict: "kilde_nokkel",
+    ignoreDuplicates: true,
+  });
+  return error as { message: string } | null;
+}
+
 // ─── Hoved-handler ────────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   // Plattformens JWT-kontroll beholdes. Separat cron-hemmelighet gir tilgang til jobben.
@@ -352,20 +413,27 @@ Deno.serve(async (req: Request) => {
     if (eksFeil) {
       return jsonSvar({ feil: "Eksisterende saker kunne ikke hentes. Ingen innhenting startet." }, 503);
     }
-    const eksKilder = new Set((eks ?? []).map((v: any) => v.kilde));
+    const eksKilder = new Set(
+      (eks ?? [])
+        .map((v: any) => normaliserKildeUrl(v.kilde))
+        .filter((n: string | null): n is string => !!n),
+    );
 
     // Kilderegisteret: kobler kjøringslogg til kilde (ARKITEKTUR §1.4)
     const { data: kilderRows, error: registerFeil } = await supabase
       .from("kilder")
-      .select("id, adapter")
+      .select("id, adapter, forventer_treff")
       .eq("aktiv", true);
     if (registerFeil) {
       return jsonSvar({ feil: "Kilderegisteret kunne ikke hentes. Ingen innhenting startet." }, 503);
     }
     const claudeStatus = await testClaude(anthropicKey);
     if (claudeStatus !== "ok") console.error("Claude-helsesjekk:", claudeStatus);
-    const kilderMap = new Map<string, string>(
-      (kilderRows ?? []).map((r: any) => [r.adapter, r.id]),
+    const kilderMap = new Map<string, { id: string; forventerTreff: boolean }>(
+      (kilderRows ?? []).map((r: any) => [
+        r.adapter,
+        { id: r.id, forventerTreff: r.forventer_treff === true },
+      ]),
     );
 
     // Hent fra alle kilder parallelt. Én adapter som kaster, stopper ikke de andre.
@@ -387,13 +455,15 @@ Deno.serve(async (req: Request) => {
     // Saker valgt via komité/emne (forhåndsgodkjent) hopper over nøkkelordfilteret —
     // en sak om åndsverkloven mangler f.eks. ordet «kultur» i tittelen.
     // Claude-laget kvalitetssikrer uansett alt til slutt.
-    const nye = alle.filter(
+    const kandidater = alle.filter(
       (item) =>
         item.kilde &&
-        !eksKilder.has(item.kilde) &&
         (item.forhåndsgodkjent ||
           erKulturRelevant(item.tittel, item.sammendrag_raa)),
     );
+    // Samme normaliserte URL to ganger i én kjøring (to sesjoner, eller samme
+    // sak to ganger) blir én rad. Det var slik p=200362 og p=200367 ble doblet.
+    const nye = dedupEtterKilde(kandidater, eksKilder);
 
     console.log(
       `Totalt hentet: ${alle.length}, nye og relevante: ${nye.length}`,
@@ -438,7 +508,7 @@ Deno.serve(async (req: Request) => {
           // Husk avvisningen: lagres som UPUBLISERT rad (appen viser kun
           // publisert=true), så samme sak aldri koster en ny AI-vurdering —
           // dedup via kilde-URL stopper den ved neste kjøring.
-          const { error: avvistFeil } = await supabase.from("varsler").insert({
+          const avvistFeil = await lagreVarsel(supabase, {
             tittel: item.tittel,
             sammendrag: "Automatisk avvist av relevansfilteret",
             instans: item.instans,
@@ -452,7 +522,8 @@ Deno.serve(async (req: Request) => {
           });
           if (!avvistFeil) {
             antallAvvist++;
-            eksKilder.add(item.kilde);
+            const nokkel = normaliserKildeUrl(item.kilde);
+            if (nokkel) eksKilder.add(nokkel);
           }
           continue;
         }
@@ -464,7 +535,7 @@ Deno.serve(async (req: Request) => {
         if (!item.frist) status = analyse.status ?? status;
       }
 
-      const { error } = await supabase.from("varsler").insert({
+      const error = await lagreVarsel(supabase, {
         tittel: item.tittel,
         sammendrag,
         instans: item.instans,
@@ -488,23 +559,28 @@ Deno.serve(async (req: Request) => {
           item.adapter,
           (lagretPerAdapter.get(item.adapter) ?? 0) + 1,
         );
-        eksKilder.add(item.kilde); // unngå dobbel innsetting i samme kjøring
+        const nokkel = normaliserKildeUrl(item.kilde);
+        if (nokkel) eksKilder.add(nokkel);
       }
     }
 
     // Kjøringslogg per kilde. antall_funnet = råtreff før filter/dedup.
-    // «tom» bare når kilden svarte OK med 0 råtreff. Feil blir aldri «tom».
-    // feilmelding er saniteret: kilde_kjoringer er offentlig lesbar.
+    // «tom» bare når en kilde som kan være tom svarte OK med 0 råtreff.
+    // Kilder med forventer_treff får feil_tomt_svar i stedet. http_status
+    // lagres også når kallet gikk bra. feilmelding er saniteret.
     const kildeStatus = [];
     const kildeFeil: string[] = [];
     for (const k of kjøringer) {
       const antallNye = lagretPerAdapter.get(k.navn) ?? 0;
+      const meta = kilderMap.get(k.navn);
       const klass = klassifiserKjøring({
         raattAntall: k.utfall.raattAntall,
         antallNye,
         feil: k.utfall.feil,
         forsok: k.utfall.forsok,
         vellykket: k.utfall.vellykket,
+        httpStatus: k.utfall.httpStatus,
+        forventerTreff: meta?.forventerTreff ?? false,
       });
       kildeStatus.push({
         adapter: k.navn,
@@ -522,7 +598,7 @@ Deno.serve(async (req: Request) => {
       ) {
         kildeFeil.push(`${k.navn}: ${klass.feilmelding}`);
       }
-      const kildeId = kilderMap.get(k.navn);
+      const kildeId = meta?.id;
       if (!kildeId) {
         console.error(`Ingen rad i kilder for adapter ${k.navn} — kjøring logges ikke`);
         continue;

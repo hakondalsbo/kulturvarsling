@@ -14,6 +14,7 @@ export const KILDE_STATUSER = [
   "feil_parse",
   "feil_auth",
   "feil_nett",
+  "feil_tomt_svar",
 ] as const;
 
 export type KildeStatus = (typeof KILDE_STATUSER)[number];
@@ -36,6 +37,8 @@ export type AdapterUtfall = {
   feil: HenteFeil[];
   forsok: number;
   vellykket: number;
+  /** HTTP-status for vellykket kall, eller feilens status når kallet feilet. */
+  httpStatus: number | null;
 };
 
 export type KjoertAv = "supabase_cron" | "vercel_cron" | "manuell";
@@ -95,6 +98,7 @@ export function feilUtfall(feil: HenteFeil, forsok = 1): AdapterUtfall {
     feil: [feil],
     forsok,
     vellykket: 0,
+    httpStatus: feil.httpStatus,
   };
 }
 
@@ -102,6 +106,7 @@ export function okUtfall(
   items: any[],
   raattAntall: number,
   antallEtterFilter: number,
+  httpStatus: number | null = 200,
 ): AdapterUtfall {
   return {
     items,
@@ -110,7 +115,39 @@ export function okUtfall(
     feil: [],
     forsok: 1,
     vellykket: 1,
+    httpStatus,
   };
+}
+
+/**
+ * Stortingets JSON er som regel { saker_liste: [...] }. Noen svar (ett element,
+ * eller XML-omslag) legger lista i saker_liste.sak. Tom liste er et ekte 0,
+ * ikke en parsefeil — klassifiserKjøring avgjør om det er tom eller feil_tomt_svar.
+ */
+export function lesSakerListe(
+  data: unknown,
+): { saker: any[] } | { feil: string } {
+  if (!data || typeof data !== "object") return { feil: "mangler rot-objekt" };
+  const sl = (data as { saker_liste?: unknown }).saker_liste;
+  if (Array.isArray(sl)) return { saker: sl };
+  if (sl && typeof sl === "object") {
+    const inner = (sl as { sak?: unknown }).sak;
+    if (Array.isArray(inner)) return { saker: inner };
+    if (inner && typeof inner === "object") return { saker: [inner] };
+  }
+  return { feil: "mangler saker_liste" };
+}
+
+/**
+ * Eksporten ignorerer ukjente parametre (sesjon= i stedet for sesjonid=) og
+ * svarer 200 med en annen sesjon. Når sesjon_id finnes og ikke matcher, er
+ * svaret ikke et tomt treff.
+ */
+export function sesjonIdStemmer(data: unknown, sesjon: string): boolean {
+  if (!data || typeof data !== "object") return false;
+  const id = (data as { sesjon_id?: unknown }).sesjon_id;
+  if (typeof id !== "string" || id === "") return true;
+  return id === sesjon;
 }
 
 /** Leser kropp bare ved 2xx. Tom kropp er feil_parse, ikke et tomt treff. */
@@ -173,11 +210,14 @@ export type AdapterDel = {
   antallEtterFilter: number;
   /** null når delen ble ferdig uten feil. */
   feil: HenteFeil | null;
+  httpStatus: number | null;
 };
 
 /** Slår sammen uavhengige delkall (f.eks. to stortingssesjoner) til ett utfall. */
 export function slåSammenAdapterdeler(deler: AdapterDel[]): AdapterUtfall {
   const feil = deler.flatMap((d) => (d.feil ? [d.feil] : []));
+  const suksessStatus = deler.find((d) => !d.feil && d.httpStatus != null)?.httpStatus ?? null;
+  const feilStatus = feil.find((f) => f.httpStatus != null)?.httpStatus ?? null;
   return {
     items: deler.flatMap((d) => d.items),
     raattAntall: deler.reduce((s, d) => s + d.raattAntall, 0),
@@ -185,6 +225,7 @@ export function slåSammenAdapterdeler(deler: AdapterDel[]): AdapterUtfall {
     feil,
     forsok: deler.length,
     vellykket: deler.length - feil.length,
+    httpStatus: feil.length > 0 ? (feilStatus ?? suksessStatus) : suksessStatus,
   };
 }
 
@@ -222,6 +263,13 @@ export type KjøringInndata = {
   feil: HenteFeil[];
   forsok: number;
   vellykket: number;
+  /** HTTP-status fra et vellykket kall. Feilstier bruker feilens egen status. */
+  httpStatus?: number | null;
+  /**
+   * Kilder som normalt har et korpus (Stortinget-sesjonen, RSS, vedtak).
+   * 0 råtreff der er feil_tomt_svar, ikke tom og ikke ok_ingen_nye.
+   */
+  forventerTreff?: boolean;
 };
 
 export type KjøringKlassifisering = {
@@ -280,13 +328,21 @@ export function klassifiserKjøring(p: KjøringInndata): KjøringKlassifisering 
     };
   }
 
+  const http = p.httpStatus ?? null;
   if (p.raattAntall <= 0) {
-    return { status: "tom", httpStatus: null, feilmelding: null };
+    if (p.forventerTreff) {
+      return {
+        status: "feil_tomt_svar",
+        httpStatus: http,
+        feilmelding: "Kilden svarte uten treff",
+      };
+    }
+    return { status: "tom", httpStatus: http, feilmelding: null };
   }
   if (p.antallNye > 0) {
-    return { status: "ok_nye", httpStatus: null, feilmelding: null };
+    return { status: "ok_nye", httpStatus: http, feilmelding: null };
   }
-  return { status: "ok_ingen_nye", httpStatus: null, feilmelding: null };
+  return { status: "ok_ingen_nye", httpStatus: http, feilmelding: null };
 }
 
 /**
@@ -339,6 +395,7 @@ export function samleRssSvar(
   const items: RssItem[] = [];
   const feil: HenteFeil[] = [];
   let vellykket = 0;
+  let suksessHttp: number | null = null;
 
   for (const s of svar) {
     if (s.unntak) {
@@ -369,6 +426,7 @@ export function samleRssSvar(
       continue;
     }
     items.push(...parseRssItems(kropp, s.instans));
+    if (suksessHttp == null && s.status != null) suksessHttp = s.status;
     vellykket++;
   }
 
@@ -376,6 +434,7 @@ export function samleRssSvar(
     ? items.length
     : items.filter((i) => erKulturRelevant(i.tittel, i.sammendrag_raa)).length;
 
+  const feilHttp = feil.find((f) => f.httpStatus != null)?.httpStatus ?? null;
   return {
     items,
     raattAntall: items.length,
@@ -383,5 +442,6 @@ export function samleRssSvar(
     feil,
     forsok: svar.length,
     vellykket,
+    httpStatus: vellykket === 0 ? feilHttp : (feil.length > 0 ? (feilHttp ?? suksessHttp) : suksessHttp),
   };
 }

@@ -263,7 +263,7 @@ export async function hentEInnsynKultursaker(): Promise<AdapterUtfall> {
     console.log(
       `eInnsyn: ${rå.length} møtesaker, ${unike.length} organ, ${medGeo} geo-tagget`,
     );
-    return okUtfall(items, rå.length, items.length);
+    return okUtfall(items, rå.length, items.length, res.status);
   } catch (e) {
     console.error("eInnsyn feil:", e);
     return feilUtfall(feilFraUnntak(e, url));
