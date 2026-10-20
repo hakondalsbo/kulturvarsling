@@ -1,6 +1,8 @@
 // Manuell, sikret backfill av generell klartekst for publiserte saker.
 // Krever KLARTEKST_BACKFILL_SECRET i x-cron-secret. Ingen cron kaller denne.
 // Ikke kjør den herfra — den er bare mekanismen.
+// Skriver kun klartekst_cache. Oppdaterer aldri varsler.tittel, sammendrag
+// eller kategori, så en rad med manuelt_redigert=true beholder redaktørens tekst.
 
 import { tidligAvslag } from "../hent-saker/kildehelse.ts";
 import {
