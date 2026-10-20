@@ -15,7 +15,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { behandlingsansvarlig, bunntekst, lesAvsender } from "../_shared/organisasjon.ts";
+import { PERSONVERN_URL, behandlingsansvarlig, bunntekst, lesAvsender, orgnr } from "../_shared/organisasjon.ts";
 import { LANSERING_MAL } from "./lansering.mal.ts";
 import {
   BEKREFTELSE_PAUSE_MS,
@@ -152,6 +152,9 @@ Deno.serve(async (req: Request) => {
         bekreftelseslenke: eksempel.bekreftelse,
         avmeldingslenke: eksempel.side,
         behandlingsansvarlig,
+        orgnr,
+        personvern: PERSONVERN_URL,
+        avsender: fraAdresse(),
       });
       const brev = lagEpost({
         fra: fraAdresse(),
@@ -329,7 +332,7 @@ Deno.serve(async (req: Request) => {
 
 function byggInnhold(
   maal: "lansering" | "nye",
-  mal: { emne: string; tekst: string } | { feil: string } | null,
+  mal: { emne: string; forhandsvisning: string; tekst: string } | { feil: string } | null,
   bekreftelse: string,
   side: string,
   bunn: string,
@@ -339,6 +342,9 @@ function byggInnhold(
       bekreftelseslenke: bekreftelse,
       avmeldingslenke: side,
       behandlingsansvarlig,
+      orgnr,
+      personvern: PERSONVERN_URL,
+      avsender: fraAdresse(),
     });
   }
   return bekreftelsesBrev(bekreftelse, bunn);

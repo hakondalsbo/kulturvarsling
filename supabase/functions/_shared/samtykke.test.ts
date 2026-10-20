@@ -42,7 +42,7 @@ import {
   validerPamelding,
 } from "./samtykke.ts";
 import { join } from "node:path";
-import { avsender, behandlingsansvarlig, bunntekst, lesAvsender, orgnr, poststed } from "./organisasjon.ts";
+import { PERSONVERN_URL, avsender, behandlingsansvarlig, bunntekst, lesAvsender, orgnr, poststed } from "./organisasjon.ts";
 import { LANSERING_MAL } from "../send-bekreftelser/lansering.mal.ts";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
@@ -676,18 +676,32 @@ test("lanseringsmail er tørrkjør til bryteren er på, og tom liste er aldri al
   assert.match(readFileSync("supabase/functions/meld-pa/index.ts", "utf8"), /feltVedBekreftelse\(/);
 
   assert.equal(malErUtkast(LANSERING_MAL), true);
+  assert.match(LANSERING_MAL, /UTKAST – fjernes først når Håkon har godkjent teksten og testmailen/);
   const mal = parseLanseringsmal(LANSERING_MAL);
   assert.equal("feil" in mal, false);
   if ("feil" in mal) return;
-  assert.match(mal.emne, /UTKAST/);
-  assert.match(mal.tekst, /\{\{bekreftelseslenke\}\}/);
-  assert.match(mal.tekst, /\{\{avmeldingslenke\}\}/);
+  assert.equal(mal.emne, "Kulturvarsling er åpnet");
+  assert.equal(mal.forhandsvisning, "Du meldte deg på ventelisten vår. Nå er vi i gang.");
+  for (const setning of [
+    "Hei!",
+    "Du får denne e-posten fordi du meldte deg på ventelisten til Kulturvarsling en gang mellom 15. mars og 19. oktober 2026. Du ba om å få beskjed når tjenesten åpnet, og nå er den i gang på kulturvarsling.no.",
+    "Kulturvarsling følger med på Stortinget, regjeringen, kommunene og Sametinget og plukker ut sakene som angår kulturlivet. Det kan være høringer, budsjett, tilskudd og vedtak. Hver sak får en kort forklaring på vanlig norsk: hva den gjelder, hvem som bestemmer og når fristen er.",
+    "Trykk på «Bekreft påmelding» hvis du vil ha et ukesbrev med de viktigste sakene og varsler når en frist nærmer seg.",
+    "Hvis du ikke bekrefter, skjer det ingenting. Du får ingen flere e-poster fra oss, og adressen din blir ikke brukt til noe annet.",
+    "Hilsen\nHåkon Dalsbø\nKulturvarsling",
+  ]) {
+    assert.equal(mal.tekst.includes(setning), true, setning.slice(0, 24));
+  }
   const side = "https://www.kulturvarsling.no/avmelding?t=" + TOKEN;
   const funksjon = "https://example.test/functions/v1/avmeld?t=" + TOKEN;
+  const bekreftLenke = "https://www.kulturvarsling.no/bekreft?t=" + FORHANDSVISNING_TOKEN;
   const fylt = fyllLanseringsmal(mal, {
-    bekreftelseslenke: "https://www.kulturvarsling.no/bekreft?t=" + FORHANDSVISNING_TOKEN,
+    bekreftelseslenke: bekreftLenke,
     avmeldingslenke: side,
     behandlingsansvarlig,
+    orgnr,
+    personvern: PERSONVERN_URL,
+    avsender: avsender(behandlingsansvarlig),
   });
   const brev = lagEpost({
     fra: avsender(behandlingsansvarlig),
@@ -699,9 +713,26 @@ test("lanseringsmail er tørrkjør til bryteren er på, og tom liste er aldri al
     funksjon,
   });
   assert.equal(brev.to, LEVERT);
-  assert.match(brev.html, /Bekreft påmeldingen/);
+  assert.equal(brev.subject, "Kulturvarsling er åpnet");
+  assert.match(brev.html, /Bekreft påmelding/);
+  assert.match(brev.html, new RegExp(FORHANDSVISNING_TOKEN));
   assert.match(brev.html, new RegExp(TOKEN));
+  assert.match(brev.html, /KULTURVARSLING AS/);
+  assert.match(brev.html, /936 282 881/);
+  assert.match(brev.html, /https:\/\/kulturvarsling\.no\/personvern/);
+  assert.match(brev.html, /Håkon Dalsbø/);
+  assert.doesNotMatch(brev.html, /fjernes først/);
+  assert.doesNotMatch(brev.text, /fjernes først/);
+  assert.match(brev.text, /Bekreft påmelding:/);
+  assert.match(brev.text, /Meld meg av:/);
   assert.equal(brev.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
+  assert.match(brev.headers["List-Unsubscribe"], /List-Unsubscribe=One-Click|avmeld/);
+  assert.equal(utsendelsesBeslutning({
+    oppdrag: { type: "alle", maal: "lansering" },
+    aktiv: true,
+    utkast: malErUtkast(LANSERING_MAL),
+    antall: 110,
+  }).send, false);
   assert.equal(malErUtkast("Emne: Bekreft\n\n{{bekreftelseslenke}}\n{{avmeldingslenke}}"), false);
 
   const kilde = readFileSync("supabase/functions/send-bekreftelser/index.ts", "utf8");

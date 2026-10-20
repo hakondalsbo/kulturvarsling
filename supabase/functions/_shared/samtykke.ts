@@ -498,44 +498,88 @@ export function malErUtkast(raw: string): boolean {
   return /\bUTKAST\b/.test(raw);
 }
 
-export function parseLanseringsmal(raw: string): { emne: string; tekst: string } | { feil: string } {
-  const utenMarkor = raw.replace(/^\uFEFF/, "").split(/\r?\n/)
-    .filter((linje) => linje.trim() !== "UTKAST")
-    .join("\n");
-  const emneTreff = utenMarkor.match(/^Emne:\s*(.+)$/m);
-  if (!emneTreff) return { feil: "Malen mangler Emne:." };
-  const emne = emneTreff[1].trim();
-  if (!emne) return { feil: "Emne er tomt." };
-  const tekst = utenMarkor.replace(/^Emne:\s*.+$/m, "").trim();
+export type LanseringsmalInnhold = {
+  emne: string;
+  forhandsvisning: string;
+  tekst: string;
+};
+
+export function parseLanseringsmal(raw: string): LanseringsmalInnhold | { feil: string } {
+  const linjer = raw.replace(/^\uFEFF/, "").split(/\r?\n/);
+  let emne = "";
+  let forhandsvisning = "";
+  const brod: string[] = [];
+  for (const linje of linjer) {
+    const trimmet = linje.trim();
+    if (/^UTKAST\b/.test(trimmet)) continue;
+    const emneTreff = trimmet.match(/^Emne:\s*(.*)$/);
+    if (emneTreff) {
+      emne = emneTreff[1].trim();
+      continue;
+    }
+    const prevTreff = trimmet.match(/^Forhåndsvisning:\s*(.*)$/);
+    if (prevTreff) {
+      forhandsvisning = prevTreff[1].trim();
+      continue;
+    }
+    brod.push(linje);
+  }
+  const tekst = brod.join("\n").trim();
+  if (!emne) return { feil: "Malen mangler Emne:." };
   if (!tekst.includes("{{bekreftelseslenke}}")) return { feil: "Malen mangler {{bekreftelseslenke}}." };
   if (!tekst.includes("{{avmeldingslenke}}")) return { feil: "Malen mangler {{avmeldingslenke}}." };
-  return { emne, tekst };
+  return { emne, forhandsvisning, tekst };
+}
+
+function bekreftKnapp(lenke: string): string {
+  const href = escapeHtml(lenke);
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:8px 0 24px;"><tr><td style="background:#2B4A3F;border-radius:4px;"><a href="${href}" style="display:inline-block;padding:14px 22px;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.2;color:#FBF8F2;text-decoration:none;">Bekreft påmelding</a></td></tr></table>`;
 }
 
 export function fyllLanseringsmal(
-  mal: { emne: string; tekst: string },
-  felt: { bekreftelseslenke: string; avmeldingslenke: string; behandlingsansvarlig: string },
+  mal: LanseringsmalInnhold,
+  felt: {
+    bekreftelseslenke: string;
+    avmeldingslenke: string;
+    behandlingsansvarlig: string;
+    orgnr: string;
+    personvern: string;
+    avsender: string;
+  },
 ): { emne: string; tekst: string; html: string } {
-  const sett = (verdi: string) => verdi
-    .replaceAll("{{bekreftelseslenke}}", felt.bekreftelseslenke)
-    .replaceAll("{{avmeldingslenke}}", felt.avmeldingslenke)
-    .replaceAll("{{behandlingsansvarlig}}", felt.behandlingsansvarlig);
-  const emne = sett(mal.emne);
-  const tekst = sett(mal.tekst);
-  const htmlTekst = escapeHtml(tekst)
-    .replaceAll(
-      escapeHtml(felt.bekreftelseslenke),
-      `<a href="${escapeHtml(felt.bekreftelseslenke)}">Bekreft påmeldingen</a>`,
-    )
-    .replaceAll(
-      escapeHtml(felt.avmeldingslenke),
-      `<a href="${escapeHtml(felt.avmeldingslenke)}">Meld meg av</a>`,
-    );
-  return {
-    emne,
-    tekst,
-    html: `<!doctype html><html lang="no"><body style="font-family:Georgia,serif;background:#FBF8F2;color:#1C1B19;padding:32px;"><p style="white-space:pre-wrap">${htmlTekst}</p></body></html>`,
-  };
+  const tekst = [
+    mal.forhandsvisning,
+    "",
+    mal.tekst
+      .replaceAll(/^[ \t]*\{\{bekreftelseslenke\}\}[ \t]*$/gm, `Bekreft påmelding: ${felt.bekreftelseslenke}`)
+      .replaceAll(/^[ \t]*\{\{avmeldingslenke\}\}[ \t]*$/gm, `Meld meg av: ${felt.avmeldingslenke}`)
+      .replaceAll("{{avmeldingslenke}}", felt.avmeldingslenke)
+      .replaceAll("{{avsender}}", felt.avsender)
+      .replaceAll("{{behandlingsansvarlig}}", felt.behandlingsansvarlig)
+      .replaceAll("{{orgnr}}", felt.orgnr)
+      .replaceAll("{{personvern}}", felt.personvern),
+  ].filter((del, indeks) => indeks === 0 ? del.trim() !== "" : true).join("\n").trim();
+
+  const blokker = mal.tekst.split(/\n{2,}/).map((del) => del.trim()).filter(Boolean);
+  const htmlDeler = blokker.map((blokk) => {
+    if (blokk === "{{bekreftelseslenke}}") return bekreftKnapp(felt.bekreftelseslenke);
+    if (blokk === "{{avmeldingslenke}}") {
+      const href = escapeHtml(felt.avmeldingslenke);
+      return `<p style="margin:24px 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:15px;line-height:1.5;"><a href="${href}" style="color:#2B4A3F;">Meld meg av</a></p>`;
+    }
+    const html = escapeHtml(blokk)
+      .replaceAll("{{avsender}}", escapeHtml(felt.avsender))
+      .replaceAll("{{behandlingsansvarlig}}", escapeHtml(felt.behandlingsansvarlig))
+      .replaceAll("{{orgnr}}", escapeHtml(felt.orgnr))
+      .replaceAll("{{personvern}}", `<a href="${escapeHtml(felt.personvern)}" style="color:#2B4A3F;">${escapeHtml(felt.personvern)}</a>`)
+      .replaceAll("\n", "<br>");
+    return `<p style="margin:0 0 16px;font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.6;color:#45413B;">${html}</p>`;
+  });
+  const skjult = mal.forhandsvisning
+    ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(mal.forhandsvisning)}</div>`
+    : "";
+  const html = `<!doctype html><html lang="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#FBF8F2;color:#1C1B19;">${skjult}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#FBF8F2;"><tr><td align="center" style="padding:32px 16px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;"><tr><td style="font-family:Georgia,'Times New Roman',serif;font-size:28px;line-height:1.2;color:#1C1B19;padding:0 0 20px;">Kulturvarsling</td></tr><tr><td>${htmlDeler.join("")}</td></tr></table></td></tr></table></body></html>`;
+  return { emne: mal.emne, tekst, html };
 }
 
 /**

@@ -1,20 +1,33 @@
 // Mal for den ene lanseringsmailen.
-// UTKAST — Varselredaktør skriver den endelige teksten i denne filen.
-// Massesending er stoppet så lenge ordet UTKAST står her.
-// Plassholdere: {{bekreftelseslenke}} {{avmeldingslenke}} {{behandlingsansvarlig}}
+// Første linje er UTKAST-markøren. Massesending er stoppet så lenge ordet UTKAST står her.
+// Brødteksten under er Varselredaktørens, ordrett.
+// Plassholdere som fylles ved utsending: {{bekreftelseslenke}} {{avmeldingslenke}}
+// {{avsender}} {{behandlingsansvarlig}} {{orgnr}} {{personvern}}
 
-export const LANSERING_MAL = `UTKAST
+export const LANSERING_MAL = `UTKAST – fjernes først når Håkon har godkjent teksten og testmailen
 
-Emne: UTKAST: Bekreft at du vil høre fra Kulturvarsling
+Emne: Kulturvarsling er åpnet
+Forhåndsvisning: Du meldte deg på ventelisten vår. Nå er vi i gang.
 
-Dette er et UTKAST. Varselredaktør skriver den endelige teksten før utsending.
+Hei!
 
-Du ga oss adressen din da du meldte deg på Kulturvarsling. Vi vil sende deg nyhetsbrev om kulturpolitikk og frister, omtrent ukentlig. Klikk for å bekrefte at du fortsatt vil det. Vi sender ikke nyhetsbrevet før du har bekreftet.
+Du får denne e-posten fordi du meldte deg på ventelisten til Kulturvarsling en gang mellom 15. mars og 19. oktober 2026. Du ba om å få beskjed når tjenesten åpnet, og nå er den i gang på kulturvarsling.no.
+
+Kulturvarsling følger med på Stortinget, regjeringen, kommunene og Sametinget og plukker ut sakene som angår kulturlivet. Det kan være høringer, budsjett, tilskudd og vedtak. Hver sak får en kort forklaring på vanlig norsk: hva den gjelder, hvem som bestemmer og når fristen er.
+
+Trykk på «Bekreft påmelding» hvis du vil ha et ukesbrev med de viktigste sakene og varsler når en frist nærmer seg.
 
 {{bekreftelseslenke}}
 
-Vil du ikke ha e-post fra oss, kan du melde deg av:
+Hvis du ikke bekrefter, skjer det ingenting. Du får ingen flere e-poster fra oss, og adressen din blir ikke brukt til noe annet.
+
+Hilsen
+Håkon Dalsbø
+Kulturvarsling
+
 {{avmeldingslenke}}
 
-{{behandlingsansvarlig}}
+Avsender: {{avsender}}
+{{behandlingsansvarlig}}, org.nr. {{orgnr}}
+Personvern: {{personvern}}
 `;
