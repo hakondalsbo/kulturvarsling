@@ -30,6 +30,7 @@ test("agendapunkt mappes med klikkbar dyplenke og geografi", () => {
   assert.equal(mappet?.kommunenr, "4601");
   assert.equal(mappet?.fylkesnr, "46");
   assert.equal(mappet?.publisert_dato, "2026-05-06");
+  assert.equal(mappet?.motedato, "2026-05-06");
   assert.equal(mappet?.kilde_id, "bergen-267495-9034514");
   assert.equal(mappet?.forhåndsgodkjent, true);
 });

@@ -181,17 +181,44 @@ export function innenInnhentingsvindu(
 
 // ─── Bestem status ut fra frist ───────────────────────────────────────────────
 // `nå` kan injiseres i tester; produksjon bruker klokka.
-// Regner i KALENDERDAGER (ikke millisekunder) — ellers ville status avhenge av
-// hvilket klokkeslett cronen kjører, siden frister er rene datoer.
+// Kalenderdager i Europe/Oslo. Passert frist blir «passert».
+/** Kalenderdag i Europe/Oslo, YYYY-MM-DD. Frister er rene datoer. */
+export function kalenderdag(nå: number, tidssone = "Europe/Oslo"): string {
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: tidssone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(nå));
+}
+
 export function statusFraFrist(frist: string | null, nå: number = Date.now()): string {
   if (!frist) return "normal";
-  const fristMs = new Date(frist).getTime();
-  if (Number.isNaN(fristMs)) return "normal"; // ugyldig dato skal aldri krasje pipeline
-  const idagMs = new Date(new Date(nå).toISOString().split("T")[0]).getTime();
-  const dager = Math.round((fristMs - idagMs) / 86400000);
-  if (dager < 0) return "normal"; // allerede utløpt
+  const fristDato = frist.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fristDato)) return "normal";
+  const idag = kalenderdag(nå);
+  if (fristDato < idag) return "passert";
+  const dager = Math.round(
+    (Date.parse(`${fristDato}T00:00:00Z`) - Date.parse(`${idag}T00:00:00Z`)) / 86400000,
+  );
   if (dager <= 7) return "kritisk";
   if (dager <= 21) return "viktig";
+  return "normal";
+}
+
+/**
+ * Status kommer bare fra frist, ellers møtedato. Ingen av delene er normal:
+ * manglende frist er ikke kritisk, og en passert dag er passert.
+ */
+export function statusForSak(
+  frist: string | null | undefined,
+  motedato: string | null | undefined,
+  nå: number = Date.now(),
+): string {
+  const fristIso = frist?.slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fristIso)) return statusFraFrist(fristIso, nå);
+  const moteIso = motedato?.slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(moteIso)) return statusFraFrist(moteIso, nå);
   return "normal";
 }
 
@@ -427,6 +454,7 @@ export type VarselRadInn = {
   kommunenr?: string | null;
   fylkesnr?: string | null;
   adapter?: string | null;
+  motedato?: string | null;
 };
 
 /**
@@ -460,6 +488,7 @@ export function byggVarselRad(
     sted: felt.sted ?? item.sted ?? (felt.niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
     status: felt.status,
     publisert: felt.publisert,
+    motedato: item.motedato ?? null,
     kilde_id: kildeUuidForAdapter(
       item.adapter ?? adapterFraKildeUrl(item.kilde),
       register,

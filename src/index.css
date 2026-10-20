@@ -737,6 +737,12 @@ button.avis-tittel {
   color: var(--tegl);
 }
 
+.avis-uke.passert > h3,
+.avis-sak.passert .dato,
+.avis-tabell td.f.passert {
+  color: var(--dempet);
+}
+
 .avis-sak {
   display: grid;
   grid-template-columns: 110px minmax(0, 1fr) auto;

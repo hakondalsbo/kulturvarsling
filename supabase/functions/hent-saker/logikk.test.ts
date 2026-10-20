@@ -23,6 +23,8 @@ import {
   parseRegjeringenFrist,
   utenManuelleTekstfelt,
   parseStortingetDato,
+  kalenderdag,
+  statusForSak,
   statusFraFrist,
   parseRssItems,
   stortingsSesjoner,
@@ -91,12 +93,24 @@ test("frist langt frem er normal", () => {
   assert.equal(statusFraFrist(omDager(60), NÅ), "normal");
 });
 
-test("utløpt frist er normal (ikke kritisk)", () => {
-  assert.equal(statusFraFrist(omDager(-5), NÅ), "normal");
+test("utløpt frist er passert, ikke kritisk", () => {
+  assert.equal(statusFraFrist(omDager(-1), NÅ), "passert");
+  assert.equal(statusFraFrist(omDager(-5), NÅ), "passert");
+});
+
+test("frist i dag er fortsatt kritisk", () => {
+  assert.equal(statusFraFrist(kalenderdag(NÅ), NÅ), "kritisk");
 });
 
 test("manglende frist er normal", () => {
   assert.equal(statusFraFrist(null, NÅ), "normal");
+});
+
+test("status uten frist er normal, og passert møte er passert", () => {
+  assert.equal(statusForSak(null, null, NÅ), "normal");
+  assert.equal(statusForSak(null, "2026-06-01", NÅ), "passert");
+  assert.equal(statusForSak("2026-11-23", "2026-06-01", NÅ), "normal");
+  assert.equal(statusForSak(null, kalenderdag(NÅ), NÅ), "kritisk");
 });
 
 test("ugyldig dato krasjer ikke, blir normal", () => {

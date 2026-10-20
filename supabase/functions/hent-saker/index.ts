@@ -18,7 +18,7 @@ import {
   innholdDedupNokkel,
   kategoriFraTittel,
   kildeNokkel,
-  statusFraFrist,
+  statusForSak,
   stortingsSesjoner,
 } from "./logikk.ts";
 import { hentEInnsynKultursaker } from "./einnsyn.ts";
@@ -581,7 +581,7 @@ Deno.serve(async (req: Request) => {
         ? kategoriFraTittel(item.tittel, item.sammendrag_raa ?? "")
         : "scenekunst";
       let niva = item.niva ?? "nasjonalt";
-      let status = statusFraFrist(item.frist);
+      let status = statusForSak(item.frist, item.motedato);
       let sammendrag = item.sammendrag_raa?.slice(0, 400) || item.tittel;
 
       // Bruk Claude for bedre analyse hvis API-nøkkel er satt
@@ -633,11 +633,11 @@ Deno.serve(async (req: Request) => {
           // Adaptere som VET nivået sitt (f.eks. Bergen = kommune) overstyres ikke
           if (!item.niva) niva = analyse.niva ?? niva;
           sammendrag = analyse.sammendrag || sammendrag;
-          // Bruk Claude-status kun hvis vi ikke har frist (frist er mer presis)
-          if (!item.frist) status = analyse.status ?? status;
         } else if (analyse.kategori) {
           kategori = analyse.kategori;
         }
+        // Status gjettes ikke. Uten frist og uten møtedato forblir den normal.
+        status = statusForSak(item.frist, item.motedato);
       }
 
       const rad = byggVarselRad(item, {
