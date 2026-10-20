@@ -10,6 +10,7 @@ const SUPABASE_URL  = "https://zyyijlvmgoanjdzngmon.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI";
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+const PERSONVERN_VERSJON = "personvern-2026-10";
 
 // ─── Hjelpefunksjoner ─────────────────────────────────────────────────────
 async function lastVarsler() {
@@ -446,42 +447,6 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
 }
 
 
-// ─── PERSONVERN MODAL ────────────────────────────────────────────────────────
-function PersonvernModal({onClose}) {
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:700,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0"}} onClick={onClose}>
-      <div style={{background:C.bgCard,borderRadius:"18px 18px 0 0",width:"100%",maxWidth:680,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -8px 48px rgba(0,0,0,.2)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{padding:"20px 24px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:C.bgCard}}>
-          <h2 style={{fontSize:17,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark}}>🔒 Personvern og databehandling</h2>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,color:C.muted,cursor:"pointer"}}>✕</button>
-        </div>
-        <div style={{padding:"24px",fontSize:14,lineHeight:1.75,color:C.text}}>
-          <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:10,padding:"12px 16px",marginBottom:20,fontSize:13,color:C.green}}>
-            ✓ Kulturvarsling.no behandler dine data i henhold til GDPR og norsk personopplysningslov.
-          </div>
-          {[
-            ["Hvem er behandlingsansvarlig?","Åndsverkstedet AS er behandlingsansvarlig for alle personopplysninger som samles inn gjennom Kulturvarsling.no. Kontakt: personvern@kulturvarsling.no"],
-            ["Hvilke data samler vi inn?","Vi samler inn e-postadresse, navn og organisasjonstilknytning ved registrering. Ved bruk av tjenesten lagres hvilke saker du følger, kampanjer du har signert, og høringssvar du har sendt. Vi samler ikke inn sensitiv informasjon."],
-            ["Hva bruker vi dataene til?","E-postadresse brukes til å sende varselnotifikasjoner du selv har aktivert. Navn og organisasjon brukes til å identifisere deg i høringssvar. Vi deler aldri dine data med tredjeparter til kommersielle formål."],
-            ["Cookies og sporingsverktøy","Vi bruker kun funksjonelle informasjonskapsler som er nødvendige for at tjenesten skal fungere. Vi bruker ingen annonse- eller atferdssporingsverktøy."],
-            ["Dine rettigheter","Du har rett til innsyn, retting og sletting av dine data. Du kan når som helst trekke tilbake samtykket og slette kontoen din under Min side → Innstillinger. For henvendelser: personvern@kulturvarsling.no"],
-            ["Datalagring","Data lagres på servere i EU/EØS-området. Vi oppbevarer data så lenge kontoen er aktiv, eller i inntil 12 måneder etter siste innlogging."],
-          ].map(([tittel,tekst])=>(
-            <div key={tittel} style={{marginBottom:20}}>
-              <div style={{fontWeight:700,fontSize:14,color:C.redDark,marginBottom:6}}>{tittel}</div>
-              <div style={{color:C.muted,fontSize:13,lineHeight:1.65}}>{tekst}</div>
-            </div>
-          ))}
-          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:16,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
-            <span style={{fontSize:12,color:C.muted}}>Sist oppdatert: januar 2025</span>
-            <Btn variant="primary" size="sm" onClick={onClose}>Lukk</Btn>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── ONBOARDING WIZARD ───────────────────────────────────────────────────────
 function OnboardingWizard({user,setUser,onDone}) {
   const [steg,setSteg]=useState(0);
@@ -491,7 +456,6 @@ function OnboardingWizard({user,setUser,onDone}) {
   const [valgtNivå,setValgtNivå]=useState(["nasjonalt","fylke","kommune"]);
   const [frekvens,setFrekvens]=useState("daglig");
   const [samtykke,setSamtykke]=useState(false);
-  const [visPersonvern,setVisPersonvern]=useState(false);
 
   const stegListe=[
     {tittel:"Hvem er du?",sub:"Fortell oss litt om deg og din organisasjon."},
@@ -500,20 +464,27 @@ function OnboardingWizard({user,setUser,onDone}) {
     {tittel:"Personvern og samtykke",sub:"Les gjennom og bekreft."},
   ];
 
-  function fullfør() {
-    setUser(u=>({...u,org,orgType,varselKat:valgtKat,varselNivå:valgtNivå,varselFrekvens:frekvens,onboardingDone:true}));
-    if(user?.id) {
-      upsertProfil(user.id, {
+  async function fullfør() {
+    if (!samtykke) return;
+    const naa = new Date().toISOString();
+    if (user?.id) {
+      const lagret = await upsertProfil(user.id, {
         org, org_type: orgType, fagfelt: valgtKat,
-        varsel_frekvens: frekvens, onboarding_done: true
+        varsel_frekvens: frekvens, onboarding_done: true,
+        personvern_akseptert_at: naa,
+        personvern_versjon: PERSONVERN_VERSJON,
       });
+      if (!lagret) {
+        showToast("Samtykket ble ikke lagret. Prøv igjen.", "feil");
+        return;
+      }
     }
+    setUser(u=>({...u,org,orgType,varselKat:valgtKat,varselNivå:valgtNivå,varselFrekvens:frekvens,onboardingDone:true}));
     onDone();
   }
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      {visPersonvern&&<PersonvernModal onClose={()=>setVisPersonvern(false)}/>}
       <div style={{background:C.bgCard,borderRadius:20,width:"100%",maxWidth:520,boxShadow:"0 32px 80px rgba(0,0,0,.35)",overflow:"hidden"}}>
         {/* Progress */}
         <div style={{background:C.red,padding:"20px 24px 16px"}}>
@@ -610,16 +581,12 @@ function OnboardingWizard({user,setUser,onDone}) {
                 <br/><br/>
                 Kulturvarsling.no vil bruke e-postadressen din til å sende varsler du har abonnert på. Vi deler aldri dine data med tredjeparter til kommersielle formål.
               </div>
-              <div onClick={()=>setSamtykke(s=>!s)} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"14px 16px",borderRadius:12,border:`1.5px solid ${samtykke?C.green:C.border}`,background:samtykke?"#F0FDF4":"none",cursor:"pointer",marginBottom:14}}>
-                <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${samtykke?C.green:C.border}`,background:samtykke?C.green:"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>
-                  {samtykke&&<span style={{color:"#fff",fontSize:12,fontWeight:900}}>✓</span>}
-                </div>
+              <div style={{display:"flex",gap:12,alignItems:"flex-start",padding:"14px 16px",borderRadius:12,border:`1.5px solid ${samtykke?C.green:C.border}`,background:samtykke?"#F0FDF4":"none",marginBottom:14}}>
+                <input id="kv-samtykke" type="checkbox" checked={samtykke} onChange={e=>setSamtykke(e.target.checked)} style={{width:20,height:20,marginTop:2,accentColor:C.green,flexShrink:0}}/>
                 <div style={{fontSize:13,color:C.text,lineHeight:1.55}}>
-                  Jeg har lest og akseptert{" "}
-                  <button onClick={e=>{e.stopPropagation();setVisPersonvern(true);}} style={{background:"none",border:"none",color:C.red,fontWeight:700,fontSize:13,cursor:"pointer",padding:0,textDecoration:"underline"}}>
-                    personvernerklæringen
-                  </button>
-                  {" "}og samtykker til at Kulturvarsling.no kan behandle mine personopplysninger.
+                  <label htmlFor="kv-samtykke" style={{cursor:"pointer"}}>Jeg har lest og akseptert</label>{" "}
+                  <a href="/personvern" target="_blank" rel="noopener noreferrer" style={{color:C.red,fontWeight:700}}>personvernerklæringen</a>
+                  <label htmlFor="kv-samtykke" style={{cursor:"pointer"}}> og samtykker til at Kulturvarsling.no kan behandle mine personopplysninger.</label>
                 </div>
               </div>
               <div style={{fontSize:11,color:C.muted,lineHeight:1.55}}>
@@ -746,7 +713,6 @@ function BrukerLogin({setScreen,setUser}) {
   const [pw,setPw]=useState("");
   const [navn,setNavn]=useState("");
   const [mode,setMode]=useState("login");
-  const [visPersonvern,setVisPersonvern]=useState(false);
   const [feil,setFeil]=useState("");
   const [laster,setLaster]=useState(false);
   const [bekreftSendt,setBekreftSendt]=useState(false);
@@ -828,7 +794,6 @@ function BrukerLogin({setScreen,setUser}) {
   return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif",padding:16}}>
       <style>{css}</style>
-      {visPersonvern&&<PersonvernModal onClose={()=>setVisPersonvern(false)}/>}
       <div style={{width:"100%",maxWidth:440}}>
         <div style={{textAlign:"center",marginBottom:28}}>
           <div style={{width:44,height:44,background:C.red,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}>
@@ -860,9 +825,9 @@ function BrukerLogin({setScreen,setUser}) {
           {mode==="register"&&(
             <div style={{fontSize:12,color:C.muted,lineHeight:1.55,marginBottom:12}}>
               Ved å opprette konto aksepterer du{" "}
-              <button onClick={()=>setVisPersonvern(true)} style={{background:"none",border:"none",color:C.red,fontWeight:700,fontSize:12,cursor:"pointer",padding:0,textDecoration:"underline"}}>
+              <a href="/personvern" target="_blank" rel="noopener noreferrer" style={{color:C.red,fontWeight:700}}>
                 personvernerklæringen
-              </button>.
+              </a>.
             </div>
           )}
           {feil&&<div style={{background:"#FEE2E2",border:"1px solid #FECACA",borderRadius:8,padding:"9px 13px",marginBottom:12,fontSize:13,color:"#991B1B",display:"flex",gap:7,alignItems:"center"}}>⚠️ {feil}</div>}
@@ -900,7 +865,6 @@ function BrukerApp({user,setUser,setScreen}) {
   const [showPremium,setShowPremium]=useState(false);
   const [showVarselReg,setShowVarselReg]=useState(false);
   const [showOnboarding,setShowOnboarding]=useState(user&&!user.onboardingDone);
-  const [showPersonvern,setShowPersonvern]=useState(false);
   const [showFeedback,setShowFeedback]=useState(false);
   const [fulgte,setFullgte]=useState([]);
   const isPremium = user?.plan==="premium";
@@ -1015,7 +979,6 @@ function BrukerApp({user,setUser,setScreen}) {
       {showPremium&&<PremiumModal user={user} onClose={()=>setShowPremium(false)} onLogin={()=>{setShowPremium(false);setScreen("bruker-login");}}/>}
       {showVarselReg&&<VarselRegistreringModal user={user} setUser={setUser} onClose={()=>setShowVarselReg(false)}/>}
       {showOnboarding&&user&&<OnboardingWizard user={user} setUser={setUser} onDone={()=>setShowOnboarding(false)}/>}
-      {showPersonvern&&<PersonvernModal onClose={()=>setShowPersonvern(false)}/>}
       {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
 
       <div className="avis-dato">
@@ -1086,7 +1049,7 @@ function BrukerApp({user,setUser,setScreen}) {
             {view==="historikk" &&<SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
             {view==="kampanjer" &&<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user}/>}
             {view==="mobiliser" &&<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer}/>}
-            {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding} setShowPersonvern={setShowPersonvern}/>}
+            {view==="profil"    &&<MinProfilSide user={user} setUser={setUser} setScreen={setScreen} aktivitet={aktivitet} fulgte={fulgte} toggleFølg={toggleFølg} setShowVarselReg={setShowVarselReg} setShowPremium={setShowPremium} setShowOnboarding={setShowOnboarding}/>}
             {view==="premium"   &&<PremiumVerktøy varslerData={varsler} user={user}/>}
           </div>
         )}
@@ -1096,7 +1059,7 @@ function BrukerApp({user,setUser,setScreen}) {
         <div className="avis-wrap avis-fot-rad">
           <div>© {new Date().getFullYear()} Åndsverkstedet AS</div>
           <div>
-            <button type="button" onClick={()=>setShowPersonvern(true)}>Personvern</button>
+            <a href="/personvern">Personvern</a>
             <button type="button" onClick={()=>setShowFeedback(true)}>Gi tilbakemelding</button>
             <span>personvern@kulturvarsling.no</span>
           </div>
@@ -1125,8 +1088,23 @@ function FølgKnapp({sakId,fulgte,toggleFølg,size="sm"}) {
 }
 
 // ─── MIN PROFIL SIDE ─────────────────────────────────────────────────────────
-function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselReg,setShowPremium,setShowOnboarding,setShowPersonvern}) {
+function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setShowVarselReg,setShowPremium,setShowOnboarding}) {
   const [tab,setTab]=useState("profil");
+  const [slettSteg,setSlettSteg]=useState("idle");
+  const [slettFeil,setSlettFeil]=useState("");
+  async function slettKonto() {
+    setSlettSteg("jobber");
+    setSlettFeil("");
+    const { data, error } = await sb.functions.invoke("slett-konto", { body: {} });
+    if (error || !data?.ok) {
+      setSlettSteg("idle");
+      setSlettFeil("Kontoen ble ikke slettet. Prøv igjen, eller skriv til personvern@kulturvarsling.no.");
+      return;
+    }
+    await sb.auth.signOut();
+    setUser(null);
+    setScreen("bruker-login");
+  }
   const [redigerOrg,setRedigerOrg]=useState(false);
   const [orgVal,setOrgVal]=useState(user?.org||"");
   const [orgTypeVal,setOrgTypeVal]=useState(user?.orgType||"");
@@ -1287,11 +1265,25 @@ function MinProfilSide({user,setUser,aktivitet,fulgte,toggleFølg,setShowVarselR
           </Card>
           <Card>
             <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>Personvern og data</div>
-            <div style={{fontSize:13,color:C.muted,marginBottom:12}}>Les personvernerklæringen eller be om sletting av dine data.</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <Btn variant="secondary" onClick={()=>setShowPersonvern(true)}>🔒 Les personvernerklæring</Btn>
-              <Btn variant="secondary" style={{color:"#991B1B",border:"1px solid #FECACA"}}>🗑 Slett min konto</Btn>
+            <div style={{fontSize:13,color:C.muted,marginBottom:12}}>Les personvernerklæringen, eller slett kontoen og dataene som er knyttet til den.</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <a href="/personvern" style={{color:C.red,fontWeight:700,fontSize:13}}>Les personvernerklæringen</a>
+              {slettSteg!=="bekreft"&&(
+                <Btn variant="secondary" style={{color:"#991B1B",border:"1px solid #FECACA"}} onClick={()=>setSlettSteg("bekreft")} disabled={slettSteg==="jobber"}>
+                  {slettSteg==="jobber"?"Sletter …":"🗑 Slett min konto"}
+                </Btn>
+              )}
             </div>
+            {slettSteg==="bekreft"&&(
+              <div style={{marginTop:12}}>
+                <div style={{fontSize:13,color:C.text,marginBottom:10}}>Dette sletter kontoen og dataene som er knyttet til den. Handlingen kan ikke angres.</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <Btn variant="secondary" style={{color:"#991B1B",border:"1px solid #FECACA"}} onClick={slettKonto}>Ja, slett kontoen</Btn>
+                  <Btn variant="secondary" onClick={()=>setSlettSteg("idle")}>Avbryt</Btn>
+                </div>
+              </div>
+            )}
+            {slettFeil&&<div role="alert" style={{marginTop:10,fontSize:13,color:"#991B1B"}}>{slettFeil}</div>}
           </Card>
           {user?.plan!=="premium"&&(
             <Card style={{background:"linear-gradient(135deg,#EDE9FE,#DDD6FE)",border:"1px solid #C4B5FD"}}>

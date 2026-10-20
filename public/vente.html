@@ -4,33 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kulturvarsling.no – kommer snart</title>
-  <style>
-    * { box-sizing:border-box; }
-    body { margin:0; background:#FAF7F2; font-family:'Georgia',serif; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:32px 20px; }
-    .wrap { max-width:580px; width:100%; }
-    .logo { width:80px; height:auto; margin:0 auto 16px; display:block; }
-    .snart { font-size:12px; letter-spacing:3px; color:#8B1A1A; margin-bottom:16px; font-family:sans-serif; }
-    h1 { font-size:36px; color:#1a1a1a; margin:0 0 20px; line-height:1.2; }
-    h2 { font-size:20px; color:#1a1a1a; margin:0 0 16px; line-height:1.3; }
-    p { font-size:16px; color:#555; line-height:1.7; margin:0 0 14px; }
-    ul { color:#555; font-size:16px; line-height:1.7; padding-left:20px; margin:0 0 14px; }
-    .center { text-align:center; }
-    .form { display:flex; flex-direction:column; gap:10px; align-items:center; margin-top:24px; width:100%; }
-    input { padding:12px 16px; border-radius:8px; border:1px solid #ccc; font-size:16px; width:100%; max-width:480px; }
-    button { padding:14px 24px; background:#8B1A1A; color:#fff; border:none; border-radius:8px; font-size:16px; cursor:pointer; width:100%; max-width:480px; }
-    .samtykke { font-size:12px; color:#999; margin-top:8px; max-width:480px; line-height:1.5; }
-    .takk { color:#8B1A1A; font-size:18px; font-weight:bold; margin-top:28px; display:none; }
-    @media (max-width:480px) {
-      h1 { font-size:28px; }
-      p { font-size:15px; }
-    }
-  </style>
+  <link rel="stylesheet" href="/papir.css">
 </head>
 <body>
-  <div class="wrap">
-    <img src="/Kulturvarsling%20logo.png" alt="Kulturvarsling logo" class="logo"/>
-    <div class="snart center">KOMMER SNART</div>
-    <h1 class="center">Kulturvarsling.no</h1>
+  <article class="ark">
+    <img src="/Kulturvarsling%20logo.png" alt="Kulturvarsling logo" width="80" height="80">
+    <p class="versal">Kommer snart</p>
+    <h1>Kulturvarsling.no</h1>
     <h2>Et demokratisk varslingssystem for kulturfeltet</h2>
     <p>Kulturfeltet i Norge mangler i dag et effektivt varslingssystem for politiske prosesser som angår dem. Viktige beslutninger tas uten at kunstnere, kulturarbeidere og organisasjoner får mulighet til å respondere. Kulturvarsling.no vil bli en landsdekkende portal som samler, analyserer og varsler om relevante politiske forslag og vedtak – lokalt, regionalt og nasjonalt.</p>
     <p>Ved hjelp av automatiserte systemer vil plattformen hente informasjon direkte fra offentlige instanser og gjøre det tilgjengelig for feltet, i sanntid. Kulturaktører får dermed tidlig varsel og kan mobilisere før beslutninger tas – gjennom integrerte verktøy for kampanjer, høringssvar og direkte kontakt med beslutningstakere.</p>
@@ -40,38 +20,83 @@
       <li>Gi kultursektoren et effektivt verktøy for å beskytte sitt handlingsrom og fremme egne og felles interesser.</li>
       <li>Effektivisere offentlig sektors informasjonsdeling.</li>
     </ul>
-    <p class="center">Vi lanserer snart!</p>
-    <p class="center" style="color:#777;font-size:15px">Meld deg på, så gir vi deg beskjed når vi er klare.</p>
-    <div class="form">
-      <input id="fornavn" type="text" placeholder="Fornavn"/>
-      <input id="etternavn" type="text" placeholder="Etternavn"/>
-      <input id="epost" type="email" placeholder="din@epost.no"/>
-      <button onclick="meld()">Meld meg på</button>
-      <p class="samtykke">Ved å melde deg på samtykker du til at Kulturvarsling.no kan kontakte deg med informasjon om lansering og nyheter. Vi deler ikke din e-post med tredjeparter.</p>
-    </div>
-    <div class="takk" id="takk">Takk! Vi gir deg beskjed når vi lanserer.</div>
-  </div>
+    <p>Vi lanserer snart. Meld deg på, så gir vi deg beskjed når vi er klare.</p>
+
+    <form id="skjema" data-samtykke-versjon="nyhetsbrev-2026-10">
+      <div class="felt">
+        <label class="feltnavn" for="fornavn">Fornavn</label>
+        <input id="fornavn" name="fornavn" type="text" autocomplete="given-name" maxlength="80">
+      </div>
+      <div class="felt">
+        <label class="feltnavn" for="etternavn">Etternavn</label>
+        <input id="etternavn" name="etternavn" type="text" autocomplete="family-name" maxlength="80">
+      </div>
+      <div class="felt">
+        <label class="feltnavn" for="epost">E-post</label>
+        <input id="epost" name="epost" type="email" autocomplete="email" required placeholder="din@epost.no">
+      </div>
+      <div class="samtykke">
+        <input id="samtykke" name="samtykke" type="checkbox" value="ja" required>
+        <span>
+          <label for="samtykke">Ja, jeg vil motta Kulturvarslings nyhetsbrev på e-post (ca. ukentlig) med kulturpolitiske saker og frister. Jeg kan melde meg av når som helst.</label>
+          <a href="/personvern">Les personvernerklæringen</a>.
+        </span>
+      </div>
+      <div class="hp" aria-hidden="true">
+        <label for="kv_hp_felt">La dette feltet stå tomt</label>
+        <input id="kv_hp_felt" name="kv_hp_felt" type="text" tabindex="-1" autocomplete="off">
+      </div>
+      <button type="submit" id="send">Meld meg på</button>
+      <p id="status" class="status" role="status"></p>
+    </form>
+    <p class="bunn"><a href="/personvern">Personvernerklæring</a> · <a href="/app">Åpne appen</a></p>
+  </article>
+  <noscript><p>Skjemaet trenger JavaScript for å sende påmeldingen.</p></noscript>
   <script>
-    function meld() {
-      const fornavn = document.getElementById('fornavn').value;
-      const etternavn = document.getElementById('etternavn').value;
-      const epost = document.getElementById('epost').value;
-      if (!epost) return;
-      fetch('https://zyyijlvmgoanjdzngmon.supabase.co/rest/v1/pamelding', {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI',
-          'Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI'
-        },
-        body:JSON.stringify({fornavn, etternavn, epost})
-      }).then(r => {
-        if(r.ok) {
-          document.querySelector('.form').style.display='none';
-          document.getElementById('takk').style.display='block';
+    const VERSJON = "nyhetsbrev-2026-10";
+    const skjema = document.getElementById("skjema");
+    const status = document.getElementById("status");
+    const knapp = document.getElementById("send");
+    skjema.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const samtykke = document.getElementById("samtykke");
+      if (!samtykke.checked) {
+        status.dataset.tilstand = "feil";
+        status.textContent = "Du må krysse av for samtykke.";
+        return;
+      }
+      knapp.disabled = true;
+      status.dataset.tilstand = "venter";
+      status.textContent = "Sender …";
+      try {
+        const res = await fetch("https://zyyijlvmgoanjdzngmon.supabase.co/functions/v1/meld-pa", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({
+            fornavn: document.getElementById("fornavn").value,
+            etternavn: document.getElementById("etternavn").value,
+            epost: document.getElementById("epost").value,
+            samtykke: true,
+            samtykke_tekst_versjon: VERSJON,
+            kv_hp_felt: document.getElementById("kv_hp_felt").value
+          })
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data && data.ok === true) {
+          skjema.hidden = true;
+          status.dataset.tilstand = "ok";
+          status.textContent = data.melding || "Sjekk e-posten din og bekreft påmeldingen.";
+        } else {
+          status.dataset.tilstand = "feil";
+          status.textContent = (data && data.feil) || "Påmeldingen ble ikke registrert. Prøv igjen.";
+          knapp.disabled = false;
         }
-      });
-    }
+      } catch (e) {
+        status.dataset.tilstand = "feil";
+        status.textContent = "Fikk ikke kontakt. Påmeldingen ble ikke registrert.";
+        knapp.disabled = false;
+      }
+    });
   </script>
 </body>
 </html>
