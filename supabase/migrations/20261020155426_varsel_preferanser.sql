@@ -162,3 +162,6 @@ revoke all on function public.mottakere_for_sak(uuid) from public;
 revoke all on function public.mottakere_for_sak(uuid) from anon;
 revoke all on function public.mottakere_for_sak(uuid) from authenticated;
 grant execute on function public.mottakere_for_sak(uuid) to service_role;
+
+-- Tabell-UPDATE kan være tatt bort. Gi eksplisitt rett på den nye kolonnen.
+grant update (varsler_aktive) on table public.profiler to authenticated;

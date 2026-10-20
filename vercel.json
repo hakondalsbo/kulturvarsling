@@ -3,6 +3,9 @@
     { "handle": "filesystem" },
     { "src": "/app", "dest": "/index.html" },
     { "src": "/app/(.*)", "dest": "/index.html" },
+    { "src": "/personvern", "dest": "/personvern.html" },
+    { "src": "/bekreft", "dest": "/bekreft.html" },
+    { "src": "/avmelding", "dest": "/avmelding.html" },
     { "src": "/(.*)", "dest": "/vente.html" }
   ]
 }

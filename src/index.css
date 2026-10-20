@@ -1094,7 +1094,8 @@ button.avis-tittel {
   color: var(--dempet);
 }
 
-.avis-fot-rad button {
+.avis-fot-rad button,
+.avis-fot-rad a {
   background: none;
   border: 0;
   padding: 8px 0;
@@ -1103,9 +1104,11 @@ button.avis-tittel {
   color: var(--dempet);
   font: inherit;
   cursor: pointer;
+  text-decoration: none;
 }
 
-.avis-fot-rad button:first-child {
+.avis-fot-rad button:first-child,
+.avis-fot-rad a:first-child {
   margin-left: 0;
 }
 
@@ -1595,7 +1598,8 @@ button.avis-tittel {
     padding-bottom: 28px;
   }
 
-  .avis-fot-rad button {
+  .avis-fot-rad button,
+  .avis-fot-rad a {
     margin-left: 0;
     margin-right: 18px;
   }
