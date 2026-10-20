@@ -1,4 +1,9 @@
 import { kallClaude } from "../_shared/claude.ts";
+import {
+  genererGenerellKlartekst,
+  lagreKlartekstCache,
+  MAKS_KLARTEKST_PER_KJORING,
+} from "../klartekst/generer.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
@@ -387,12 +392,48 @@ function jsonSvar(body: unknown, status = 200): Response {
 async function lagreVarsel(
   supabase: { from: (t: string) => any },
   rad: Record<string, unknown>,
-) {
-  const { error } = await supabase.from("varsler").upsert(rad, {
+): Promise<{ error: { message: string } | null; id: string | null }> {
+  const { data, error } = await supabase.from("varsler").upsert(rad, {
     onConflict: "kilde_nokkel",
     ignoreDuplicates: true,
-  });
-  return error as { message: string } | null;
+  }).select("id").maybeSingle();
+  return {
+    error: error as { message: string } | null,
+    id: typeof data?.id === "string" ? data.id : null,
+  };
+}
+
+// Klartekst etter innsetting. Feil her skal ikke velte resten av kjøringen.
+// Over taket blir raden liggende uten generell klartekst til backfill-klartekst.
+async function skrivKlartekst(
+  supabase: { from: (t: string) => any },
+  varselId: string,
+  item: any,
+  sammendrag: string,
+  niva: string,
+  sted: string | null,
+  apiKey: string,
+): Promise<"ok" | "feil"> {
+  try {
+    const generert = await genererGenerellKlartekst({
+      tittel: item.tittel,
+      sammendrag,
+      instans: item.instans,
+      frist: item.frist ?? null,
+      niva,
+      sted,
+    }, apiKey);
+    if (!generert) return "feil";
+    const cacheFeil = await lagreKlartekstCache(supabase, varselId, generert);
+    if (cacheFeil) {
+      console.error("klartekst_cache:", cacheFeil);
+      return "feil";
+    }
+    return "ok";
+  } catch (e) {
+    console.error("Klartekst etter innsetting:", String(e).slice(0, 200));
+    return "feil";
+  }
 }
 
 // ─── Hoved-handler ────────────────────────────────────────────────────────────
@@ -526,6 +567,10 @@ Deno.serve(async (req: Request) => {
     const MAKS_CLAUDE_SAKER = 25;
     let claudeSaker = 0;
     let antallAvvist = 0;
+    let klartekstForsok = 0;
+    let klartekstLagret = 0;
+    let klartekstFeilet = 0;
+    let klartekstUtsatt = 0;
 
     for (const item of nye) {
       if (item.adapter === "regjeringen-rss") {
@@ -573,8 +618,8 @@ Deno.serve(async (req: Request) => {
             continue;
           }
           merkManglendeKilde(item.adapter, avvistRad.kilde_id);
-          const avvistFeil = await lagreVarsel(supabase, avvistRad);
-          if (!avvistFeil) {
+          const avvist = await lagreVarsel(supabase, avvistRad);
+          if (!avvist.error) {
             antallAvvist++;
             const nokkel = kildeNokkel(item.kilde);
             if (nokkel) eksKilder.add(nokkel);
@@ -608,10 +653,10 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       merkManglendeKilde(item.adapter, rad.kilde_id);
-      const error = await lagreVarsel(supabase, rad);
+      const lagret = await lagreVarsel(supabase, rad);
 
-      if (error) {
-        driftFeil.push(`${item.tittel}: ${error.message}`);
+      if (lagret.error) {
+        driftFeil.push(`${item.tittel}: ${lagret.error.message}`);
       } else {
         antallLagret++;
         lagretPerAdapter.set(
@@ -622,6 +667,28 @@ Deno.serve(async (req: Request) => {
         if (nokkel) eksKilder.add(nokkel);
         const innhold = innholdDedupNokkel(item);
         if (innhold) eksInnhold.add(innhold);
+        // Relevans er Haiku. Klartekst er Sonnet, samme modell som klartekst-funksjonen.
+        if (anthropicKey && lagret.id) {
+          if (klartekstForsok >= MAKS_KLARTEKST_PER_KJORING) {
+            klartekstUtsatt++;
+          } else {
+            klartekstForsok++;
+            const utfall = await skrivKlartekst(
+              supabase,
+              lagret.id,
+              item,
+              sammendrag,
+              niva,
+              (rad.sted as string | null) ?? null,
+              anthropicKey,
+            );
+            if (utfall === "ok") klartekstLagret++;
+            else {
+              klartekstFeilet++;
+              driftFeil.push(`${item.tittel.slice(0, 60)}: klartekst utilgjengelig`);
+            }
+          }
+        }
       }
     }
 
@@ -692,6 +759,9 @@ Deno.serve(async (req: Request) => {
       nye_og_relevante: nye.length,
       lagret: antallLagret,
       avvist_av_filter: antallAvvist,
+      klartekst_lagret: klartekstLagret,
+      klartekst_feilet: klartekstFeilet || undefined,
+      klartekst_utsatt: klartekstUtsatt || undefined,
       feil: feil.length > 0 ? feil.slice(0, 10) : undefined,
       kilde_status: kildeStatus,
     };
