@@ -5,6 +5,8 @@ import { kallClaude } from "../_shared/claude.ts";
 //   {svar: {hva_skjer, hvem_pavirkes, tall_belop, frist, hva_kan_du_gjore}, cachet}
 // Profilen hentes alltid server-side fra profiler. Svaret caches per sak +
 // normalisert profiltype i klartekst_cache.
+// Skriver bare til klartekst_cache, aldri til varsler. Tittel, sammendrag
+// og kategori — også når manuelt_redigert er satt — blir ikke rørt her.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
@@ -264,6 +266,7 @@ Deno.serve(async (req: Request) => {
     }
     leggILokalCache(cacheNøkkel, parsed);
 
+    // Bare cache-tabellen. varsler.tittel/sammendrag/kategori oppdateres ikke.
     const { error: cacheLagreFeil } = await supabase.from("klartekst_cache").upsert(
       { varsel_id: varselId, profil_nokkel: profilNøkkel, svar: { ...parsed, _innhold: innhold } },
       { onConflict: "varsel_id,profil_nokkel" },

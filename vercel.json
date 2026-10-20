@@ -7,5 +7,8 @@
     { "src": "/bekreft", "dest": "/bekreft.html" },
     { "src": "/avmelding", "dest": "/avmelding.html" },
     { "src": "/(.*)", "dest": "/vente.html" }
-  ]
+  ],
+  "github": {
+    "silent": true
+  }
 }
