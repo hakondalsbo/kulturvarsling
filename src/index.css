@@ -797,6 +797,83 @@ button.avis-tittel {
   vertical-align: 3px;
 }
 
+.avis-merker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 10px;
+}
+
+.avis-uka .avis-merker,
+.avis-tabell .avis-merker {
+  margin: 6px 0 0;
+}
+
+.avis-merke {
+  font: 600 12px/1.3 var(--sans);
+  color: var(--dempet);
+}
+
+.avis-merke.mobiliser {
+  color: var(--papir);
+  background: var(--tegl);
+  padding: 3px 8px;
+}
+
+.avis-merke.kutt_innstramming {
+  color: var(--tegl);
+}
+
+.avis-merke.stor_endring {
+  color: var(--granitt);
+}
+
+.avis-merke.ny_mulighet {
+  color: var(--oker);
+}
+
+.avis-konsekvens {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 18px 0 2px;
+  scrollbar-width: none;
+}
+
+.avis-konsekvens::-webkit-scrollbar {
+  display: none;
+}
+
+.avis-konsekvens button {
+  flex: none;
+  min-height: 40px;
+  border: 1px solid var(--linje-myk);
+  background: transparent;
+  border-radius: 999px;
+  padding: 0 14px;
+  font: 500 13.5px/1 var(--sans);
+  color: var(--brod);
+  cursor: pointer;
+}
+
+.avis-konsekvens button sup {
+  font: 500 11px var(--sans);
+  color: var(--dempet);
+  margin-left: 6px;
+}
+
+.avis-konsekvens button.aktiv {
+  border-color: var(--tekst);
+  color: var(--tekst);
+}
+
+.avis-konsekvens button.aktiv.kutt_innstramming,
+.avis-konsekvens button.aktiv.mobiliser {
+  border-color: var(--tegl);
+  color: var(--tegl);
+}
+
 .avis-instans {
   font: 400 15px/1.45 var(--sans);
   color: var(--dempet);

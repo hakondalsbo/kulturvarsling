@@ -1,4 +1,11 @@
 import { kallClaude } from "../_shared/claude.ts";
+import { klassifiserKonsekvens } from "../_shared/konsekvens-kall.ts";
+import { oppfriskMobiliserNaa } from "../_shared/konsekvens-lager.ts";
+import {
+  MAKS_KONSEKVENS_PER_KJORING,
+  osloDato,
+  type KonsekvensFelt,
+} from "../_shared/konsekvens.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
@@ -373,6 +380,19 @@ function jsonSvar(body: unknown, status = 200): Response {
 
 // ON CONFLICT (kilde_nokkel) DO NOTHING. kilde_nokkel er generert og skal
 // ikke sendes med. Duplikat i samme kjøring er allerede fjernet før innsetting.
+function utenKonsekvensfelt(rad: Record<string, unknown>) {
+  const kopi = { ...rad };
+  for (const nokkel of [
+    "konsekvens",
+    "konsekvens_begrunnelse",
+    "konsekvens_sikkerhet",
+    "mobiliser_naa",
+    "mobiliser_grunn",
+    "mobiliser_dato",
+  ]) delete kopi[nokkel];
+  return kopi;
+}
+
 async function lagreVarsel(
   supabase: { from: (t: string) => any },
   rad: Record<string, unknown>,
@@ -472,6 +492,8 @@ Deno.serve(async (req: Request) => {
     let antallLagret = 0;
     const lagretPerAdapter = new Map<string, number>();
     const driftFeil: string[] = [];
+    let konsekvensVurdert = 0;
+    let konsekvensUtsatt = 0;
 
     // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
     // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke
@@ -535,7 +557,41 @@ Deno.serve(async (req: Request) => {
         if (!item.frist) status = analyse.status ?? status;
       }
 
-      const error = await lagreVarsel(supabase, {
+      // Konsekvens kjøres etter relevans. Feil og taket stopper aldri lagringen.
+      // Nye rader er ikke manuelt rettet. ignoreDuplicates gjør at en senere
+      // kjøring ikke skriver over konsekvens_manuell eller manuelt_redigert.
+      let konsekvensFelt: KonsekvensFelt | null = null;
+      if (anthropicKey) {
+        const kort = String(item.tittel ?? "").slice(0, 60);
+        if (konsekvensVurdert + konsekvensUtsatt >= MAKS_KONSEKVENS_PER_KJORING) {
+          konsekvensUtsatt++;
+          driftFeil.push(`${kort}: konsekvens utsatt (tak per kjøring)`);
+        } else {
+          try {
+            const svar = await klassifiserKonsekvens({
+              tittel: item.tittel ?? "",
+              sammendrag,
+              kildetekst: item.sammendrag_raa || sammendrag,
+              instans: item.instans ?? "",
+              frist: item.frist ?? null,
+              dagensDato: osloDato(),
+            }, anthropicKey, { oppgave: "konsekvens" });
+            if (svar.ok) {
+              konsekvensFelt = svar.felt;
+              konsekvensVurdert++;
+            } else {
+              konsekvensUtsatt++;
+              driftFeil.push(`${kort}: konsekvens utsatt (${svar.grunn})`);
+            }
+          } catch (e) {
+            konsekvensUtsatt++;
+            driftFeil.push(`${kort}: konsekvens utsatt`);
+            console.error("konsekvens:", e);
+          }
+        }
+      }
+
+      const rad: Record<string, unknown> = {
         tittel: item.tittel,
         sammendrag,
         instans: item.instans,
@@ -549,7 +605,19 @@ Deno.serve(async (req: Request) => {
         sakstype: item.sakstype ?? null,
         kommunenr: item.kommunenr ?? null,
         fylkesnr: item.fylkesnr ?? null,
-      });
+        ...(konsekvensFelt ?? {}),
+      };
+      let error = await lagreVarsel(supabase, rad);
+      if (
+        error &&
+        konsekvensFelt &&
+        /konsekvens|mobiliser_/.test(error.message)
+      ) {
+        error = await lagreVarsel(supabase, utenKonsekvensfelt(rad));
+        if (!error) {
+          driftFeil.push(`${String(item.tittel).slice(0, 60)}: lagret uten konsekvens (kolonne mangler)`);
+        }
+      }
 
       if (error) {
         driftFeil.push(`${item.tittel}: ${error.message}`);
@@ -621,6 +689,14 @@ Deno.serve(async (req: Request) => {
         .eq("id", kildeId);
     }
 
+    let mobiliserOppdatert: number | null = null;
+    try {
+      mobiliserOppdatert = await oppfriskMobiliserNaa(supabase, osloDato());
+    } catch (e) {
+      console.error("mobiliser-oppfrisk feilet, innhentingen fortsetter:", e);
+      driftFeil.push("mobiliser_naa ble ikke oppdatert i denne kjøringen");
+    }
+
     const feil = [...kildeFeil, ...driftFeil];
     const respons = {
       kjørt: new Date().toISOString(),
@@ -630,6 +706,9 @@ Deno.serve(async (req: Request) => {
       hentet_totalt: alle.length,
       nye_og_relevante: nye.length,
       lagret: antallLagret,
+      konsekvens_vurdert: konsekvensVurdert,
+      konsekvens_utsatt: konsekvensUtsatt,
+      mobiliser_oppdatert: mobiliserOppdatert,
       avvist_av_filter: antallAvvist,
       feil: feil.length > 0 ? feil.slice(0, 10) : undefined,
       kilde_status: kildeStatus,

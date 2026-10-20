@@ -1,4 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  KONSEKVENS_NAVN,
+  KONSEKVENS_VERDIER,
+  forsideRang,
+  matcherKonsekvensFilter,
+  osloDato,
+  synligKonsekvens,
+  erMobiliserNaa,
+  type KonsekvensFilter,
+  type Konsekvens,
+} from "../supabase/functions/_shared/konsekvens.ts";
 
 /**
  * Presentasjon for Kulturavisen v2.
@@ -21,6 +32,12 @@ export type Sak = {
   status?: string;
   opprettet?: string;
   kilde?: string;
+  konsekvens?: string | null;
+  konsekvens_sikkerhet?: string | null;
+  konsekvens_begrunnelse?: string | null;
+  mobiliser_dato?: string | null;
+  mobiliser_grunn?: string | null;
+  mobiliser_naa?: boolean | null;
 };
 
 export type Fylke = { nr: string; navn: string };
@@ -321,23 +338,35 @@ export function KildeDetaljer({ kilder, lastet }: { kilder: KildeRad[]; lastet: 
   );
 }
 
+function sammenlignForside(a: Sak, b: Sak, nå: Date) {
+  const iDag = osloDato(nå);
+  const rang = forsideRang(a, iDag) - forsideRang(b, iDag);
+  if (rang !== 0) return rang;
+  const fristRang = (s: Sak) => (s.frist && dagerTil(s.frist, nå) >= 0 ? dagerTil(s.frist, nå) : 10_000);
+  const frist = fristRang(a) - fristRang(b);
+  if (frist !== 0) return frist;
+  const statusRang = (s: Sak) => (s.status === "kritisk" ? 0 : s.status === "viktig" ? 1 : 2);
+  const status = statusRang(a) - statusRang(b);
+  if (status !== 0) return status;
+  return (b.opprettet || "").localeCompare(a.opprettet || "");
+}
+
 function velgHovedsak(saker: Sak[], nå: Date) {
-  const medFrist = saker
-    .filter((s) => s.frist && dagerTil(s.frist, nå) >= 0)
-    .sort((a, b) => dagerTil(a.frist as string, nå) - dagerTil(b.frist as string, nå));
-  const haster = medFrist.find((s) => erHaster(s, nå));
-  if (haster) return haster;
-  if (medFrist[0]) return medFrist[0];
-  return [...saker].sort((a, b) => {
-    const rang = (s: Sak) => (s.status === "kritisk" ? 0 : s.status === "viktig" ? 1 : 2);
-    const diff = rang(a) - rang(b);
-    if (diff !== 0) return diff;
-    return (b.opprettet || "").localeCompare(a.opprettet || "");
-  })[0] ?? null;
+  if (saker.length === 0) return null;
+  return [...saker].sort((a, b) => sammenlignForside(a, b, nå))[0];
 }
 
 function ogsaaDenneUka(saker: Sak[], lead: Sak | null, nå: Date) {
   const resten = saker.filter((s) => s.id !== lead?.id);
+  const iDag = osloDato(nå);
+  const prioritert = resten
+    .filter((s) => forsideRang(s, iDag) < 2)
+    .sort((a, b) => sammenlignForside(a, b, nå));
+  if (prioritert.length > 0) {
+    const restenUten = resten.filter((s) => !prioritert.some((p) => p.id === s.id));
+    const fylt = [...prioritert, ...restenUten.sort((a, b) => sammenlignForside(a, b, nå))];
+    return { tittel: "Også nå", saker: fylt.slice(0, 3) };
+  }
   const uke = mandag(nå);
   const grense = new Date(uke);
   grense.setDate(uke.getDate() + 7);
@@ -354,6 +383,23 @@ function ogsaaDenneUka(saker: Sak[], lead: Sak | null, nå: Date) {
   if (iUka.length > 0) return { tittel: "Også denne uka", saker: iUka.slice(0, 3) };
   const siste = [...resten].sort((a, b) => (b.opprettet || "").localeCompare(a.opprettet || ""));
   return { tittel: "Andre saker", saker: siste.slice(0, 3) };
+}
+
+export function KonsekvensMerker({ sak, nå = new Date() }: { sak: Sak; nå?: Date }) {
+  const iDag = osloDato(nå);
+  const verdi = synligKonsekvens(sak);
+  const mobiliser = erMobiliserNaa(sak.mobiliser_dato, iDag);
+  if (!verdi && !mobiliser) return null;
+  return (
+    <div className="avis-merker">
+      {mobiliser ? (
+        <span className="avis-merke mobiliser" title={sak.mobiliser_grunn || undefined}>Mobiliser nå</span>
+      ) : null}
+      {verdi ? (
+        <span className={`avis-merke ${verdi}`}>{KONSEKVENS_NAVN[verdi]}</span>
+      ) : null}
+    </div>
+  );
 }
 
 export function ForsideAvis({
@@ -397,6 +443,7 @@ export function ForsideAvis({
                 {(harNærFrist(lead, nå, 14) || erSnart(lead, nå)) ? " · " : null}
                 {fagLabel(lead.kategori)} · {nivaaTekst(lead)}
               </div>
+              <KonsekvensMerker sak={lead} nå={nå} />
               <h1>{lead.tittel}</h1>
               {lead.sammendrag ? <p className="avis-ingress">{lead.sammendrag}</p> : null}
               <div className="avis-frist">
@@ -432,6 +479,7 @@ export function ForsideAvis({
                     <b className={s.frist && erHaster(s, nå) ? undefined : "rolig"}>{kortDato(s.frist || s.opprettet)}</b>
                     {s.instans ? ` · ${s.instans}` : ""}
                   </div>
+                  <KonsekvensMerker sak={s} nå={nå} />
                   <h3>{s.tittel}</h3>
                 </button>
               </li>
@@ -624,6 +672,7 @@ export function VarselArkiv({
   const [geoSok, setGeoSok] = useState("");
   const [alleFylker, setAlleFylker] = useState(false);
   const [utvidet, setUtvidet] = useState(false);
+  const [kons, setKons] = useState<KonsekvensFilter>("alle");
   const geoWrap = useRef<HTMLDivElement>(null);
   const geoSokRef = useRef<HTMLInputElement>(null);
   const geoKnapp = useRef<HTMLButtonElement>(null);
@@ -635,7 +684,8 @@ export function VarselArkiv({
     () => byggGeoValg(iFag, fylker, minFylke, geoSok, alleFylker),
     [iFag, fylker, minFylke, geoSok, alleFylker],
   );
-  const filtrert = useMemo(() => {
+  const iDag = osloDato(nå);
+  const grunnlag = useMemo(() => {
     const q = søk.trim().toLowerCase();
     return iFag.filter((s) => {
       if (!matcherGeo(s, geo)) return false;
@@ -645,6 +695,15 @@ export function VarselArkiv({
       return hay.includes(q);
     });
   }, [iFag, geo, bareFulgte, fulgte, søk]);
+  const filtrert = useMemo(
+    () => grunnlag.filter((s) => matcherKonsekvensFilter(s, kons, iDag)),
+    [grunnlag, kons, iDag],
+  );
+  const konsekvensValg: { id: KonsekvensFilter; label: string }[] = [
+    { id: "alle", label: "Alle konsekvenser" },
+    ...KONSEKVENS_VERDIER.map((id: Konsekvens) => ({ id, label: KONSEKVENS_NAVN[id] })),
+    { id: "mobiliser", label: "Mobiliser nå" },
+  ];
 
   const fagNavn = kat === "alle" ? "" : fagLabel(kat).toLowerCase();
   const setning = filtrert.length === 1 ? "1 sak" : `${filtrert.length} saker`;
@@ -733,6 +792,7 @@ export function VarselArkiv({
     setGeo({ type: "alle" });
     setSøk("");
     setBareFulgte(false);
+    setKons("alle");
   }
 
   const aktivFagId = kat === "alle" ? "fag-alle" : `fag-${kat}`;
@@ -797,6 +857,25 @@ export function VarselArkiv({
               ))}
             </div>
           ) : null}
+
+          <div className="avis-konsekvens" role="tablist" aria-label="Konsekvens">
+            {konsekvensValg.map((v) => {
+              const n = grunnlag.filter((s) => matcherKonsekvensFilter(s, v.id, iDag)).length;
+              return (
+                <button
+                  type="button"
+                  role="tab"
+                  key={v.id}
+                  id={`kons-${v.id}`}
+                  aria-selected={kons === v.id}
+                  className={kons === v.id ? `aktiv ${v.id}` : v.id}
+                  onClick={() => setKons(v.id)}
+                >
+                  {v.label}<sup>{n}</sup>
+                </button>
+              );
+            })}
+          </div>
 
           <div className="avis-setning">
             <div className="avis-setning-tekst">
@@ -900,6 +979,7 @@ export function VarselArkiv({
                         {erNy(s, nå) ? <span className="avis-ny">Ny </span> : null}
                         {s.tittel}
                       </button>
+                      <KonsekvensMerker sak={s} nå={nå} />
                     </td>
                     <td className="i">{s.instans || s.sted || ""}</td>
                     <td className="h"><Handling sak={s} fulgte={fulgte} nå={nå} onToggleFølg={onToggleFølg} onÅpne={onÅpne} /></td>
@@ -931,6 +1011,7 @@ export function VarselArkiv({
                               {s.tittel}
                             </button>
                           </h4>
+                          <KonsekvensMerker sak={s} nå={nå} />
                           <div className="avis-instans">{s.instans || s.sted}</div>
                         </div>
                         <Handling sak={s} fulgte={fulgte} nå={nå} onToggleFølg={onToggleFølg} onÅpne={onÅpne} />

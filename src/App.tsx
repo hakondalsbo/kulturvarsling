@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta } from "./avis.tsx";
+import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta, KonsekvensMerker } from "./avis.tsx";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase → Settings → API
@@ -1469,6 +1469,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
                 <Badge color={sak.status==="kritisk"?C.red:sak.status==="viktig"?C.amber:C.green} bg={sak.status==="kritisk"?"#FEE2E2":sak.status==="viktig"?"#FEF3C7":"#F0FDF4"}>{sak.dager}d igjen</Badge>
                 {ki&&<Badge color={C.muted}>{ki.ikon} {ki.label}</Badge>}
                 <NivåBadge nivå={sak.nivå} sted={sak.sted}/>
+                <KonsekvensMerker sak={sak}/>
               </div>
               <h2 style={{margin:"0 0 5px",fontSize:18,fontWeight:800,fontFamily:"'Playfair Display',serif",color:C.redDark,lineHeight:1.25}}>{sak.tittel}</h2>
               <p style={{margin:"0 0 4px",fontSize:13,color:C.muted,lineHeight:1.5}}>{sak.sammendrag}</p>

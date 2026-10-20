@@ -1,0 +1,182 @@
+{
+  "kilde": "mock",
+  "dagens_dato": "2026-10-20",
+  "merknad": "Ingen ANTHROPIC_API_KEY. Treffraten er fra en lokal nøkkelord-mock, ikke fra Haiku. Kildeteksten er det lagrede sammendraget, ikke hele dokumentet.",
+  "antall": 30,
+  "treff": 27,
+  "rate": 0.9,
+  "per_verdi": {
+    "kutt_innstramming": {
+      "antall": 1,
+      "treff": 0,
+      "rate": 0
+    },
+    "stor_endring": {
+      "antall": 5,
+      "treff": 5,
+      "rate": 1
+    },
+    "ny_mulighet": {
+      "antall": 3,
+      "treff": 1,
+      "rate": 0.3333333333333333
+    },
+    "til_orientering": {
+      "antall": 21,
+      "treff": 21,
+      "rate": 1
+    }
+  },
+  "saker": [
+    {
+      "id": "80653f79-b471-49ed-b7c3-e98a118531af",
+      "forventet": "ny_mulighet",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "e05a0843-c5bc-42d8-9a3d-4a5df3f25096",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "86b112f9-1a85-4fc3-a072-6351d415d401",
+      "forventet": "stor_endring",
+      "faktisk": "stor_endring"
+    },
+    {
+      "id": "97d844b6-5521-4032-ac98-4597a4cdd64c",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "c8d165f2-7ea4-44f3-8a89-22ccbf6b0ee6",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "3f54ce6f-c602-4b48-96e7-5330ee7c7dc6",
+      "forventet": "stor_endring",
+      "faktisk": "stor_endring"
+    },
+    {
+      "id": "161fdeab-2271-46c6-b28d-2680208e627a",
+      "forventet": "ny_mulighet",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "90a26730-e886-4a10-a1e5-a08aedaabd17",
+      "forventet": "stor_endring",
+      "faktisk": "stor_endring"
+    },
+    {
+      "id": "de0dc5a6-fb44-4d5c-aebd-76b9ea10c085",
+      "forventet": "ny_mulighet",
+      "faktisk": "ny_mulighet"
+    },
+    {
+      "id": "b2fce9f0-5b02-4234-8f61-aef4a2f47ab3",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "cc11ac17-70d4-4743-b509-19c1ce336511",
+      "forventet": "stor_endring",
+      "faktisk": "stor_endring"
+    },
+    {
+      "id": "215e0230-ee85-4a1c-8774-ca8b395dd72f",
+      "forventet": "stor_endring",
+      "faktisk": "stor_endring"
+    },
+    {
+      "id": "d10a6289-9c04-49d0-811c-0cce7c51d9ed",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "af75b1b4-557a-4fac-9175-60aad58e0aa5",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "86124a2b-31ee-4ebf-87f6-6ece87acab86",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "a3906774-c52b-45d2-955e-88811f0c3e75",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "54eee543-98dd-452c-9668-15640e8a7fe8",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "390382e2-e405-4717-9d8d-3645e5138e13",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "4333eb3a-c44e-45bd-bc5a-162019cb1471",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "cdababbb-205d-44af-8723-1a4d91c432f9",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "b70f9ea5-b8f2-4a1d-8c6a-2ccf1ec4bf8c",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "6ed0668e-38f6-4279-815f-41e92ef9cdec",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "f104bc54-d6b0-4b8a-b785-e097bbb6fcf3",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "948390be-2ce3-451a-a3e2-862b97858f4d",
+      "forventet": "kutt_innstramming",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "2d4ca72f-de10-4ab5-90a8-a3eb43d74562",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "1cf0dfd3-4fc8-4fc0-976f-d733db4b7aae",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "1cbcddd8-8d9c-4732-b54c-f8956d7f022d",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "19622766-7b5b-4395-ac2b-c69e2e3bdd5f",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "bc017010-54b3-46ad-ada5-6db179fd5f86",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    },
+    {
+      "id": "cbce8da8-335b-4ca6-b8bd-df2dc0fbe861",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering"
+    }
+  ]
+}
