@@ -386,6 +386,93 @@ export function kildeNokkel(raw: string | null | undefined): string | null {
   return normaliserKildeUrl(dekodXml(raw));
 }
 
+/**
+ * Adapter i kilderegisteret ut fra kilde-URL. Samme regler som
+ * public.adapter_fra_kilde. Stavanger-frø og andre ukjente vertsnavn
+ * blir null — de skal ikke gjettes inn i en annen kilde.
+ */
+export function adapterFraKildeUrl(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const s = raw.trim().toLowerCase();
+  if (!s) return null;
+  if (s.includes("stortinget.no") && (s.includes("ventede-saker") || s.includes("#sak-"))) {
+    return "stortinget-ventede";
+  }
+  if (s.includes("stortinget.no")) return "stortinget-saker";
+  if (s.includes("regjeringen.no")) return "regjeringen-rss";
+  if (s.includes("einnsyn.no")) return "einnsyn";
+  if (s.includes("bergen.kommune.no")) return "bergen";
+  if (s.includes("kulturdirektoratet.no")) return "kulturdirektoratet";
+  if (s.includes("sametinget.no")) return "sametinget";
+  return null;
+}
+
+export function kildeUuidForAdapter(
+  adapter: string | null | undefined,
+  register: { get(key: string): { id: string } | undefined },
+): string | null {
+  if (!adapter) return null;
+  const id = register.get(adapter)?.id;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+export type VarselRadInn = {
+  tittel: string;
+  kilde?: string | null;
+  instans?: string | null;
+  frist?: string | null;
+  niva?: string | null;
+  sted?: string | null;
+  sakstype?: string | null;
+  kommunenr?: string | null;
+  fylkesnr?: string | null;
+  adapter?: string | null;
+};
+
+/**
+ * Rad klar for insert/upsert. kilde lagres normalisert, så generert
+ * kilde_nokkel blir den samme strengen for alle adaptere. kilde_nokkel
+ * sendes aldri med. kilde_id er UUID fra kilderegisteret, ikke adapterens
+ * egen streng-id.
+ */
+export function byggVarselRad(
+  item: VarselRadInn,
+  felt: {
+    publisert: boolean;
+    kategori: string;
+    niva: string;
+    status: string;
+    sammendrag: string;
+    sted?: string | null;
+  },
+  register: { get(key: string): { id: string } | undefined },
+): Record<string, unknown> | null {
+  const kilde = kildeNokkel(item.kilde ?? null);
+  if (!kilde || !item.tittel) return null;
+  const rad: Record<string, unknown> = {
+    tittel: item.tittel,
+    sammendrag: felt.sammendrag,
+    instans: item.instans ?? "",
+    kilde,
+    frist: item.frist ?? null,
+    kategori: felt.kategori,
+    niva: felt.niva,
+    sted: felt.sted ?? item.sted ?? (felt.niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
+    status: felt.status,
+    publisert: felt.publisert,
+    kilde_id: kildeUuidForAdapter(
+      item.adapter ?? adapterFraKildeUrl(item.kilde),
+      register,
+    ),
+  };
+  if (felt.publisert) {
+    rad.sakstype = item.sakstype ?? null;
+    rad.kommunenr = item.kommunenr ?? null;
+    rad.fylkesnr = item.fylkesnr ?? null;
+  }
+  return rad;
+}
+
 /** Første treff per normalisert kilde-URL. Rader uten URL droppes. */
 export function dedupEtterKilde<T extends { kilde?: string | null }>(
   items: T[],

@@ -5,6 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  adapterFraKildeUrl,
+  byggVarselRad,
   dedupEtterKilde,
   dekodXml,
   erKulturRelevant,
@@ -14,6 +16,7 @@ import {
   erRegjeringenRelevant,
   finnHøringsfrist,
   kildeNokkel,
+  kildeUuidForAdapter,
   normaliserKildeUrl,
   parseRegjeringenFrist,
   parseStortingetDato,
@@ -518,4 +521,125 @@ test("RSS dekoder &amp; og dedup treffer rader som fortsatt har entiteten", () =
     [kildeNokkel(kodet)!],
   );
   assert.deepEqual(ut, []);
+});
+
+// ─── kilde_id og konsistent kilde_nokkel ──────────────────────────────────────
+
+const REGISTER = new Map([
+  ["stortinget-saker", { id: "11111111-1111-1111-1111-111111111111" }],
+  ["stortinget-ventede", { id: "22222222-2222-2222-2222-222222222222" }],
+  ["regjeringen-rss", { id: "33333333-3333-3333-3333-333333333333" }],
+  ["einnsyn", { id: "44444444-4444-4444-4444-444444444444" }],
+  ["bergen", { id: "55555555-5555-5555-5555-555555555555" }],
+  ["kulturdirektoratet", { id: "66666666-6666-6666-6666-666666666666" }],
+  ["sametinget", { id: "77777777-7777-7777-7777-777777777777" }],
+]);
+
+test("adapterFraKildeUrl mapper kjente vertsnavn og lar ukjente være", () => {
+  assert.equal(
+    adapterFraKildeUrl("https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200367"),
+    "stortinget-saker",
+  );
+  assert.equal(
+    adapterFraKildeUrl("https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/ventede-saker/#sak-110"),
+    "stortinget-ventede",
+  );
+  assert.equal(
+    adapterFraKildeUrl("https://www.regjeringen.no/no/dokumenter/nou-2025-3/id3092679/?utm_source=rss"),
+    "regjeringen-rss",
+  );
+  assert.equal(adapterFraKildeUrl("https://einnsyn.no/moetesak/ms_abc"), "einnsyn");
+  assert.equal(
+    adapterFraKildeUrl("https://www.bergen.kommune.no/politikk/politiskeutvalg/573732/mote/1"),
+    "bergen",
+  );
+  assert.equal(
+    adapterFraKildeUrl("https://www.kulturdirektoratet.no/vedtak#NKF-IAB-2026-03-24"),
+    "kulturdirektoratet",
+  );
+  assert.equal(adapterFraKildeUrl("https://sametinget.no/aktuelt/liste.aspx"), "sametinget");
+  assert.equal(
+    adapterFraKildeUrl("https://www.stavanger.kommune.no/nytt-teater-og-museum/"),
+    null,
+  );
+  assert.equal(adapterFraKildeUrl("  "), null);
+  assert.equal(adapterFraKildeUrl(null), null);
+});
+
+test("innsettingsrad setter kilde_id og normalisert kilde, aldri kilde_nokkel", () => {
+  const rad = byggVarselRad(
+    {
+      tittel: "Sak",
+      adapter: "stortinget-saker",
+      instans: "Stortinget",
+      kilde: "HTTPS://WWW.STORTINGET.NO/no/Saker-og-publikasjoner/Saker/Sak/?p=200367",
+      frist: "2026-11-01",
+      sakstype: "høring",
+      kommunenr: null,
+      fylkesnr: null,
+    },
+    {
+      publisert: true,
+      kategori: "kulturarv",
+      niva: "nasjonalt",
+      status: "viktig",
+      sammendrag: "Kort",
+    },
+    REGISTER,
+  );
+  assert.ok(rad);
+  assert.equal(rad.kilde_id, "11111111-1111-1111-1111-111111111111");
+  assert.equal(
+    rad.kilde,
+    "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak?p=200367",
+  );
+  assert.equal("kilde_nokkel" in rad, false);
+  assert.equal(rad.publisert, true);
+  assert.equal(rad.sakstype, "høring");
+});
+
+test("avvist rad får kilde_id, men ikke sakstype-feltene", () => {
+  const rad = byggVarselRad(
+    {
+      tittel: "Avvist",
+      adapter: "bergen",
+      kilde: "https://www.bergen.kommune.no/politikk/sak/1",
+      instans: "Bergen kommune",
+    },
+    {
+      publisert: false,
+      kategori: "kulturpolitikk",
+      niva: "kommune",
+      status: "normal",
+      sammendrag: "Automatisk avvist av relevansfilteret",
+      sted: "Norge",
+    },
+    REGISTER,
+  );
+  assert.ok(rad);
+  assert.equal(rad.kilde_id, "55555555-5555-5555-5555-555555555555");
+  assert.equal("sakstype" in rad, false);
+  assert.equal(rad.kilde_nokkel, undefined);
+});
+
+test("mangler register-rad blir kilde_id null, ukjent URL droppes", () => {
+  assert.equal(kildeUuidForAdapter("bergen", new Map()), null);
+  assert.equal(
+    byggVarselRad(
+      { tittel: "Uten lenke", adapter: "bergen", kilde: "  " },
+      { publisert: true, kategori: "musikk", niva: "kommune", status: "normal", sammendrag: "x" },
+      REGISTER,
+    ),
+    null,
+  );
+  const utenRegister = byggVarselRad(
+    {
+      tittel: "Teater",
+      kilde: "https://www.stavanger.kommune.no/nytt-teater-og-museum/",
+    },
+    { publisert: true, kategori: "scenekunst", niva: "kommune", status: "normal", sammendrag: "x" },
+    REGISTER,
+  );
+  assert.ok(utenRegister);
+  assert.equal(utenRegister.kilde_id, null);
 });
