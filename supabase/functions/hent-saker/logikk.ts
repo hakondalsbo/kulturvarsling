@@ -136,6 +136,15 @@ export function parseRegjeringenFrist(kilde: string): string | null {
     ?? senest(treff(new RegExp(`(?:^|[^\\wæøå])frist\\s*:\\s*${DATO_UTTRYKK}`, "gi")));
 }
 
+/** Tilskuddssiden har fristen. Retningslinje-dokumentet lenker til PDF og har den ikke. */
+const KULTURBYGG_TILSKUDD =
+  "https://www.regjeringen.no/no/dep/kud/tilskudd/tilskudd-til-nasjonale-kulturbygg-og-tus/id86015/";
+
+export function ekstraFristside(tittel: string): string | null {
+  if (/nasjonale kulturbygg/i.test(tittel)) return KULTURBYGG_TILSKUDD;
+  return null;
+}
+
 export function skalHenteFristside(item: {
   tittel?: string;
   kilde?: string | null;

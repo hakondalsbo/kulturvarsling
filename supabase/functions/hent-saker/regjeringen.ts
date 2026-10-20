@@ -11,6 +11,7 @@
 import { samleRssSvar, type AdapterUtfall, type RssSvar } from "./kildehelse.ts";
 import {
   erRegjeringenRelevant,
+  ekstraFristside,
   innenInnhentingsvindu,
   parseRegjeringenFrist,
   skalHenteFristside,
@@ -149,7 +150,14 @@ export async function parseOgBerik(
       continue;
     }
     const html = await hent(sideUrl(item.kilde));
-    const frist = html ? parseRegjeringenFrist(html) : null;
+    let frist = html ? parseRegjeringenFrist(html) : null;
+    if (!frist) {
+      const ekstra = ekstraFristside(item.tittel);
+      if (ekstra) {
+        const mer = await hent(ekstra);
+        frist = mer ? parseRegjeringenFrist(mer) : null;
+      }
+    }
     ut.push(frist ? { ...item, frist } : item);
   }
   return ut;

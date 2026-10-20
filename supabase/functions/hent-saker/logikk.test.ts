@@ -10,6 +10,7 @@ import {
   erKulturRelevant,
   erKulturSak,
   erPortefoljesak,
+  ekstraFristside,
   erRegjeringenRelevant,
   finnHøringsfrist,
   kildeNokkel,
@@ -492,6 +493,13 @@ test("hørings- og tilskuddsfrister leses, og seneste merkede dato vinner", () =
     "2026-10-28",
   );
   assert.equal(parseRegjeringenFrist("Publisert 14. oktober 2026 uten merket frist."), null);
+  assert.equal(
+    ekstraFristside(
+      "Retningslinjer - Tilskudd fra Kultur- og likestillingsdepartementet til nasjonale kulturbygg for 2028",
+    ),
+    "https://www.regjeringen.no/no/dep/kud/tilskudd/tilskudd-til-nasjonale-kulturbygg-og-tus/id86015/",
+  );
+  assert.equal(ekstraFristside("Statsbudsjettet 2027: Eit rekordstort kulturbudsjett for fellesskap"), null);
 });
 
 test("RSS dekoder &amp; og dedup treffer rader som fortsatt har entiteten", () => {
