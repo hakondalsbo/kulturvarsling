@@ -1,7 +1,7 @@
 // Verdien styres av én linje i public/organisasjon.js.
-import { behandlingsansvarlig, orgnr } from "../../../public/organisasjon.js";
+import { behandlingsansvarlig, orgnr, poststed } from "../../../public/organisasjon.js";
 
-export { behandlingsansvarlig, orgnr };
+export { behandlingsansvarlig, orgnr, poststed };
 
 const POSTKASSE = "nyhetsbrev@kulturvarsling.no";
 

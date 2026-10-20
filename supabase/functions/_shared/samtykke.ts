@@ -275,6 +275,59 @@ export function bekreftelsesSide(origin: string, token: string): string {
   return `${origin.replace(/\/$/, "")}/bekreft?t=${encodeURIComponent(token)}`;
 }
 
+export type EpostMedAvmelding = {
+  from: string;
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  headers: {
+    "List-Unsubscribe": string;
+    "List-Unsubscribe-Post": string;
+  };
+};
+
+function tokenFraLenke(lenke: string): string | null {
+  try {
+    return new URL(lenke).searchParams.get("t");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Alle utgående brev (bekreftelse, nyhetsbrev/ukesbrev og varsler) skal
+ * gjennom her. Uten avmeldingslenke med token blir brevet ikke bygd.
+ */
+export function lagEpost(input: {
+  fra: string;
+  til: string;
+  emne: string;
+  html: string;
+  tekst: string;
+  side: string;
+  funksjon: string;
+}): EpostMedAvmelding {
+  if (!erUuid(tokenFraLenke(input.side)) || !erUuid(tokenFraLenke(input.funksjon))) {
+    throw new Error("E-post krever avmeldingslenke med token");
+  }
+  const href = escapeHtml(input.side);
+  const html = input.html.includes(input.side)
+    ? input.html
+    : `${input.html}<p><a href="${href}">Meld meg av</a></p>`;
+  const text = input.tekst.includes(input.side)
+    ? input.tekst
+    : `${input.tekst}\n\nMeld deg av: ${input.side}`;
+  return {
+    from: input.fra,
+    to: input.til,
+    subject: input.emne,
+    html,
+    text,
+    headers: listUnsubscribeHeaders(input.funksjon),
+  };
+}
+
 /** Suksess bare når skrivingen faktisk gikk gjennom. */
 export function svarEtterSkriving(
   feil: string | null,

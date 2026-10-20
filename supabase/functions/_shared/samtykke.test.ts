@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import {
   KILDE_GAMMEL_LISTE,
   PERSONVERN_VERSJON,
@@ -13,6 +13,7 @@ import {
   dryRunLogg,
   filtrerMottakere,
   hemmeligheterStemmer,
+  lagEpost,
   lesToken,
   listUnsubscribeHeaders,
   opphavTillatt,
@@ -24,7 +25,8 @@ import {
   utsendelsesModus,
   validerPamelding,
 } from "./samtykke.ts";
-import { avsender, behandlingsansvarlig, bunntekst, orgnr } from "./organisasjon.ts";
+import { join } from "node:path";
+import { avsender, behandlingsansvarlig, bunntekst, orgnr, poststed } from "./organisasjon.ts";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 
@@ -168,14 +170,18 @@ test("behandlingsansvarlig styres av én linje og brukes i e-post", () => {
   const nyhetsbrev = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
   const navnelinjer = js.split("\n").filter((linje) => linje.startsWith("export const behandlingsansvarlig"));
   assert.equal(navnelinjer.length, 1);
-  assert.equal(behandlingsansvarlig, "[PLASSHOLDER – fyll inn juridisk navn]");
-  assert.equal(orgnr, "[PLASSHOLDER – fyll inn org.nr.]");
+  assert.equal(behandlingsansvarlig, "KULTURVARSLING AS");
+  assert.equal(orgnr, "936 282 881");
+  assert.equal(poststed, "Oslo");
+  assert.doesNotMatch(js, /PLASSHOLDER/);
+  assert.doesNotMatch(html, /PLASSHOLDER/);
   assert.match(html, /data-org="behandlingsansvarlig"/);
+  assert.match(html, /data-org="poststed"/);
   assert.match(html, /src="\/organisasjon\.js"/);
-  assert.doesNotMatch(html, /Åndsverkstedet AS|Kulturvarsling AS/);
+  assert.doesNotMatch(html, /Åndsverkstedet AS/);
   assert.equal(
     avsender(behandlingsansvarlig),
-    `"[PLASSHOLDER – fyll inn juridisk navn]" <nyhetsbrev@kulturvarsling.no>`,
+    '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
   );
   assert.equal(
     avsender("Åndsverkstedet AS", "Kulturvarsling <post@example.com>"),
@@ -188,14 +194,14 @@ test("behandlingsansvarlig styres av én linje og brukes i e-post", () => {
   assert.match(nyhetsbrev, /fraAdresse\(\)/);
 });
 
-test("personvernsiden dekker pliktene og har synlige plassholdere", () => {
+test("personvernsiden dekker pliktene og navngir behandlingsansvarlig", () => {
   const html = readFileSync("public/personvern.html", "utf8");
   const css = readFileSync("public/papir.css", "utf8");
   for (const del of ["Nyhetsbrev", "Varsler", "Konto", "Behandlingsgrunnlag", "Lagringstid", "Dine rettigheter", "Kontakt"]) {
     assert.match(html, new RegExp(del));
   }
-  assert.equal(behandlingsansvarlig.includes("PLASSHOLDER"), true);
-  assert.equal(orgnr.includes("PLASSHOLDER"), true);
+  assert.equal(behandlingsansvarlig, "KULTURVARSLING AS");
+  assert.equal(orgnr, "936 282 881");
   assert.match(html, new RegExp(PERSONVERN_VERSJON));
   assert.match(html, /papir\.css/);
   assert.match(css, /Newsreader/);
@@ -238,6 +244,75 @@ test("dry-run er standard og logger uten å sende", () => {
   assert.ok(dry > 0 && resend > dry);
   assert.match(kilde, /UTSENDING_AKTIV/);
   assert.match(kilde, /Ingenting er sendt/);
+});
+
+const HISTORISK_TEKST = "Ved å melde deg på samtykker du til at Kulturvarsling.no kan kontakte deg med informasjon om lansering og nyheter. Vi deler ikke din e-post med tredjeparter.";
+
+test("historisk samtykke bruker skjemateksten og beholder eldste rad", () => {
+  const sql = readFileSync("supabase/migrations/20261020160000_historisk_samtykke_og_dedup.sql", "utf8");
+  assert.match(sql, /venteside-2026-03-15/);
+  assert.match(sql, /kilde = 'pamelding-skjema'/);
+  assert.match(sql, new RegExp(HISTORISK_TEKST.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(sql, /samtykke_gitt_at settes ikke/);
+  assert.doesNotMatch(sql, /samtykke_gitt_at = now\(\)/);
+  assert.match(sql, /min\(p\.id\)/);
+  assert.match(sql, /s\.id < d\.id/);
+  assert.match(sql, /pamelding_epost_unik/);
+  assert.match(sql, /on conflict \(versjon\) do nothing/);
+});
+
+test("alle utgående e-poster har avmeldingslenke og List-Unsubscribe", () => {
+  const side = "https://www.kulturvarsling.no/avmelding?t=" + TOKEN;
+  const funksjon = "https://example.test/functions/v1/avmeld?t=" + TOKEN;
+  for (const emne of ["Bekreft påmelding til Kulturvarsling", "Ukens kulturbrev", "Nytt varsel"]) {
+    const brev = lagEpost({
+      fra: avsender(behandlingsansvarlig),
+      til: "a@example.no",
+      emne,
+      html: "<p>Innhold</p>",
+      tekst: "Innhold",
+      side,
+      funksjon,
+    });
+    assert.match(brev.html, /Meld meg av/);
+    assert.match(brev.html, new RegExp(TOKEN));
+    assert.match(brev.text, /Meld deg av:/);
+    assert.match(brev.headers["List-Unsubscribe"], /<https:\/\/example\.test\/functions\/v1\/avmeld\?t=/);
+    assert.equal(brev.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
+  }
+  assert.throws(() => lagEpost({
+    fra: "a",
+    til: "a@example.no",
+    emne: "uten token",
+    html: "<p>x</p>",
+    tekst: "x",
+    side: "https://www.kulturvarsling.no/avmelding",
+    funksjon,
+  }));
+
+  const rot = "supabase/functions";
+  const sendere: string[] = [];
+  const stack = [rot];
+  while (stack.length) {
+    const katalog = stack.pop()!;
+    for (const navn of readdirSync(katalog)) {
+      const sti = join(katalog, navn);
+      if (statSync(sti).isDirectory()) stack.push(sti);
+      else if (navn.endsWith(".ts") && !navn.endsWith(".test.ts")) {
+        const kilde = readFileSync(sti, "utf8");
+        if (kilde.includes("api.resend.com/emails")) sendere.push(sti);
+      }
+    }
+  }
+  assert.deepEqual(sendere.sort(), [
+    "supabase/functions/meld-pa/index.ts",
+    "supabase/functions/nyhetsbrev/index.ts",
+  ]);
+  for (const sti of sendere) {
+    const kilde = readFileSync(sti, "utf8");
+    assert.match(kilde, /lagEpost\(/);
+    assert.match(kilde, /headers: brev\.headers/);
+  }
 });
 
 test("avmelding og bekreftelse viser ikke suksess før svaret er ok", () => {

@@ -13,11 +13,14 @@ import { avsender, behandlingsansvarlig, bunntekst } from "../_shared/organisasj
 import {
   KILDE_VENTESIDE,
   SAMTYKKE_VERSJON,
+  avmeldingsFunksjon,
+  avmeldingsSide,
   bekreftelsesSide,
   bekreftelsesutfall,
   erBlokkert,
   erUuid,
   escapeHtml,
+  lagEpost,
   opphavTillatt,
   svarEtterSkriving,
   validerPamelding,
@@ -76,7 +79,7 @@ async function antallSiden(
   return count ?? 0;
 }
 
-async function sendEpost(til: string, emne: string, html: string, text: string): Promise<boolean> {
+async function sendEpost(brev: ReturnType<typeof lagEpost>): Promise<boolean> {
   const key = Deno.env.get("RESEND_API_KEY");
   if (!key) return false;
   const res = await fetch("https://api.resend.com/emails", {
@@ -85,10 +88,36 @@ async function sendEpost(til: string, emne: string, html: string, text: string):
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: fraAdresse(), to: til, subject: emne, html, text }),
+    body: JSON.stringify({
+      from: brev.from,
+      to: brev.to,
+      subject: brev.subject,
+      html: brev.html,
+      text: brev.text,
+      headers: brev.headers,
+    }),
   });
   if (!res.ok) console.error("Resend feilet", res.status);
   return res.ok;
+}
+
+function brevMedAvmelding(
+  til: string,
+  emne: string,
+  html: string,
+  tekst: string,
+  token: string,
+): ReturnType<typeof lagEpost> {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "https://zyyijlvmgoanjdzngmon.supabase.co";
+  return lagEpost({
+    fra: fraAdresse(),
+    til,
+    emne,
+    html,
+    tekst,
+    side: avmeldingsSide(offentligUrl(), token),
+    funksjon: avmeldingsFunksjon(supabaseUrl, token),
+  });
 }
 
 function medBunn(html: string): string {
@@ -192,14 +221,26 @@ Deno.serve(async (req: Request) => {
   }
 
   const rader = treff ?? [];
+  let avToken = rader.find((rad) => erUuid(rad.avmeldings_token))?.avmeldings_token ?? null;
   const alleBekreftet = rader.length > 0 && rader.every((rad) => rad.bekreftet_at && !rad.avmeldt_at);
   if (alleBekreftet) {
-    const sendt = await sendEpost(
+    if (!avToken) {
+      avToken = crypto.randomUUID();
+      const { error: tokenFeil } = await db.from("pamelding")
+        .update({ avmeldings_token: avToken })
+        .eq("id", rader[0].id);
+      if (tokenFeil) {
+        console.error("token", tokenFeil.message);
+        return svar({ ok: false, feil: "Kunne ikke sende e-posten. Ingenting er endret." }, 500);
+      }
+    }
+    const sendt = await sendEpost(brevMedAvmelding(
       validert.verdi.epost,
       "Du er allerede påmeldt Kulturvarsling",
       medBunn("<p>Adressen er allerede bekreftet. Du trenger ikke gjøre noe mer.</p>"),
       `Adressen er allerede bekreftet. Du trenger ikke gjøre noe mer.\n\n${bunntekst(behandlingsansvarlig)}`,
-    );
+      avToken,
+    ));
     if (!sendt) {
       return svar({ ok: false, feil: "Du er allerede påmeldt, men e-posten kom ikke fram. Prøv igjen." }, 502);
     }
@@ -218,11 +259,13 @@ Deno.serve(async (req: Request) => {
     bekreftelses_token: token,
   };
 
+  if (!avToken) avToken = crypto.randomUUID();
+
   if (rader.length === 0) {
     const { error } = await db.from("pamelding").insert({
       ...felles,
       epost: validert.verdi.epost,
-      avmeldings_token: crypto.randomUUID(),
+      avmeldings_token: avToken,
     });
     if (error) {
       console.error("pamelding insert", error.message);
@@ -234,10 +277,13 @@ Deno.serve(async (req: Request) => {
       console.error("pamelding update", error.message);
       return svar({ ok: false, feil: "Kunne ikke lagre påmeldingen. Ingenting er bekreftet." }, 500);
     }
+    let skrevAvToken = rader.some((rad) => rad.avmeldings_token === avToken);
     for (const rad of rader) {
       if (rad.avmeldings_token) continue;
+      const neste = skrevAvToken ? crypto.randomUUID() : avToken;
+      skrevAvToken = true;
       const { error: tokenFeil } = await db.from("pamelding")
-        .update({ avmeldings_token: crypto.randomUUID() })
+        .update({ avmeldings_token: neste })
         .eq("id", rad.id);
       if (tokenFeil) {
         console.error("token", tokenFeil.message);
@@ -247,12 +293,13 @@ Deno.serve(async (req: Request) => {
   }
 
   const lenke = bekreftelsesSide(offentligUrl(), token);
-  const sendt = await sendEpost(
+  const sendt = await sendEpost(brevMedAvmelding(
     validert.verdi.epost,
     "Bekreft påmelding til Kulturvarsling",
     bekreftHtml(lenke),
     `Bekreft påmeldingen ved å åpne lenken:\n${lenke}\n\nIngenting sendes før lenken er bekreftet.\n\n${bunntekst(behandlingsansvarlig)}`,
-  );
+    avToken,
+  ));
   if (!sendt) {
     return svar({ ok: false, feil: "Vi fikk ikke sendt bekreftelses-e-posten. Prøv igjen." }, 502);
   }

@@ -1,5 +1,6 @@
-// Ukentlig nyhetsbrev: Claude leser ukens kultursaker og skriver redaksjonell
-// analyse og innsikt. Sendes via Resend.
+// Ukentlig nyhetsbrev (ukesbrevet): Claude leser ukens kultursaker og skriver
+// redaksjonell analyse og innsikt. Sendes via Resend. Varsler som sendes
+// på e-post skal bruke samme lagEpost, med avmeldingslenke og List-Unsubscribe.
 //
 // IKKE DEPLOY denne funksjonen før live-kilden (v5, 25.07.2026) er hentet og
 // sammenlignet. Bundle-en lot seg ikke laste ned. En deploy overskriver det
@@ -26,10 +27,13 @@ import { avsender, behandlingsansvarlig, bunntekst } from "../_shared/organisasj
 import {
   avmeldingsFunksjon,
   avmeldingsSide,
+  avmeldingsFunksjon,
+  avmeldingsSide,
   dryRunLogg,
+  erUuid,
   escapeHtml,
   hemmeligheterStemmer,
-  listUnsubscribeHeaders,
+  lagEpost,
   normaliserEpost,
   oppsummerHopp,
   planleggUtsendelse,
@@ -280,12 +284,20 @@ Deno.serve(async (req: Request) => {
     const feil: string[] = [];
     for (const mottaker of mottakere) {
       const token = mottaker.avmeldings_token;
-      const side = token ? avmeldingsSide(offentligUrl(), token) : "mailto:personvern@kulturvarsling.no";
-      const html = byggHtml(analyse, frister ?? [], antallArkivert ?? 0, side);
-      const text = `${analyse.emne}\n\n${bunntekst(behandlingsansvarlig)}\nMeld deg av: ${side}`;
-      const hoder = token
-        ? listUnsubscribeHeaders(avmeldingsFunksjon(supabaseUrl, token))
-        : { "List-Unsubscribe": "<mailto:avmelding@kulturvarsling.no?subject=avmeld>" };
+      if (!erUuid(token)) {
+        feil.push(`${mottaker.id ?? "uten-id"}: mangler avmeldingstoken`);
+        continue;
+      }
+      const side = avmeldingsSide(offentligUrl(), token);
+      const brev = lagEpost({
+        fra: fraAdresse(),
+        til: mottaker.epost,
+        emne: analyse.emne,
+        html: byggHtml(analyse, frister ?? [], antallArkivert ?? 0, side),
+        tekst: `${analyse.emne}\n\n${bunntekst(behandlingsansvarlig)}\nMeld deg av: ${side}`,
+        side,
+        funksjon: avmeldingsFunksjon(supabaseUrl, token),
+      });
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -293,12 +305,12 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: fraAdresse(),
-          to: mottaker.epost,
-          subject: analyse.emne,
-          html,
-          text,
-          headers: hoder,
+          from: brev.from,
+          to: brev.to,
+          subject: brev.subject,
+          html: brev.html,
+          text: brev.text,
+          headers: brev.headers,
         }),
       });
       const svarTekst = await res.text();

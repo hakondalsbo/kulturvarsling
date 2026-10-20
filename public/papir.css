@@ -72,16 +72,20 @@ p, li { color: var(--brod); }
   margin: 0 0 28px;
 }
 
-.plassholder {
-  border: 1px solid var(--tegl);
+.plassholder,
+.org {
+  border: 1px solid var(--linje);
   background: var(--flate);
   padding: 18px 20px;
   margin: 0 0 36px;
 }
 
-.plassholder p { margin: 0 0 8px; color: var(--tekst); }
-.plassholder p:last-child { margin: 0; }
-.plassholder strong { font-weight: 600; }
+.plassholder p,
+.org p { margin: 0 0 8px; color: var(--tekst); }
+.plassholder p:last-child,
+.org p:last-child { margin: 0; }
+.plassholder strong,
+.org strong { font-weight: 600; }
 
 .felt { margin: 0 0 14px; }
 

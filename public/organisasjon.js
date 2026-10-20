@@ -1,9 +1,10 @@
-// Én linje. Bytt ut plassholderen med Åndsverkstedet AS eller Kulturvarsling AS.
-export const behandlingsansvarlig = "[PLASSHOLDER – fyll inn juridisk navn]";
+// Behandlingsansvarlig, verifisert i Enhetsregisteret. Én linje å endre.
+export const behandlingsansvarlig = "KULTURVARSLING AS";
 
-export const orgnr = "[PLASSHOLDER – fyll inn org.nr.]";
+export const orgnr = "936 282 881";
+export const poststed = "Oslo";
 
-const felter = { behandlingsansvarlig, orgnr };
+const felter = { behandlingsansvarlig, orgnr, poststed };
 
 if (typeof document !== "undefined") {
   const fyll = () => {
@@ -11,10 +12,6 @@ if (typeof document !== "undefined") {
       const nokkel = el.getAttribute("data-org");
       if (nokkel && felter[nokkel]) el.textContent = felter[nokkel];
     }
-    const erPlassholder = behandlingsansvarlig.includes("PLASSHOLDER")
-      || orgnr.includes("PLASSHOLDER");
-    const varsel = document.querySelector("#org-varsel");
-    if (varsel) varsel.hidden = !erPlassholder;
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fyll);
   else fyll();
