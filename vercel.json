@@ -4,5 +4,8 @@
     { "src": "/app", "dest": "/index.html" },
     { "src": "/app/(.*)", "dest": "/index.html" },
     { "src": "/(.*)", "dest": "/vente.html" }
-  ]
+  ],
+  "github": {
+    "silent": true
+  }
 }
