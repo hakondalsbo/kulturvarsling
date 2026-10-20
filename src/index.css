@@ -892,9 +892,16 @@ button.avis-tittel {
 
 .avis-tabell td.f {
   font: 400 20px var(--serif);
-  width: 120px;
+  width: 148px;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+}
+
+.avis-frist-uten {
+  display: block;
+  margin-top: 4px;
+  font: 600 11px/1.2 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .avis-tabell td.f.haster {
@@ -924,10 +931,6 @@ button.avis-tittel {
 .avis-tabell td.h {
   text-align: right;
   width: 150px;
-}
-
-.avis-frist-uten {
-  display: none;
 }
 
 /* Slik jobber vi */
