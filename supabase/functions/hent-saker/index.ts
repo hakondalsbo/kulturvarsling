@@ -2,6 +2,7 @@ import { kallClaude } from "../_shared/claude.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
+  byggVarselRad,
   dedupEtterKilde,
   erKulturRelevant,
   erKulturSak,
@@ -495,6 +496,12 @@ Deno.serve(async (req: Request) => {
     let antallLagret = 0;
     const lagretPerAdapter = new Map<string, number>();
     const driftFeil: string[] = [];
+    const varsletManglendeKilde = new Set<string>();
+    const merkManglendeKilde = (adapter: string | undefined, kildeId: unknown) => {
+      if (kildeId != null || !adapter || varsletManglendeKilde.has(adapter)) return;
+      varsletManglendeKilde.add(adapter);
+      driftFeil.push(`${adapter}: ingen kilde_id i kilderegisteret`);
+    };
 
     // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
     // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke
@@ -537,20 +544,22 @@ Deno.serve(async (req: Request) => {
           // Husk avvisningen: lagres som UPUBLISERT rad (appen viser kun
           // publisert=true), så samme sak aldri koster en ny AI-vurdering —
           // dedup via kilde-URL stopper den ved neste kjøring.
-          // Porteføljesaker (mediepolitikk, dataspill, KUD-budsjett, høringer)
-          // publiseres likevel, med kildetekst hvis modellen sa nei.
-          const avvistFeil = await lagreVarsel(supabase, {
-            tittel: item.tittel,
-            sammendrag: "Automatisk avvist av relevansfilteret",
-            instans: item.instans,
-            kilde: item.kilde,
-            frist: item.frist ?? null,
+          // Porteføljesaker publiseres i grenen over. Avvisninger lagres
+          // upublisert, med kilde_id, så samme sak ikke vurderes på nytt.
+          const avvistRad = byggVarselRad(item, {
+            publisert: false,
             kategori: analyse.kategori ?? "kulturpolitikk",
             niva: analyse.niva ?? "nasjonalt",
-            sted: "Norge",
             status: "normal",
-            publisert: false,
-          });
+            sammendrag: "Automatisk avvist av relevansfilteret",
+            sted: "Norge",
+          }, kilderMap);
+          if (!avvistRad) {
+            driftFeil.push(`${item.tittel.slice(0, 60)}: mangler kilde-URL`);
+            continue;
+          }
+          merkManglendeKilde(item.adapter, avvistRad.kilde_id);
+          const avvistFeil = await lagreVarsel(supabase, avvistRad);
           if (!avvistFeil) {
             antallAvvist++;
             const nokkel = kildeNokkel(item.kilde);
@@ -570,21 +579,20 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      const error = await lagreVarsel(supabase, {
-        tittel: item.tittel,
-        sammendrag,
-        instans: item.instans,
-        kilde: item.kilde,
-        frist: item.frist ?? null,
+      const rad = byggVarselRad(item, {
+        publisert: true,
         kategori,
         niva,
-        sted: item.sted ?? (niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
         status,
-        publisert: true,
-        sakstype: item.sakstype ?? null,
-        kommunenr: item.kommunenr ?? null,
-        fylkesnr: item.fylkesnr ?? null,
-      });
+        sammendrag,
+        sted: item.sted ?? (niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
+      }, kilderMap);
+      if (!rad) {
+        driftFeil.push(`${item.tittel.slice(0, 60)}: mangler kilde-URL`);
+        continue;
+      }
+      merkManglendeKilde(item.adapter, rad.kilde_id);
+      const error = await lagreVarsel(supabase, rad);
 
       if (error) {
         driftFeil.push(`${item.tittel}: ${error.message}`);
