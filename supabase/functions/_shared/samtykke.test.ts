@@ -685,7 +685,7 @@ test("lanseringsmail er tørrkjør til bryteren er på, og tom liste er aldri al
   for (const setning of [
     "Hei!",
     "Du får denne e-posten fordi du meldte deg på ventelisten til Kulturvarsling en gang mellom 15. mars og 19. oktober 2026. Du ba om å få beskjed når tjenesten åpnet, og nå er den i gang på kulturvarsling.no.",
-    "Kulturvarsling følger med på Stortinget, regjeringen, kommunene og Sametinget og plukker ut sakene som angår kulturlivet. Det kan være høringer, budsjett, tilskudd og vedtak. Hver sak får en kort forklaring på vanlig norsk: hva den gjelder, hvem som bestemmer og når fristen er.",
+    "Kulturvarsling følger med på Stortinget, regjeringen, kommunene og Sametinget og plukker ut sakene som angår kulturlivet. Det kan være høringer, budsjett, tilskudd og vedtak.",
     "Trykk på «Bekreft påmelding» hvis du vil ha et ukesbrev med de viktigste sakene og varsler når en frist nærmer seg.",
     "Hvis du ikke bekrefter, skjer det ingenting. Du får ingen flere e-poster fra oss, og adressen din blir ikke brukt til noe annet.",
     "Hilsen\nHåkon Dalsbø\nKulturvarsling",
@@ -723,6 +723,8 @@ test("lanseringsmail er tørrkjør til bryteren er på, og tom liste er aldri al
   assert.match(brev.html, /Håkon Dalsbø/);
   assert.doesNotMatch(brev.html, /fjernes først/);
   assert.doesNotMatch(brev.text, /fjernes først/);
+  assert.doesNotMatch(brev.html, /Hver sak får en kort forklaring/);
+  assert.doesNotMatch(brev.text, /Hver sak får en kort forklaring/);
   assert.match(brev.text, /Bekreft påmelding:/);
   assert.match(brev.text, /Meld meg av:/);
   assert.equal(brev.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
