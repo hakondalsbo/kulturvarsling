@@ -1,8 +1,9 @@
 // Lett daglig jobb: oppdater HOERFRIST fra Stortinget, høringsfrist fra
 // Regjeringen og Sametinget, og møtedato fra eInnsyn/Bergen. Kjører via
 // pg_cron (oppdater-frister-daglig), ikke via Vercel Cron. Feil i ett
-// oppslag stopper ikke de andre. Oppdaterer bare frist, motedato og status,
-// aldri tittel, sammendrag eller kategori.
+// oppslag stopper ikke de andre. Skriver frist, motedato og status.
+// Aldri tittel, sammendrag eller kategori. Rader med manuelt_redigert
+// beholder satt frist og status. 80653f79 og 1cf0dfd3 skrives ikke.
 
 import { tidligAvslag } from "../hent-saker/kildehelse.ts";
 import { finnHøringsfrist, kalenderdag } from "../hent-saker/logikk.ts";
@@ -27,6 +28,7 @@ import {
   stortingSakId,
   trekkHoringsfrist,
 } from "../hent-saker/frister.ts";
+import { REDAKTOR_FELT_LAAS, skalSkriveFrist } from "../_shared/varselvern.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 
@@ -46,7 +48,10 @@ type Rad = {
   tittel: string | null;
   frist: string | null;
   motedato: string | null;
+  manuelt_redigert: boolean | null;
 };
+
+const REDAKTOR_ID_FILTER = `(${REDAKTOR_FELT_LAAS.join(",")})`;
 
 async function hentTekst(url: string): Promise<{ tekst: string } | { feil: string }> {
   try {
@@ -137,7 +142,7 @@ async function hentBergenDatoer(): Promise<Map<string, string>> {
   return ut;
 }
 
-/** Frist vinner over møtedato. Uten begge blir status normal, aldri kritisk. */
+/** Frist vinner over møtedato. Uten begge blir status normal, aldri kritisk. Redaktørstatus blir stående. */
 async function merkFristStatus(
   supabase: { from: (t: string) => any },
   idag: string,
@@ -149,14 +154,17 @@ async function merkFristStatus(
     if (error) throw new Error(error.message);
     return (data ?? []).length as number;
   };
+  const statusOp = (status: string) =>
+    supabase.from("varsler").update({ status })
+      .eq("manuelt_redigert", false)
+      .not("id", "in", REDAKTOR_ID_FILTER)
+      .neq("status", status);
   const fraFrist = (status: string, smal: (q: any) => any) =>
-    tell(smal(supabase.from("varsler").update({ status }).not("frist", "is", null).neq("status", status)));
+    tell(smal(statusOp(status).not("frist", "is", null)));
   const fraMote = (status: string, smal: (q: any) => any) =>
-    tell(smal(
-      supabase.from("varsler").update({ status }).is("frist", null).not("motedato", "is", null).neq("status", status),
-    ));
+    tell(smal(statusOp(status).is("frist", null).not("motedato", "is", null)));
   const utenDato = await tell(
-    supabase.from("varsler").update({ status: "normal" }).is("frist", null).is("motedato", null).neq("status", "normal"),
+    statusOp("normal").is("frist", null).is("motedato", null),
   );
   return {
     passert: await fraFrist("passert", (q) => q.lt("frist", idag))
@@ -203,7 +211,7 @@ Deno.serve(async (req: Request) => {
   try {
     const { data, error } = await supabase
       .from("varsler")
-      .select("id, kilde, instans, tittel, frist, motedato")
+      .select("id, kilde, instans, tittel, frist, motedato, manuelt_redigert")
       .or("kilde.ilike.%stortinget.no%,kilde.ilike.%regjeringen.no%,kilde.ilike.%sametinget.no%,kilde.ilike.%einnsyn.no%,kilde.ilike.%bergen.kommune.no%");
     if (error) return jsonSvar({ feil: "Kunne ikke hente saker" }, 503);
     const rader = (data ?? []) as Rad[];
@@ -222,7 +230,7 @@ Deno.serve(async (req: Request) => {
     }
     regjeringen.liste_treff = fristPerId.size;
 
-    for (const rad of rader.filter((r) => erRegjeringsHoring(r.kilde, r.instans))) {
+    for (const rad of rader.filter((r) => erRegjeringsHoring(r.kilde, r.instans) && skalSkriveFrist(r))) {
       const innholdId = regjeringenInnholdId(rad.kilde);
       let frist = innholdId ? fristPerId.get(innholdId) ?? null : null;
       if (!frist && !rad.frist && regjeringen.detalj_forsok < MAKS_REGJERING_DETALJ) {
@@ -257,7 +265,7 @@ Deno.serve(async (req: Request) => {
 
     const kandidater = prioriterStorting(
       rader.filter((r) =>
-        stortingSakId(r.kilde) && skalOppdatereStortingFrist(r.frist, idag)
+        skalSkriveFrist(r) && stortingSakId(r.kilde) && skalOppdatereStortingFrist(r.frist, idag)
       ),
     ).slice(0, MAKS_STORTING_OPPSLAG);
     stortinget.kandidater = kandidater.length;
@@ -286,7 +294,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const sametingKandidater = rader
-      .filter((r) => erSametingetHoring(r.kilde, r.tittel) && !r.frist)
+      .filter((r) => erSametingetHoring(r.kilde, r.tittel) && !r.frist && skalSkriveFrist(r))
       .slice(0, MAKS_SAMETING);
     sametinget.kandidater = sametingKandidater.length;
     for (const rad of sametingKandidater) {

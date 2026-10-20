@@ -669,10 +669,7 @@ test("manuelt redigerte rader mister ikke tittel, sammendrag eller kategori i en
     status: "viktig",
   };
   assert.deepEqual(utenManuelleTekstfelt(rad, false), rad);
-  assert.deepEqual(utenManuelleTekstfelt(rad, true), {
-    frist: "2026-11-23",
-    status: "viktig",
-  });
+  assert.deepEqual(utenManuelleTekstfelt(rad, true), {});
 });
 
 // ─── kilde_id og konsistent kilde_nokkel ──────────────────────────────────────

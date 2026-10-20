@@ -1,12 +1,17 @@
 -- Additivt. Status utledes av frist, ellers møtedato. Uten begge blir
 -- status normal: manglende frist er ikke kritisk. Passert dag blir passert.
--- Idempotent. Skriver ikke tittel, sammendrag eller kategori, så
--- manuelt_redigert-rader beholder redaktørteksten.
+-- Idempotent. Skriver ikke tittel, sammendrag eller kategori.
 --
--- Sametinget-høringen 1cf0dfd3: trekkHoringsfrist leser
--- «Høringsfristen er 23. november 2026» fra artikkelsiden (lest 2026-10-20).
--- Møtedatoene under er lest samme dag fra eInnsyn Moetemappe.moetedato og
--- Bergen agendapunkter.moteDato. Bare tomme motedato fylles.
+-- Rader med manuelt_redigert beholder frist og status. Det gjelder også
+-- 80653f79 (frist 2026-10-28, status viktig, kategori kulturpolitikk) og
+-- 1cf0dfd3 (frist 2026-11-23, status normal), godkjent 2026-10-20.
+-- Høringssetningen «Høringsfristen er 23. november 2026» fanges av
+-- trekkHoringsfrist for nye saker. Backfillen setter ikke den datoen på
+-- den godkjente raden.
+--
+-- Møtedatoene under er lest 2026-10-20 fra eInnsyn Moetemappe.moetedato og
+-- Bergen agendapunkter.moteDato. Bare tomme motedato fylles. Møtedato er
+-- ikke et redaktørfelt.
 --
 -- Daglig jobb klones fra hent-saker-daglig og kjøres 06:30 UTC.
 -- x-cron-secret skrives ikke inn her.
@@ -20,6 +25,11 @@ comment on column public.varsler.motedato is
 update public.varsler
 set frist = date '2026-11-23'
 where frist is distinct from date '2026-11-23'
+  and manuelt_redigert is not true
+  and id not in (
+    '80653f79-b471-49ed-b7c3-e98a118531af',
+    '1cf0dfd3-4fc8-4fc0-976f-d733db4b7aae'
+  )
   and kilde ilike '%sametinget.no/aktuelt/horing-behov-for-samiske-tilbud-ordninger-og-tiltak-i-sor-norge-valgkrets.55024.aspx%';
 
 update public.varsler v
@@ -233,10 +243,15 @@ where status is distinct from (
     when coalesce(frist, motedato) <= (timezone('Europe/Oslo', now()))::date + 21 then 'viktig'
     else 'normal'
   end
-);
+)
+  and manuelt_redigert is not true
+  and id not in (
+    '80653f79-b471-49ed-b7c3-e98a118531af',
+    '1cf0dfd3-4fc8-4fc0-976f-d733db4b7aae'
+  );
 
 comment on column public.varsler.status is
-  'kritisk | viktig | normal | passert. Settes fra frist, ellers motedato. Uten dato er verdien normal.';
+  'kritisk | viktig | normal | passert. Settes fra frist, ellers motedato, unntatt rader med manuelt_redigert. Uten dato er verdien normal.';
 
 do $cron$
 declare
