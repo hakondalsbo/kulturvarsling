@@ -152,7 +152,7 @@ function datoDeler(iso: string) {
 }
 
 function omDager(s: Sak, nå: Date) {
-  if (!s.frist) return "ingen frist";
+  if (!s.frist) return s.status === "passert" ? "passert" : "ingen frist";
   const d = dagerTil(s.frist, nå);
   if (d < 0) return "frist passert";
   if (d === 0) return "i dag";
@@ -913,7 +913,7 @@ export function VarselArkiv({
                 {(utvidet ? sortert : sortert.slice(0, 12)).map((s) => (
                   <tr key={s.id}>
                     <td className={`f${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}${erPassert(s, nå) ? " passert" : ""}`}>
-                      {s.frist ? <>{kortDato(s.frist)}{erPassert(s, nå) ? <span className="avis-frist-uten"> Passert</span> : null}</> : <><span className="avis-frist-strek">–</span><span className="avis-frist-uten">Uten frist</span></>}
+                      {s.frist ? <>{kortDato(s.frist)}{erPassert(s, nå) ? <span className="avis-frist-uten"> Passert</span> : null}</> : erPassert(s, nå) ? <span className="avis-frist-uten">Passert</span> : <><span className="avis-frist-strek">–</span><span className="avis-frist-uten">Uten frist</span></>}
                     </td>
                     <td className="t">
                       <button type="button" onClick={() => onÅpne(s, "info")}>
