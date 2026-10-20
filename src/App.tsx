@@ -46,17 +46,25 @@ async function hentProfil(userId) {
   return data;
 }
 
+function profilfelt(oppdateringer) {
+  const felt = { ...oppdateringer };
+  // id ligger i WHERE. plan og stripe_customer_id settes bare av service_role.
+  delete felt.id;
+  delete felt.plan;
+  delete felt.stripe_customer_id;
+  return felt;
+}
+
 async function lagreProfil(userId, oppdateringer) {
   const { error } = await sb.from("profiler")
-    .update({ ...oppdateringer, oppdatert: new Date().toISOString() })
+    .update({ ...profilfelt(oppdateringer), oppdatert: new Date().toISOString() })
     .eq("id", userId);
   return !error;
 }
 
+// handle_new_user oppretter raden ved registrering. Klienten oppdaterer den.
 async function upsertProfil(userId, data) {
-  const { error } = await sb.from("profiler")
-    .upsert({ id: userId, ...data, oppdatert: new Date().toISOString() });
-  return !error;
+  return lagreProfil(userId, data);
 }
 
 async function toggleFølgSak(brukerId, sakId, følger) {
@@ -780,7 +788,7 @@ function BrukerLogin({setScreen,setUser,grunn=""}) {
       setFeil("E-post allerede registrert."); setLaster(false); return;
     }
     if(data.user) {
-      await upsertProfil(data.user.id, { navn, onboarding_done: false, plan: "gratis" });
+      await upsertProfil(data.user.id, { navn, onboarding_done: false });
       await new Promise(r=>setTimeout(r,500));
       setUser({ ...brukerFraSesjon(data.user, null), navn, onboardingDone: false });
       setScreen("bruker-app");
