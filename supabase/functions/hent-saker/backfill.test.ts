@@ -30,7 +30,6 @@ const BUDSJETT = [
   "Statsbudsjettet 2027: Æresløn til Mari Boine",
   "Statsbudsjettet 2027: Regjeringa gir stønad til fem nye prosjekt i ordninga Nasjonale kulturbygg",
   "Statsbudsjettet 2027: Meir til kunstnarane i Statens kunstnarstipend",
-  "Statsbudsjettet 2027: Regjeringa vil ha nytt nasjonalt toppidrettssenter",
   "Statsbudsjettet 2027: Arbeidarparti-regjeringa styrker filmfeltet med 75 millionar kroner",
   "Statsbudsjettet 2027: Full momskompensasjon for frivilligheit og idrett også i 2027",
 ];
@@ -122,7 +121,10 @@ test("backfill setter inn de manglende sakene én gang, og hopper over støy", (
   assert.equal(titler.some((t) => String(t).includes("nynorskkommune")), false);
   assert.equal(titler.some((t) => String(t).includes("besøker Kina")), false);
   assert.equal(titler.some((t) => String(t).includes("barnevernet")), false);
-  assert.equal(første.nye.length, 14);
+  assert.equal(første.nye.length, 13);
+  assert.equal(første.koblinger.length, 0);
+  const innspill = første.nye.find((r) => String(r.tittel).includes("kunstnerstipendmidlene"));
+  assert.equal(innspill?.sakstype, "horing");
 
   const eksisterende: EksisterendeVarsel[] = første.nye.map((r, i) => rad({
     id: `ny-${i}`,
@@ -133,6 +135,27 @@ test("backfill setter inn de manglende sakene én gang, og hopper over støy", (
   }));
   const andre = planleggBackfill({ items: HULL, eksisterende, nå: NÅ });
   assert.deepEqual(andre.nye, []);
+});
+
+test("nettpoker-nyheten kobles til eksisterende høring og publiseres ikke", () => {
+  const plan = planleggBackfill({
+    items: [
+      item("Foreslår å tillate nettpoker hos Norsk Tipping", { instans: "KUD – nyhet" }),
+      item("Høring - forslag til endringer i pengespillforskriften", {
+        instans: "KUD – høring",
+        frist: "2026-11-29",
+        sammendrag_raa: "Forslaget gjelder nettpoker.",
+      }),
+    ],
+    eksisterende: [],
+    nå: NÅ,
+  });
+  assert.equal(plan.nye.length, 1);
+  assert.match(String(plan.nye[0].tittel), /pengespillforskriften/);
+  assert.equal(plan.nye[0].sakstype, "horing");
+  assert.equal(plan.koblinger.length, 1);
+  assert.equal(plan.koblinger[0].rad.publisert, false);
+  assert.match(String(plan.koblinger[0].rad.tittel), /nettpoker/);
 });
 
 test("lagret &amp;-URL blokkerer nytt innlegg med dekodet lenke", () => {

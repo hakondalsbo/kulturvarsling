@@ -2,6 +2,7 @@ import { kallClaude } from "../_shared/claude.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
+  byggSammendragPrompt,
   dedupEtterKilde,
   erKulturRelevant,
   erKulturSak,
@@ -11,6 +12,8 @@ import {
   finnHøringsfrist,
   kategoriFraTittel,
   kildeNokkel,
+  planleggEmneDedup,
+  sakstypeFraSak,
   statusFraFrist,
   stortingsSesjoner,
 } from "./logikk.ts";
@@ -265,24 +268,7 @@ async function analyserMedClaude(
         messages: [
           {
             role: "user",
-            content: `Du er ekspert på norsk kulturpolitikk. Vurder om denne saken er DIREKTE relevant for profesjonelle aktører i norsk kultursektor (kunstnere, kulturinstitusjoner, kulturorganisasjoner).
-
-Tittel: ${item.tittel}
-${item.sammendrag_raa ? `Beskrivelse: ${item.sammendrag_raa.slice(0, 400)}` : ""}
-Instans: ${item.instans}
-
-RELEVANT = ja BARE hvis saken direkte berører: finansiering av kunst/kultur, kulturinstitusjoner, kunstnerstipend, kulturbygg, scenekunst, musikk, film, museer, bibliotek, kulturarv, opphavsrett, kulturpolitikk, kulturskoler, kulturfond, dataspill, mediepolitikk, kringkasting, pengespill (herunder nettpoker) eller statsbudsjettet til Kultur- og likestillingsdepartementet.
-
-IKKE RELEVANT = saker om: forsvar, beredskap, helse, skole (unntatt kulturskole), justis, samferdsel, AI i utdanning generelt, helikopter, redning, eller andre saker som bare nevner "kultur" i forbifarten (for eksempel fordi Kultur- og likestillingsdepartementet står som avsender uten at innholdet gjelder kultur, medier, spill eller stipend).
-
-Svar BARE med gyldig JSON, ingen markdown:
-{
-  "relevant": true eller false,
-  "kategori": "scenekunst" | "musikk" | "dans" | "opera" | "litteratur" | "film" | "visuell" | "museer" | "spill" | "kulturarv",
-  "niva": "nasjonalt" | "fylke" | "kommune",
-  "status": "kritisk" | "viktig" | "normal",
-  "sammendrag": "1-2 konkrete setninger om hva saken betyr for kulturfeltet"
-}`,
+            content: byggSammendragPrompt(item),
           },
         ],
       }),
@@ -409,12 +395,15 @@ function jsonSvar(body: unknown, status = 200): Response {
 async function lagreVarsel(
   supabase: { from: (t: string) => any },
   rad: Record<string, unknown>,
-) {
-  const { error } = await supabase.from("varsler").upsert(rad, {
+): Promise<{ error: { message: string } | null; id: string | null }> {
+  const { data, error } = await supabase.from("varsler").upsert(rad, {
     onConflict: "kilde_nokkel",
     ignoreDuplicates: true,
-  });
-  return error as { message: string } | null;
+  }).select("id").maybeSingle();
+  return {
+    error: error as { message: string } | null,
+    id: typeof data?.id === "string" ? data.id : null,
+  };
 }
 
 // ─── Hoved-handler ────────────────────────────────────────────────────────────
@@ -451,7 +440,7 @@ Deno.serve(async (req: Request) => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     // Hent eksisterende kilder for deduplicering. Feil her avbryter før innhenting.
-    const { data: eks, error: eksFeil } = await supabase.from("varsler").select("kilde");
+    const { data: eks, error: eksFeil } = await supabase.from("varsler").select("id, kilde, tittel, instans, sammendrag");
     if (eksFeil) {
       return jsonSvar({ feil: "Eksisterende saker kunne ikke hentes. Ingen innhenting startet." }, 503);
     }
@@ -511,15 +500,18 @@ Deno.serve(async (req: Request) => {
     });
     // Samme normaliserte URL to ganger i én kjøring (to sesjoner, eller samme
     // sak to ganger) blir én rad. Det var slik p=200362 og p=200367 ble doblet.
-    const nye = dedupEtterKilde(kandidater, eksKilder);
+    const utenUrlDuplikat = dedupEtterKilde(kandidater, eksKilder);
+    const emnePlan = planleggEmneDedup(utenUrlDuplikat, eks ?? []);
+    const nye = emnePlan.behold;
 
     console.log(
-      `Totalt hentet: ${alle.length}, nye og relevante: ${nye.length}`,
+      `Totalt hentet: ${alle.length}, nye og relevante: ${nye.length}, samme sak: ${emnePlan.koblinger.length}`,
     );
 
     let antallLagret = 0;
     const lagretPerAdapter = new Map<string, number>();
     const horingUtenFrist = new Map<string, number>();
+    const idEtterKilde = new Map<string, string>();
     const driftFeil: string[] = [];
 
     const regjeringen = kjøringer.find((k) => k.navn === "regjeringen-rss");
@@ -572,7 +564,7 @@ Deno.serve(async (req: Request) => {
           // dedup via kilde-URL stopper den ved neste kjøring.
           // Porteføljesaker (mediepolitikk, dataspill, KUD-budsjett, høringer)
           // publiseres likevel, med kildetekst hvis modellen sa nei.
-          const avvistFeil = await lagreVarsel(supabase, {
+          const avvist = await lagreVarsel(supabase, {
             tittel: item.tittel,
             sammendrag: "Automatisk avvist av relevansfilteret",
             instans: item.instans,
@@ -584,7 +576,7 @@ Deno.serve(async (req: Request) => {
             status: "normal",
             publisert: false,
           });
-          if (!avvistFeil) {
+          if (!avvist.error) {
             antallAvvist++;
             const nokkel = kildeNokkel(item.kilde);
             if (nokkel) eksKilder.add(nokkel);
@@ -603,7 +595,7 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      const error = await lagreVarsel(supabase, {
+      const lagret = await lagreVarsel(supabase, {
         tittel: item.tittel,
         sammendrag,
         instans: item.instans,
@@ -614,13 +606,13 @@ Deno.serve(async (req: Request) => {
         sted: item.sted ?? (niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
         status,
         publisert: true,
-        sakstype: item.sakstype ?? null,
+        sakstype: item.sakstype ?? sakstypeFraSak(item),
         kommunenr: item.kommunenr ?? null,
         fylkesnr: item.fylkesnr ?? null,
       });
 
-      if (error) {
-        driftFeil.push(`${item.tittel}: ${error.message}`);
+      if (lagret.error) {
+        driftFeil.push(`${item.tittel}: ${lagret.error.message}`);
       } else {
         antallLagret++;
         lagretPerAdapter.set(
@@ -628,7 +620,10 @@ Deno.serve(async (req: Request) => {
           (lagretPerAdapter.get(item.adapter) ?? 0) + 1,
         );
         const nokkel = kildeNokkel(item.kilde);
-        if (nokkel) eksKilder.add(nokkel);
+        if (nokkel) {
+          eksKilder.add(nokkel);
+          if (lagret.id) idEtterKilde.set(nokkel, lagret.id);
+        }
         if (
           item.adapter === "regjeringen-rss" &&
           erRegjeringenHoring(item) &&
@@ -636,6 +631,34 @@ Deno.serve(async (req: Request) => {
         ) {
           horingUtenFrist.set(item.adapter, (horingUtenFrist.get(item.adapter) ?? 0) + 1);
         }
+        // Klartekst etter innsetting skrives av PR #6 (bc-b617c572) til
+        // klartekst_cache. Denne kjøringen rører ikke cachen og ikke
+        // varsler.klartekst, og id fra innsettingen er tilgjengelig i lagret.id.
+      }
+    }
+
+    for (const kobling of emnePlan.koblinger) {
+      const item = kobling.item;
+      const hovedNokkel = kildeNokkel(kobling.hovedKilde);
+      const hovedsakId = kobling.hovedsakId ?? (hovedNokkel ? idEtterKilde.get(hovedNokkel) ?? null : null);
+      const koblet = await lagreVarsel(supabase, {
+        tittel: item.tittel,
+        sammendrag: "Samme sak som en allerede registrert høring eller pressemelding.",
+        instans: item.instans,
+        kilde: item.kilde,
+        frist: item.frist ?? null,
+        kategori: kategoriFraTittel(item.tittel, item.sammendrag_raa ?? ""),
+        niva: item.niva ?? "nasjonalt",
+        sted: item.sted ?? "Nasjonalt",
+        status: "normal",
+        publisert: false,
+        sakstype: item.sakstype ?? sakstypeFraSak(item),
+        hovedsak_id: hovedsakId,
+      });
+      if (koblet.error) driftFeil.push(`${item.tittel}: ${koblet.error.message}`);
+      else {
+        const nokkel = kildeNokkel(item.kilde);
+        if (nokkel) eksKilder.add(nokkel);
       }
     }
 

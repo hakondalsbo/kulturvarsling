@@ -10,8 +10,10 @@ import {
   erRegjeringenRelevant,
   innholdsidFraKilde,
   kategoriFraTittel,
-  leggPaHoringsfrist,
   kildeNokkel,
+  leggPaHoringsfrist,
+  planleggEmneDedup,
+  sakstypeFraSak,
   statusFraFrist,
   type RssItem,
 } from "./logikk.ts";
@@ -59,6 +61,8 @@ export type EksisterendeVarsel = VarselVern & {
 export type BackfillPlan = {
   nye: Record<string, unknown>[];
   oppdateringer: Array<{ id: string; felt: Record<string, unknown> }>;
+  /** Nyhet eller tale som gjelder samme sak. Lagres upublisert med peker til hovedsaken. */
+  koblinger: Array<{ rad: Record<string, unknown>; hovedsakId: string | null; hovedKilde: string | null }>;
 };
 
 export function backfillFeeds(): Array<{ url: string; instans: string }> {
@@ -81,17 +85,8 @@ function nyRad(item: RssItem, nå: number): Record<string, unknown> {
     sted: "Nasjonalt",
     status: statusFraFrist(item.frist, nå),
     publisert: true,
-    sakstype: sakstypeFraInstans(item.instans),
+    sakstype: sakstypeFraSak(item),
   };
-}
-
-function sakstypeFraInstans(instans: string): string | null {
-  const lav = instans.toLowerCase();
-  if (lav.includes("høring")) return "horing";
-  if (lav.includes("tilskudd")) return "tilskudd";
-  if (lav.includes("budsjett") || lav.includes("proposisjon")) return "budsjett";
-  if (lav.includes("nyhet")) return "nyhet";
-  return null;
 }
 
 function leggTil(
@@ -123,7 +118,14 @@ export function planleggBackfill(input: {
       .map((r) => kildeNokkel(r.kilde))
       .filter((n): n is string => !!n),
   );
-  const nye = dedupEtterKilde(relevante, kjente).map((item) => nyRad(item, nå));
+  const unike = dedupEtterKilde(relevante, kjente);
+  const emne = planleggEmneDedup(unike, input.eksisterende);
+  const nye = emne.behold.map((item) => nyRad(item, nå));
+  const koblinger = emne.koblinger.map((k) => ({
+    rad: { ...nyRad(k.item, nå), publisert: false, hovedsak_id: k.hovedsakId },
+    hovedsakId: k.hovedsakId,
+    hovedKilde: k.hovedKilde,
+  }));
 
   const oppdateringer: BackfillPlan["oppdateringer"] = [];
   const etterKilde = new Map<string, EksisterendeVarsel>();
@@ -170,7 +172,7 @@ export function planleggBackfill(input: {
     }));
   }
 
-  return { nye, oppdateringer };
+  return { nye, oppdateringer, koblinger };
 }
 
 /** Eksisterende høringer med tom frist. Tekstfelt på manuelt_redigert røres ikke. */
@@ -283,18 +285,31 @@ export async function kjorRegjeringenBackfill(
   let lagret = 0;
   let horingerUtenFrist = 0;
   const feil: string[] = [];
+  const idEtterKilde = new Map<string, string>();
   for (const rad of plan.nye) {
+    const { data: innsatt, error: ins } = await supabase.from("varsler").upsert(rad, {
+      onConflict: "kilde_nokkel",
+      ignoreDuplicates: true,
+    }).select("id").maybeSingle();
+    if (ins) feil.push(`${String(rad.tittel).slice(0, 80)}: ${ins.message}`);
+    else {
+      lagret++;
+      const nokkel = kildeNokkel(String(rad.kilde ?? ""));
+      if (nokkel && innsatt?.id) idEtterKilde.set(nokkel, String(innsatt.id));
+      if (erRegjeringenHoring({ instans: String(rad.instans ?? ""), tittel: String(rad.tittel ?? "") }) && !rad.frist) {
+        horingerUtenFrist++;
+      }
+    }
+  }
+  for (const kobling of plan.koblinger) {
+    const hovedNokkel = kildeNokkel(kobling.hovedKilde);
+    const hovedsakId = kobling.hovedsakId ?? (hovedNokkel ? idEtterKilde.get(hovedNokkel) ?? null : null);
+    const rad: Record<string, unknown> = { ...kobling.rad, hovedsak_id: hovedsakId, publisert: false };
     const { error: ins } = await supabase.from("varsler").upsert(rad, {
       onConflict: "kilde_nokkel",
       ignoreDuplicates: true,
     });
     if (ins) feil.push(`${String(rad.tittel).slice(0, 80)}: ${ins.message}`);
-    else {
-      lagret++;
-      if (erRegjeringenHoring({ instans: String(rad.instans ?? ""), tittel: String(rad.tittel ?? "") }) && !rad.frist) {
-        horingerUtenFrist++;
-      }
-    }
   }
   let oppdatert = 0;
   for (const op of plan.oppdateringer) {

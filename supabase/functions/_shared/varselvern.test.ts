@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   AVVIST_SAMMENDRAG,
   DATASPILL_VARSEL_ID,
@@ -69,4 +70,16 @@ test("dataspillhøringen kan korrigeres mens sammendraget fortsatt er avvisnings
     { sammendrag: "Skal ikke overskrive", kategori: "film", frist: "2027-01-12" },
   );
   assert.deepEqual(låst, { frist: "2027-01-12" });
+});
+
+test("overstyring er security definer, logger hvem, og triggeren feiler i stedet for å forkaste stille", () => {
+  const sql = readFileSync("supabase/migrations/20261020250000_overstyr_og_emne.sql", "utf8");
+  assert.match(sql, /security definer/);
+  assert.match(sql, /app\.varsel_overstyr/);
+  assert.match(sql, /varsel_endringslogg/);
+  assert.match(sql, /hvem text not null/);
+  assert.match(sql, /raise exception 'Kan ikke endre tittel, sammendrag eller kategori/);
+  assert.match(sql, /grant execute on function public\.overstyr_varsel\(uuid, text, text, text, text\) to service_role/);
+  assert.match(sql, /revoke all on function public\.overstyr_varsel\(uuid, text, text, text, text\) from authenticated/);
+  assert.doesNotMatch(sql, /update public\.varsler\s+set[\s\S]*manuelt_redigert/i);
 });

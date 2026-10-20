@@ -49,8 +49,19 @@ export function utenDepartementsnavn(tekst: string): string {
  * dataspill), mediepolitisk redegjørelse, statsbudsjett-pakken, stipend og
  * kulturbygg. Presseinvitasjoner holdes ute.
  */
+/**
+ * Idrett alene er utenfor kulturfeltet. Frivillighet sammen med idrett
+ * (momskompensasjon) og saker som også gjelder kultur, blir igjen.
+ */
+export function erRenIdrett(tittel: string, tekst = ""): boolean {
+  const hay = `${tittel} ${tekst}`.toLowerCase();
+  if (!/toppidrett|idrettssenter|\bidrett\b/.test(hay)) return false;
+  return !/frivillig|kultur|kunst|museum|musikk|\bfilm\b|\bdans\b|teater|litteratur|bibliotek|stipend|\bmedie|\bkringkast|dataspill|lootboks/.test(hay);
+}
+
 export function erPortefoljesak(tittel: string, tekst = ""): boolean {
   if (/^\s*presseinvitasjon\b/i.test(tittel)) return false;
+  if (erRenIdrett(tittel, tekst)) return false;
   const hay = `${tittel} ${tekst}`.toLowerCase();
   if (/kringkast|lokalradio|pengespill|nettpoker|dataspill|lootboks|mediepolitikk/.test(hay)) {
     return true;
@@ -64,6 +75,7 @@ export function erPortefoljesak(tittel: string, tekst = ""): boolean {
 /** Regjeringen-RSS: kulturfilter etter at departementsnavnet er fjernet, pluss porteføljen. */
 export function erRegjeringenRelevant(tittel: string, tekst = ""): boolean {
   if (/^\s*presseinvitasjon\b/i.test(tittel)) return false;
+  if (erRenIdrett(tittel, tekst)) return false;
   if (erPortefoljesak(tittel, tekst)) return true;
   return erKulturRelevant(utenDepartementsnavn(tittel), utenDepartementsnavn(tekst));
 }
@@ -77,6 +89,161 @@ export function kategoriFraTittel(tittel: string, tekst = ""): string {
   if (/museum|kulturbygg|kulturarv/.test(hay)) return "kulturarv";
   if (/litteratur|forfatter|bok/.test(hay)) return "litteratur";
   return "kulturpolitikk";
+}
+
+/**
+ * Høring og innspill er horing selv om de kommer fra nyhetsfeeden.
+ * Instans alene satte «Innspill til kvotefordelingen» som nyhet og
+ * lot «Regjeringen – høring» bli stående uten sakstype.
+ */
+export function sakstypeFraSak(item: {
+  instans?: string | null;
+  tittel?: string | null;
+  kilde?: string | null;
+}): string | null {
+  const tittel = item.tittel ?? "";
+  const instans = (item.instans ?? "").toLowerCase();
+  const hay = `${tittel} ${instans}`.toLowerCase();
+  if (/høring|høyring|horing|innspill/.test(hay)) return "horing";
+  if (/tilskudd|tilskot|retningslinj/.test(hay)) return "tilskudd";
+  if (/budsjett|proposisjon|tale ved fremleggelse/.test(hay)) return "budsjett";
+  if (instans.includes("nyhet")) return "nyhet";
+  return null;
+}
+
+export type EmneSak = {
+  id?: string | null;
+  tittel?: string | null;
+  instans?: string | null;
+  kilde?: string | null;
+  sammendrag_raa?: string | null;
+  sammendrag?: string | null;
+};
+
+const SAK_EMNER: Array<{ id: string; mønster: RegExp }> = [
+  { id: "nettpoker", mønster: /nettpoker|pengespillforskrift/i },
+  { id: "lootboks", mønster: /lootboks|pengespill-lignende|pengespillignende/i },
+  { id: "kulturbudsjett-hoved", mønster: /tale ved fremleggelse av kultur|rekordstort kulturbudsjett/i },
+];
+
+/** Felles emne for nyhet/tale og høringen eller hovedsaken om det samme. */
+export function sakEmne(sak: EmneSak): string | null {
+  const hay = `${sak.tittel ?? ""} ${sak.sammendrag_raa ?? ""} ${sak.sammendrag ?? ""}`;
+  for (const emne of SAK_EMNER) {
+    if (emne.mønster.test(hay)) return emne.id;
+  }
+  return null;
+}
+
+/** Høring vinner over pressemelding. Pressemelding vinner over tale. */
+export function sakPrioritet(sak: EmneSak): number {
+  const tittel = sak.tittel ?? "";
+  const instans = (sak.instans ?? "").toLowerCase();
+  if (/^\s*tale\s+ved\b/i.test(tittel)) return 0;
+  if (
+    /^\s*høy?ring\b|^\s*høyring\b/i.test(tittel) ||
+    instans.includes("høring") ||
+    instans.includes("høyring") ||
+    /\/dokumenter\//i.test(sak.kilde ?? "")
+  ) return 2;
+  return 1;
+}
+
+export type EmneKobling<T> = {
+  item: T;
+  hovedsakId: string | null;
+  hovedKilde: string | null;
+};
+
+/**
+ * Nyhet eller tale om samme sak som en høring eller hovedpressemelding
+ * settes ikke inn som egen publisert sak. Sektorbudsjett (film, dans, medier)
+ * har ikke felles emne og blir stående.
+ */
+export function planleggEmneDedup<T extends EmneSak>(
+  nye: T[],
+  eksisterende: EmneSak[] = [],
+): { behold: T[]; koblinger: EmneKobling<T>[] } {
+  const besteEksisterende = new Map<string, EmneSak>();
+  for (const rad of eksisterende) {
+    const emne = sakEmne(rad);
+    if (!emne) continue;
+    const gammel = besteEksisterende.get(emne);
+    if (!gammel || sakPrioritet(rad) > sakPrioritet(gammel)) besteEksisterende.set(emne, rad);
+  }
+
+  const grupper = new Map<string, T[]>();
+  const behold: T[] = [];
+  for (const item of nye) {
+    const emne = sakEmne(item);
+    if (!emne) {
+      behold.push(item);
+      continue;
+    }
+    const liste = grupper.get(emne) ?? [];
+    liste.push(item);
+    grupper.set(emne, liste);
+  }
+
+  const koblinger: EmneKobling<T>[] = [];
+  for (const [emne, liste] of grupper) {
+    const vinner = liste.reduce((best, item) =>
+      sakPrioritet(item) > sakPrioritet(best) ? item : best
+    );
+    const gammel = besteEksisterende.get(emne);
+    if (gammel && sakPrioritet(gammel) >= sakPrioritet(vinner)) {
+      for (const item of liste) {
+        koblinger.push({
+          item,
+          hovedsakId: gammel.id ?? null,
+          hovedKilde: gammel.kilde ?? null,
+        });
+      }
+      continue;
+    }
+    behold.push(vinner);
+    for (const item of liste) {
+      if (item === vinner) continue;
+      koblinger.push({ item, hovedsakId: null, hovedKilde: vinner.kilde ?? null });
+    }
+  }
+  return { behold, koblinger };
+}
+
+/** Sammendrag til lagring. Nøytral bokmål, også når kilden er nynorsk eller en pressemelding. */
+export function byggSammendragPrompt(item: {
+  tittel: string;
+  sammendrag_raa?: string | null;
+  instans?: string | null;
+  frist?: string | null;
+}): string {
+  return `Du er ekspert på norsk kulturpolitikk. Vurder om denne saken er DIREKTE relevant for profesjonelle aktører i norsk kultursektor (kunstnere, kulturinstitusjoner, kulturorganisasjoner).
+
+Tittel: ${item.tittel}
+${item.sammendrag_raa ? `Beskrivelse: ${item.sammendrag_raa.slice(0, 400)}` : ""}
+Instans: ${item.instans ?? ""}
+${item.frist ? `Frist: ${item.frist}` : ""}
+
+RELEVANT = ja BARE hvis saken direkte berører: finansiering av kunst/kultur, kulturinstitusjoner, kunstnerstipend, kulturbygg, scenekunst, musikk, film, museer, bibliotek, kulturarv, opphavsrett, kulturpolitikk, kulturskoler, kulturfond, dataspill, mediepolitikk, kringkasting, pengespill (herunder nettpoker) eller statsbudsjettet til Kultur- og likestillingsdepartementet.
+
+IKKE RELEVANT = saker om: forsvar, beredskap, helse, skole (unntatt kulturskole), justis, samferdsel, idrett og toppidrett, AI i utdanning generelt, helikopter, redning, eller andre saker som bare nevner "kultur" i forbifarten (for eksempel fordi Kultur- og likestillingsdepartementet står som avsender uten at innholdet gjelder kultur, medier, spill eller stipend).
+
+SPRÅKGUIDE FOR SAMMENDRAGET:
+- Skriv nøytral bokmål, også når kilden er på nynorsk.
+- Ikke ta med partimerkelapper som Arbeiderpartiet eller Arbeidarparti-regjeringa.
+- Ikke ta med pressemeldingens reklamespråk, som rekordstor eller innfrir lovnaden.
+- Ikke la et sitat fra en statsråd være hele sammendraget.
+- Bruk bare tall, navn og frister som står i kilden. Ikke gjett og ikke finn på.
+- 1-2 konkrete setninger om hva saken gjelder.
+
+Svar BARE med gyldig JSON, ingen markdown:
+{
+  "relevant": true eller false,
+  "kategori": "scenekunst" | "musikk" | "dans" | "opera" | "litteratur" | "film" | "visuell" | "museer" | "spill" | "kulturarv",
+  "niva": "nasjonalt" | "fylke" | "kommune",
+  "status": "kritisk" | "viktig" | "normal",
+  "sammendrag": "1-2 setninger på nøytral bokmål"
+}`;
 }
 
 const MAANED: Record<string, string> = {
