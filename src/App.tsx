@@ -752,7 +752,7 @@ function BrukerLogin({setScreen,setUser}) {
       setFeil("E-post allerede registrert."); setLaster(false); return;
     }
     if(data.user) {
-      await upsertProfil(data.user.id, { navn, onboarding_done: false, plan: "gratis" });
+      await upsertProfil(data.user.id, { navn, onboarding_done: false });
       await new Promise(r=>setTimeout(r,500));
       setUser({
         id: data.user.id, navn, epost: data.user.email,
