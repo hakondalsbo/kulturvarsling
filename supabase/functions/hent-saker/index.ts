@@ -20,11 +20,21 @@ import {
   innholdDedupNokkel,
   kategoriFraTittel,
   kildeNokkel,
+  parseStortingetDato,
   planleggEmneDedup,
   sakstypeFraSak,
   statusForSak,
   stortingsSesjoner,
 } from "./logikk.ts";
+import {
+  VELLYKKEDE_KJORING_STATUSER,
+  avklarKjoering,
+  byggKildeKjoringRad,
+  filtrerNyeEtterKildedato,
+  planleggKildePublisertBackfill,
+  tellDatofilter,
+  type Kjoeringstype,
+} from "./datofilter.ts";
 import { hentEInnsynKultursaker } from "./einnsyn.ts";
 import { hentBergenSaker } from "./bergen.ts";
 import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
@@ -167,6 +177,9 @@ async function hentEnStortingssesjon(
         frist,
         sammendrag_raa: sak.henvisning ?? "",
         kilde_id: `stortinget-sak-${sak.id}`,
+        publisert_dato: parseStortingetDato(sak.sist_oppdatert_dato),
+        // sist_oppdatert er ikke publiseringstid og brukes ikke som datogrense.
+        kilde_publisert: null,
         forhåndsgodkjent: true, // valgt via komité/emne — skal ikke stoppes av nøkkelordfilteret
       });
     }
@@ -330,9 +343,14 @@ async function testClaude(apiKey: string | undefined): Promise<string> {
 }
 
 // Prod-jobben `hent-saker-daglig` poster { "utlost_av": "pg_cron" }.
-// Engangs-backfill: { "backfill": "regjeringen-2026-10" }. Den kjører ikke av cron.
-async function lesJobb(req: Request): Promise<{ kjoertAv: KjoertAv; backfill: string | null }> {
-  let data: { utlost_av?: unknown; backfill?: unknown } = {};
+// Historikk uten datogrense: { "modus": "backfill" }, bare manuelt.
+// Engangs-backfill: { "backfill": "regjeringen-2026-10" }. Cron kan ikke sette noen av dem.
+async function lesJobb(req: Request): Promise<{
+  kjoertAv: KjoertAv;
+  backfill: string | null;
+  modus: string | null;
+}> {
+  let data: { utlost_av?: unknown; backfill?: unknown; modus?: unknown } = {};
   try {
     const tekst = await req.text();
     if (tekst.trim()) data = JSON.parse(tekst) ?? {};
@@ -345,8 +363,36 @@ async function lesJobb(req: Request): Promise<{ kjoertAv: KjoertAv; backfill: st
       headerUtlostAv: req.headers.get("x-utlost-av"),
       vercelCronHeader: req.headers.get("x-vercel-cron"),
     }),
-    backfill: typeof data?.backfill === "string" ? data.backfill : null,
+    backfill: typeof data?.backfill === "string" && data.backfill.trim()
+      ? data.backfill.trim()
+      : null,
+    modus: typeof data?.modus === "string" && data.modus.trim() ? data.modus.trim() : null,
   };
+}
+
+async function lesSisteVellykkede(
+  supabase: { from: (t: string) => any },
+  kilder: Map<string, { id: string }>,
+): Promise<Map<string, string | null>> {
+  const ut = new Map<string, string | null>();
+  await Promise.all([...kilder.entries()].map(async ([adapter, meta]) => {
+    const { data, error } = await supabase
+      .from("kilde_kjoringer")
+      .select("kjort")
+      .eq("kilde_id", meta.id)
+      .eq("jobb", "hent-saker")
+      .in("status", [...VELLYKKEDE_KJORING_STATUSER])
+      .order("kjort", { ascending: false })
+      .limit(1);
+    if (error) {
+      console.error(`kilde_kjoringer siste suksess ${adapter}:`, error.message);
+      ut.set(adapter, null);
+      return;
+    }
+    const kjort = data?.[0]?.kjort;
+    ut.set(adapter, typeof kjort === "string" ? kjort : null);
+  }));
+  return ut;
 }
 
 async function fyllTommeHoringsfrister(
@@ -472,14 +518,19 @@ Deno.serve(async (req: Request) => {
   try {
     const jobb = await lesJobb(req);
     const kjoertAv = jobb.kjoertAv;
+    const avklart = avklarKjoering({
+      kjoertAv,
+      modus: jobb.modus,
+      backfillKode: jobb.backfill,
+      forventetBackfillKode: BACKFILL_KODE,
+    });
+    if (avklart.avvist) return jsonSvar({ feil: avklart.avvist }, 400);
+    const kjoeringstype: Kjoeringstype = avklart.kjoeringstype;
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    if (jobb.backfill) {
-      if (jobb.backfill !== BACKFILL_KODE) {
-        return jsonSvar({ feil: "Ukjent backfill" }, 400);
-      }
+    if (avklart.spesialBackfill) {
       const resultat = await kjorRegjeringenBackfill(supabase);
       console.log("Backfill:", resultat);
       return jsonSvar(resultat, resultat.feil && !resultat.backfill ? 503 : 200);
@@ -490,7 +541,7 @@ Deno.serve(async (req: Request) => {
     // id og sammendrag trengs av emne-dedup. frist trengs av innholdsnøkkelen.
     const { data: eks, error: eksFeil } = await supabase
       .from("varsler")
-      .select("id, kilde, instans, tittel, frist, sammendrag");
+      .select("id, kilde, instans, tittel, frist, sammendrag, kilde_publisert, manuelt_redigert");
     if (eksFeil) {
       return jsonSvar({ feil: "Eksisterende saker kunne ikke hentes. Ingen innhenting startet." }, 503);
     }
@@ -521,6 +572,9 @@ Deno.serve(async (req: Request) => {
         { id: r.id, forventerTreff: r.forventer_treff === true },
       ]),
     );
+    const sisteVellykket = kjoeringstype === "backfill"
+      ? new Map<string, string | null>()
+      : await lesSisteVellykkede(supabase, kilderMap);
 
     // Hent fra alle kilder parallelt. Én adapter som kaster, stopper ikke de andre.
     const kjøringer = await Promise.all([
@@ -558,7 +612,21 @@ Deno.serve(async (req: Request) => {
     // URL først, deretter samme instans, tittel og frist. Emne-laget kobler
     // nyhet og tale til høringen når titlene er ulike. Eksisterende rader
     // oppdateres ikke her.
-    const etterUrl = dedupEtterKilde(kandidater, eksKilder);
+    // Publiseringskilder: eldre enn siste hent-saker-suksess minus 72 timer,
+    // og aldri eldre enn 14 dager. RSS uten pubDate hoppes over. Andre
+    // kilder og saker uten dato beholdes. Backfill beholder alt.
+    const datoFilter = filtrerNyeEtterKildedato(kandidater, {
+      modus: kjoeringstype,
+      sisteVellykket,
+    });
+    const datoTall = tellDatofilter(datoFilter);
+    if (datoFilter.forGamle.length || datoFilter.stoppetUtenPubDate.length || datoFilter.utenDato.length) {
+      console.log(
+        `Datofilter (${kjoeringstype}): hoppet over ${datoFilter.forGamle.length} gamle og ${datoFilter.stoppetUtenPubDate.length} RSS uten pubDate, ${datoFilter.utenDato.length} uten dato beholdt`,
+        datoTall,
+      );
+    }
+    const etterUrl = dedupEtterKilde(datoFilter.behold, eksKilder);
     const etterInnhold = dedupEtterInnhold(etterUrl, eksInnhold);
     const emnePlan = planleggEmneDedup(etterInnhold, eks ?? []);
     const nye = emnePlan.behold;
@@ -578,6 +646,17 @@ Deno.serve(async (req: Request) => {
       varsletManglendeKilde.add(adapter);
       driftFeil.push(`${adapter}: ingen kilde_id i kilderegisteret`);
     };
+
+    const datoPlan = planleggKildePublisertBackfill(alle, eks ?? []);
+    for (const op of datoPlan) {
+      const { error: datoFeil } = await supabase
+        .from("varsler")
+        .update({ kilde_publisert: op.kilde_publisert })
+        .eq("id", op.id)
+        .eq("manuelt_redigert", false)
+        .is("kilde_publisert", null);
+      if (datoFeil) console.error("kilde_publisert:", datoFeil.message);
+    }
 
     const regjeringen = kjøringer.find((k) => k.navn === "regjeringen-rss");
     const fyltFrist = await fyllTommeHoringsfrister(
@@ -802,17 +881,21 @@ Deno.serve(async (req: Request) => {
         console.error(`Ingen rad i kilder for adapter ${k.navn} — kjøring logges ikke`);
         continue;
       }
-      const { error: loggFeil } = await supabase.from("kilde_kjoringer").insert({
-        kilde_id: kildeId,
-        status: klass.status,
-        antall_funnet: k.utfall.raattAntall,
-        antall_etter_filter: k.utfall.antallEtterFilter,
-        antall_nye: antallNye,
-        feilmelding: klass.feilmelding,
-        http_status: klass.httpStatus,
-        varighet_ms: k.varighetMs,
-        kjoert_av: kjoertAv,
-      });
+      const { error: loggFeil } = await supabase.from("kilde_kjoringer").insert(
+        byggKildeKjoringRad({
+          kildeId,
+          status: klass.status,
+          antallFunnet: k.utfall.raattAntall,
+          antallEtterFilter: k.utfall.antallEtterFilter,
+          antallNye,
+          feilmelding: klass.feilmelding,
+          httpStatus: klass.httpStatus,
+          varighetMs: k.varighetMs,
+          kjoertAv,
+          kjoeringstype,
+          jobb: "hent-saker",
+        }),
+      );
       if (loggFeil) console.error(`kilde_kjoringer ${k.navn}:`, loggFeil.message);
       await supabase
         .from("kilder")
@@ -824,6 +907,11 @@ Deno.serve(async (req: Request) => {
     const respons = {
       kjørt: new Date().toISOString(),
       kjoert_av: kjoertAv,
+      kjoeringstype,
+      hoppet_over_gamle: datoFilter.forGamle.length,
+      hoppet_over_uten_pubdate: datoFilter.stoppetUtenPubDate.length,
+      uten_dato: datoFilter.utenDato.length,
+      datofilter: datoTall,
       claude_status: claudeStatus,
       siste_analyse_feil: sisteAnalyseFeil ?? undefined,
       hentet_totalt: alle.length,

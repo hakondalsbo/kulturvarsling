@@ -147,6 +147,7 @@ export function mapEInnsynItem(
   sammendrag_raa: string;
   kilde_id: string;
   publisert_dato: string | null;
+  kilde_publisert: string | null;
   forhåndsgodkjent: boolean;
   kommunenr: string | null;
   fylkesnr: string | null;
@@ -168,6 +169,7 @@ export function mapEInnsynItem(
     sammendrag_raa: `Politisk møtesak hos ${organ}${saksref}, publisert via eInnsyn.`,
     kilde_id: `einnsyn-${item.id}`,
     publisert_dato: item.publisertDato ? item.publisertDato.split("T")[0] : null,
+    kilde_publisert: item.publisertDato ?? null,
     // Treff på query=kultur i eInnsyn — skal ikke stoppes av nøkkelordfilteret
     // (treffet kan ligge i dokumentteksten, ikke tittelen). Claude vurderer uansett.
     forhåndsgodkjent: true,
@@ -223,7 +225,9 @@ async function slåOppGeo(enhetId: string): Promise<OrganGeo> {
 // Henter kultursaker fra politiske møter i hele landet (alle organ i eInnsyn).
 // Geo-oppslag er best effort og feiler aldri selve søket.
 export async function hentEInnsynKultursaker(): Promise<AdapterUtfall> {
-  const url = `${API}/search?query=kultur&entity=Moetesak&limit=50`;
+  // Nyeste først. Uten sort kan de 50 treffene være eldre møter, og
+  // datogrensen i hent-saker siler dem bort uten at nyere saker er med.
+  const url = `${API}/search?query=kultur&entity=Moetesak&sortBy=publisertDato&sortOrder=desc&limit=50`;
   try {
     const res = await fetch(url, { headers: { Accept: "application/json" } });
     const lest = await lesTekstRespons(res, url);

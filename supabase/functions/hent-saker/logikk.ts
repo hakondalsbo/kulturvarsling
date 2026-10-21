@@ -483,6 +483,50 @@ export function parseStortingetDato(verdi: string | null | undefined): string | 
   return iso ? iso[1] : null;
 }
 
+/**
+ * UTC-øyeblikket i `/Date(ms+offset)/`. Offseten endrer ikke tidsstempelet.
+ * parseStortingetDato legger den til bare for å lese kalenderdagen i Oslo.
+ * Norsk dato uten klokkeslett blir midnatt UTC. 72-timersmarginen dekker
+ * avviket mot Europe/Oslo.
+ */
+export function parseStortingetTidspunkt(verdi: string | null | undefined): string | null {
+  if (!verdi) return null;
+  const epoch = verdi.match(/\/Date\((\d+)(?:[+-]\d{4})?\)/);
+  if (epoch) {
+    const ms = Number(epoch[1]);
+    if (!Number.isFinite(ms)) return null;
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime()) || d.getUTCFullYear() <= 1970) return null;
+    return d.toISOString();
+  }
+  const dato = parseStortingetDato(verdi);
+  return dato ? `${dato}T00:00:00.000Z` : null;
+}
+
+/**
+ * Kildens publiseringstid som ISO-UTC. Fullt tidsstempel beholdes.
+ * Ren kalenderdato blir midnatt UTC. Ugyldig tekst blir null, så den
+ * ikke kan se ut som «nå».
+ */
+export function kildePublisertIso(item: {
+  kilde_publisert?: string | null;
+  publisert_dato?: string | null;
+}): string | null {
+  for (const raw of [item.kilde_publisert, item.publisert_dato]) {
+    const verdi = raw?.trim();
+    if (!verdi) continue;
+    const bare = /^(\d{4}-\d{2}-\d{2})$/.exec(verdi);
+    if (bare) {
+      const ms = Date.parse(`${bare[1]}T00:00:00.000Z`);
+      if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+      continue;
+    }
+    const ms = Date.parse(verdi);
+    if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+  }
+  return null;
+}
+
 // ─── Klientside-filter for Stortingets saker ──────────────────────────────────
 // KILDEKART-funn (verifisert juli 2026): serverens komité-filter IGNORERES —
 // eksport/saker gir alltid hele sesjonen. Vi må velge kultursakene selv:
@@ -532,6 +576,8 @@ export type RssItem = {
   sammendrag_raa: string;
   kilde_id: string;
   publisert_dato: string | null;
+  /** Fullt tidsstempel fra pubDate. Null når datoen mangler eller er ugyldig. */
+  kilde_publisert?: string | null;
 };
 
 export function parseRssItems(xml: string, instans: string): RssItem[] {
@@ -561,6 +607,9 @@ export function parseRssItems(xml: string, instans: string): RssItem[] {
 
     if (!tittel || !link) continue;
 
+    const publisertMs = pubDate ? Date.parse(pubDate) : Number.NaN;
+    const kildePublisert = Number.isNaN(publisertMs) ? null : new Date(publisertMs).toISOString();
+
     items.push({
       tittel,
       instans,
@@ -568,9 +617,8 @@ export function parseRssItems(xml: string, instans: string): RssItem[] {
       frist: null, // RSS har sjelden frist
       sammendrag_raa: beskrivelse,
       kilde_id: `rss-${link}`,
-      publisert_dato: pubDate
-        ? new Date(pubDate).toISOString().split("T")[0]
-        : null,
+      publisert_dato: kildePublisert ? kildePublisert.slice(0, 10) : null,
+      kilde_publisert: kildePublisert,
     });
   }
 
@@ -688,6 +736,8 @@ export type VarselRadInn = {
   fylkesnr?: string | null;
   adapter?: string | null;
   motedato?: string | null;
+  publisert_dato?: string | null;
+  kilde_publisert?: string | null;
 };
 
 /**
@@ -722,6 +772,9 @@ export function byggVarselRad(
     status: felt.status,
     publisert: felt.publisert,
     motedato: item.motedato ?? null,
+    kilde_publisert: item.kilde_publisert
+      ? kildePublisertIso({ kilde_publisert: item.kilde_publisert })
+      : null,
     kilde_id: kildeUuidForAdapter(
       item.adapter ?? adapterFraKildeUrl(item.kilde),
       register,

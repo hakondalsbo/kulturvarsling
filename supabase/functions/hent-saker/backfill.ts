@@ -4,6 +4,7 @@
 // Idempotent mot kilde_nokkel: nye rader settes inn med ON CONFLICT DO NOTHING,
 // og oppdateringer er betinget av placeholder-tekst eller manglende frist.
 
+import { byggKildeKjoringRad } from "./datofilter.ts";
 import {
   dedupEtterKilde,
   erRegjeringenHoring,
@@ -11,6 +12,7 @@ import {
   innholdsidFraKilde,
   kategoriFraTittel,
   kildeNokkel,
+  kildePublisertIso,
   leggPaHoringsfrist,
   planleggEmneDedup,
   sakstypeFraSak,
@@ -89,6 +91,7 @@ function nyRad(item: RssItem, nå: number): Record<string, unknown> {
     status: statusFraFrist(item.frist, nå),
     publisert: true,
     sakstype: sakstypeFraSak(item),
+    kilde_publisert: kildePublisertIso(item),
   };
 }
 
@@ -229,17 +232,21 @@ async function loggRegjeringenKjoring(
     console.error("kilde_kjoringer backfill: fant ikke regjeringen-rss");
     return;
   }
-  const { error: loggFeil } = await supabase.from("kilde_kjoringer").insert({
-    kilde_id: kildeId,
-    status: rad.status,
-    antall_funnet: rad.antallFunnet,
-    antall_etter_filter: rad.antallEtterFilter,
-    antall_nye: rad.antallNye,
-    feilmelding: rad.feilmelding,
-    http_status: rad.httpStatus,
-    varighet_ms: rad.varighetMs,
-    kjoert_av: "manuell",
-  });
+  const { error: loggFeil } = await supabase.from("kilde_kjoringer").insert(
+    byggKildeKjoringRad({
+      kildeId,
+      status: rad.status,
+      antallFunnet: rad.antallFunnet,
+      antallEtterFilter: rad.antallEtterFilter,
+      antallNye: rad.antallNye,
+      feilmelding: rad.feilmelding,
+      httpStatus: rad.httpStatus,
+      varighetMs: rad.varighetMs,
+      kjoertAv: "manuell",
+      kjoeringstype: "backfill",
+      jobb: "hent-saker",
+    }),
+  );
   if (loggFeil) console.error("kilde_kjoringer backfill:", loggFeil.message);
   await supabase
     .from("kilder")

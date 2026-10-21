@@ -157,7 +157,9 @@ export function grupperTildelinger(
         `(ordning ${g.ordning}, ${g.finansieringskilde}).` +
         (topp.length ? ` Størst: ${topp.join("; ")}.` : ""),
       kilde_id: `kulturdirektoratet-${g.ordning}-${g.frist}`,
+      // rundedato er vedtaksrunden, ikke når listen ble publisert. Dedup er URL-en.
       publisert_dato: null,
+      kilde_publisert: null,
       sakstype: "tildeling",
       // Kulturspesifikk kilde — alt her ER kulturfeltet. Claude vurderer uansett.
       forhåndsgodkjent: true,
