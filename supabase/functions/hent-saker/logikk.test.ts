@@ -30,6 +30,7 @@ import {
   parseRegjeringenFrist,
   utenManuelleTekstfelt,
   parseStortingetDato,
+  parseStortingetTidspunkt,
   kalenderdag,
   statusForSak,
   statusFraFrist,
@@ -138,6 +139,16 @@ test("norsk datoformat parses", () => {
 
 test("placeholder 01.01.0001 blir null", () => {
   assert.equal(parseStortingetDato("01.01.0001 00:00:00"), null);
+});
+
+test("Stortinget-epoch blir UTC-tidsstempel, placeholder blir null", () => {
+  assert.equal(
+    parseStortingetTidspunkt("/Date(1791842400000+0200)/"),
+    "2026-10-12T22:00:00.000Z",
+  );
+  assert.equal(parseStortingetDato("/Date(1791842400000+0200)/"), "2026-10-13");
+  assert.equal(parseStortingetTidspunkt("01.01.0001 00:00:00"), null);
+  assert.equal(parseStortingetTidspunkt("21.10.2025 00:00:00"), "2025-10-21T00:00:00.000Z");
 });
 
 test("tom/ugyldig dato blir null", () => {
@@ -254,6 +265,7 @@ test("eInnsyn-møtesak mappes med kanonisk lenke, organnavn og geografi", async 
     "https://einnsyn.no/moetesak/ms_01kpxnyfghest8sjkpe3dak0ev",
   );
   assert.equal(mappet?.publisert_dato, "2026-04-23");
+  assert.equal(mappet?.kilde_publisert, "2026-04-23T17:24:34.443401Z");
   assert.equal(mappet?.forhåndsgodkjent, true);
   assert.equal(mappet?.kommunenr, "1103");
   assert.equal(mappet?.fylkesnr, "11");
@@ -373,7 +385,9 @@ test("html strippes fra beskrivelse", () => {
 test("pubDate blir ISO-dato, manglende pubDate blir null", () => {
   const items = parseRssItems(EKSEMPEL_RSS, "Kulturdepartementet");
   assert.equal(items[0].publisert_dato, "2026-07-20");
+  assert.equal(items[0].kilde_publisert, "2026-07-20T08:00:00.000Z");
   assert.equal(items[1].publisert_dato, null);
+  assert.equal(items[1].kilde_publisert, null);
 });
 
 test("kilde_id og instans settes riktig", () => {

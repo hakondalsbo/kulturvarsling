@@ -109,6 +109,23 @@ test("rader uten gyldig frist eller ordning hopper over uten krasj", () => {
   assert.deepEqual(items, []);
 });
 
+test("seneste rundedato blir kildens publiseringstid, søknadsfrist blir det ikke", () => {
+  const items = grupperTildelinger(
+    [
+      rad({ rundedato: "2026-06-01" }),
+      rad({ rundedato: "2026-07-02" }),
+      rad({ rundedato: "ikke-en-dato" }),
+    ],
+    NÅ,
+  );
+  assert.equal(items.length, 1);
+  assert.equal(items[0].publisert_dato, "2026-07-02");
+  assert.equal(items[0].kilde_publisert, "2026-07-02T00:00:00.000Z");
+  const uten = grupperTildelinger([rad({})], NÅ);
+  assert.equal(uten[0].publisert_dato, null);
+  assert.equal(uten[0].kilde_publisert, null);
+});
+
 test("stipend uten kronebeløp telles, men gir ingen sum-tekst", () => {
   const items = grupperTildelinger(
     [rad({ verdi_type: "Måneder", verdi_innvilget: "12" })],
