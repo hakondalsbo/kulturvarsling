@@ -29,10 +29,12 @@ test("alle 403 logges som feil_auth med HTTP-kode og alarm", () => {
     varighetMs: 12,
     kjoertAv: "supabase_cron",
     kjoeringstype: "vanlig",
+    jobb: "oppdater-frister",
   });
   assert.equal(rad.status, "feil_auth");
   assert.equal(rad.http_status, 403);
   assert.equal(rad.kjoeringstype, "vanlig");
+  assert.equal(rad.jobb, "oppdater-frister");
   assert.equal(harKildeAlarm([ut]), true);
 });
 

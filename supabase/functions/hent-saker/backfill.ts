@@ -244,6 +244,7 @@ async function loggRegjeringenKjoring(
       varighetMs: rad.varighetMs,
       kjoertAv: "manuell",
       kjoeringstype: "backfill",
+      jobb: "hent-saker",
     }),
   );
   if (loggFeil) console.error("kilde_kjoringer backfill:", loggFeil.message);

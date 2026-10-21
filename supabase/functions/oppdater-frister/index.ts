@@ -7,10 +7,11 @@
 // 80653f79, 1cf0dfd3, de0dc5a6, b70f9ea5 og 90a26730 er stengt selv om
 // flagget skulle mangle.
 //
-// Kall som feiler logges i kilde_kjoringer med feilstatus og HTTP-kode.
-// 403 rapporteres som feil_auth. User-Agent er Kulturvarsling/1.0 og
-// byttes ikke, og det brukes ingen proxy, for å komme forbi en blokkering.
-// Alarm i kilde_alarmer når alle eller minst 80 % av kallene mot kilden feiler.
+// Kall som feiler logges i kilde_kjoringer med jobb oppdater-frister,
+// feilstatus og HTTP-kode. 403 rapporteres som feil_auth. User-Agent er
+// Kulturvarsling/1.0 og byttes ikke, og det brukes ingen proxy.
+// Alarm vises i kilde_alarmer_frister, ikke i kilde_alarmer, og
+// kilder.sist_status røres ikke. Det er innhentingens status.
 
 import { byggKildeKjoringRad } from "../hent-saker/datofilter.ts";
 import {
@@ -295,17 +296,13 @@ async function loggKildeKall(
         varighetMs: Date.now() - start,
         kjoertAv,
         kjoeringstype: "vanlig",
+        jobb: "oppdater-frister",
       }),
     );
     if (ins) {
       loggFeil = ins.message;
       console.error(`kilde_kjoringer ${adapter}:`, ins.message);
-      continue;
     }
-    await supabase
-      .from("kilder")
-      .update({ sist_hentet: new Date().toISOString(), sist_status: klass.status })
-      .eq("id", kildeId);
   }
   return { rader, loggFeil };
 }

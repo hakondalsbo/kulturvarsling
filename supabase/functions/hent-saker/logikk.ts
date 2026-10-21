@@ -772,7 +772,9 @@ export function byggVarselRad(
     status: felt.status,
     publisert: felt.publisert,
     motedato: item.motedato ?? null,
-    kilde_publisert: kildePublisertIso(item),
+    kilde_publisert: item.kilde_publisert
+      ? kildePublisertIso({ kilde_publisert: item.kilde_publisert })
+      : null,
     kilde_id: kildeUuidForAdapter(
       item.adapter ?? adapterFraKildeUrl(item.kilde),
       register,

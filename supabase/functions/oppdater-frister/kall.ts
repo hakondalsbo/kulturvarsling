@@ -1,7 +1,8 @@
 // Klassifisering av kall i oppdater-frister. Ingen nettverk.
 //
-// Alarm i kilde_alarmer kommer av status feil_* eller delvis (generert
-// kolonne). Derfor:
+// Alarm-kolonnen er sann for status feil_* eller delvis. Fristjobben
+// skriver jobb = oppdater-frister, så raden havner i
+// kilde_alarmer_frister og ikke i innhentingens kilde_alarmer. Derfor:
 // - alle kall feilet → feil_http / feil_auth / feil_timeout / feil_parse / feil_nett
 // - minst 80 % feilet, men ikke alle → delvis («nesten alle»)
 // - spredte feil under 80 % → http_feil, med HTTP-kode, uten alarm

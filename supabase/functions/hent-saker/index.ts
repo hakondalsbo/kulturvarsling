@@ -21,7 +21,6 @@ import {
   kategoriFraTittel,
   kildeNokkel,
   parseStortingetDato,
-  parseStortingetTidspunkt,
   planleggEmneDedup,
   sakstypeFraSak,
   statusForSak,
@@ -33,6 +32,7 @@ import {
   byggKildeKjoringRad,
   filtrerNyeEtterKildedato,
   planleggKildePublisertBackfill,
+  tellDatofilter,
   type Kjoeringstype,
 } from "./datofilter.ts";
 import { hentEInnsynKultursaker } from "./einnsyn.ts";
@@ -178,7 +178,8 @@ async function hentEnStortingssesjon(
         sammendrag_raa: sak.henvisning ?? "",
         kilde_id: `stortinget-sak-${sak.id}`,
         publisert_dato: parseStortingetDato(sak.sist_oppdatert_dato),
-        kilde_publisert: parseStortingetTidspunkt(sak.sist_oppdatert_dato),
+        // sist_oppdatert er ikke publiseringstid og brukes ikke som datogrense.
+        kilde_publisert: null,
         forhåndsgodkjent: true, // valgt via komité/emne — skal ikke stoppes av nøkkelordfilteret
       });
     }
@@ -379,6 +380,7 @@ async function lesSisteVellykkede(
       .from("kilde_kjoringer")
       .select("kjort")
       .eq("kilde_id", meta.id)
+      .eq("jobb", "hent-saker")
       .in("status", [...VELLYKKEDE_KJORING_STATUSER])
       .order("kjort", { ascending: false })
       .limit(1);
@@ -610,15 +612,18 @@ Deno.serve(async (req: Request) => {
     // URL først, deretter samme instans, tittel og frist. Emne-laget kobler
     // nyhet og tale til høringen når titlene er ulike. Eksisterende rader
     // oppdateres ikke her.
-    // Eldre enn siste vellykkede kjøring minus 72 timer settes ikke inn.
-    // Uten dato hoppes over. Backfill (modus) beholder begge.
+    // Publiseringskilder: eldre enn siste hent-saker-suksess minus 72 timer,
+    // og aldri eldre enn 14 dager. RSS uten pubDate hoppes over. Andre
+    // kilder og saker uten dato beholdes. Backfill beholder alt.
     const datoFilter = filtrerNyeEtterKildedato(kandidater, {
       modus: kjoeringstype,
       sisteVellykket,
     });
-    if (datoFilter.forGamle.length || datoFilter.utenDato.length) {
+    const datoTall = tellDatofilter(datoFilter);
+    if (datoFilter.forGamle.length || datoFilter.stoppetUtenPubDate.length || datoFilter.utenDato.length) {
       console.log(
-        `Datofilter (${kjoeringstype}): hoppet over ${datoFilter.forGamle.length} gamle og ${datoFilter.utenDato.length} uten dato`,
+        `Datofilter (${kjoeringstype}): hoppet over ${datoFilter.forGamle.length} gamle og ${datoFilter.stoppetUtenPubDate.length} RSS uten pubDate, ${datoFilter.utenDato.length} uten dato beholdt`,
+        datoTall,
       );
     }
     const etterUrl = dedupEtterKilde(datoFilter.behold, eksKilder);
@@ -888,6 +893,7 @@ Deno.serve(async (req: Request) => {
           varighetMs: k.varighetMs,
           kjoertAv,
           kjoeringstype,
+          jobb: "hent-saker",
         }),
       );
       if (loggFeil) console.error(`kilde_kjoringer ${k.navn}:`, loggFeil.message);
@@ -903,7 +909,9 @@ Deno.serve(async (req: Request) => {
       kjoert_av: kjoertAv,
       kjoeringstype,
       hoppet_over_gamle: datoFilter.forGamle.length,
-      hoppet_over_uten_dato: datoFilter.utenDato.length,
+      hoppet_over_uten_pubdate: datoFilter.stoppetUtenPubDate.length,
+      uten_dato: datoFilter.utenDato.length,
+      datofilter: datoTall,
       claude_status: claudeStatus,
       siste_analyse_feil: sisteAnalyseFeil ?? undefined,
       hentet_totalt: alle.length,
