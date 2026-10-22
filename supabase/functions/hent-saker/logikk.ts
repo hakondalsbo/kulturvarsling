@@ -92,6 +92,59 @@ export function kategoriFraTittel(tittel: string, tekst = ""): string {
 }
 
 /**
+ * Fagfelt som står i tittelen. Ordet «kultur» alene er ikke et fagfelt —
+ * det er det som fikk Claude til å gjette kulturarv eller visuell.
+ * «kulturarv» i en bred pott (også idrett, friluft eller folkehelse) er
+ * ett av flere sektornavn, ikke selve saken.
+ */
+function fagFraEinnsynTittel(tittel: string): string | null {
+  const t = tittel.toLowerCase();
+  if (/kunst i offentlig rom/.test(t)) return "visuell";
+  if (/arkeolog/.test(t)) return "kulturarv";
+  // Stadsraad Lehmkuhl er et kulturminne. Tittelen sier ikke ordet kulturminne.
+  if (/lehmkuhl/.test(t)) return "kulturarv";
+  if (/museum/.test(t)) return "museer";
+  if (/kulturminne/.test(t)) return "kulturarv";
+  if (/filmfestival|\bfilm\b/.test(t)) return "film";
+  if (/\bmusikk\b|æresløn|aereslon|æreslon/.test(t)) return "musikk";
+  if (/\bdans\b/.test(t)) return "dans";
+  if (/\bopera\b/.test(t)) return "opera";
+  if (/litteratur|forfatter/.test(t)) return "litteratur";
+  if (/dataspill|lootboks/.test(t)) return "spill";
+  if (/scenekunst|\bteater\b/.test(t)) return "scenekunst";
+  if (/kulturbygg/.test(t)) return "kulturarv";
+  const bredPott = /idrett|friluft|folkehelse/.test(t);
+  if (/\bkulturarv\b/.test(t) && !bredPott) return "kulturarv";
+  return null;
+}
+
+/** Tilskudd, budsjett eller økonomiplan. En navngitt søkers sak («frå/fra Navn») er ikke ordningen selv. */
+function erOkonomiinstrument(tittel: string): boolean {
+  const t = tittel.toLowerCase();
+  if (/tilskudd|tilskot|kulturmidl/.test(t)) return true;
+  if (/budsjett|økonomiplan|okonomiplan/.test(t)) return true;
+  if (/\b(opne|åpne|åpen|apen|open)\s+søknad/.test(t) && !/\b(frå|fra)\b/.test(t)) return true;
+  return false;
+}
+
+/**
+ * eInnsyn-møtesaker kategoriseres av Claude, som bare får kunstformer
+ * å velge mellom. Sammendraget nevner ofte kulturinstitusjon eller
+ * kulturarv, og generelle tilskudds- og budsjettsaker havner da på
+ * kulturarv eller visuell. Appen har ingen egen kategori for
+ * tilskudd/budsjett/økonomi. kulturpolitikk er den eksisterende
+ * samlekategorien og brukes allerede på tilsvarende saker.
+ * Et navngitt fagfelt eller kulturminne i tittelen vinner.
+ */
+export function kategoriForEinnsyn(tittel: string, foreslatt?: string | null): string {
+  const fag = fagFraEinnsynTittel(tittel);
+  if (fag) return fag;
+  if (erOkonomiinstrument(tittel)) return "kulturpolitikk";
+  const kjent = (foreslatt ?? "").trim();
+  return kjent || "kulturpolitikk";
+}
+
+/**
  * Høring og innspill er horing selv om de kommer fra nyhetsfeeden.
  * Instans alene satte «Innspill til kvotefordelingen» som nyhet og
  * lot «Regjeringen – høring» bli stående uten sakstype.
@@ -236,10 +289,12 @@ SPRÅKGUIDE FOR SAMMENDRAGET:
 - Bruk bare tall, navn og frister som står i kilden. Ikke gjett og ikke finn på.
 - 1-2 konkrete setninger om hva saken gjelder.
 
+KATEGORI: Velg kunstformen når tittelen navngir den. Generelle tilskudd, budsjett, økonomiplan og fordeling av kulturmidler uten navngitt kunstform, museum eller kulturminne er "kulturpolitikk". Ikke bruk kulturarv eller visuell bare fordi saken handler om kultur.
+
 Svar BARE med gyldig JSON, ingen markdown:
 {
   "relevant": true eller false,
-  "kategori": "scenekunst" | "musikk" | "dans" | "opera" | "litteratur" | "film" | "visuell" | "museer" | "spill" | "kulturarv",
+  "kategori": "scenekunst" | "musikk" | "dans" | "opera" | "litteratur" | "film" | "visuell" | "museer" | "spill" | "kulturarv" | "kulturpolitikk",
   "niva": "nasjonalt" | "fylke" | "kommune",
   "status": "kritisk" | "viktig" | "normal",
   "sammendrag": "1-2 setninger på nøytral bokmål"

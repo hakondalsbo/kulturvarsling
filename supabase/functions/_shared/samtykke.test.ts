@@ -473,7 +473,7 @@ test("manuell bekreftelse tar bare ventende nye rader og er ikke en tidsplan", (
       avmeldt_at: null,
       bekreftelse_sendt_at: null,
     },
-  ], { eposter: ["Sendt@Example.no"] });
+  ], { eposter: new Set(["Sendt@Example.no"]) });
   assert.deepEqual(valgt.map((rad) => rad.epost), [LEVERT]);
   assert.equal(valgt[0].id, 1);
   assert.deepEqual(valgt[0].ovrigeIder, [2]);

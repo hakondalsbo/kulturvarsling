@@ -160,8 +160,14 @@ export type Hoppgrunn =
   | "ugyldig"
   | "duplikat";
 
+/** Mottaker som har passert filteret: gyldig e-post og avmeldingstoken. */
+export type KvalifisertMottaker = Pameldingsrad & {
+  epost: string;
+  avmeldings_token: string;
+};
+
 export type Utsendelsesplan = {
-  mottakere: Pameldingsrad[];
+  mottakere: KvalifisertMottaker[];
   hoppetOver: { id: number; epost: string; grunn: Hoppgrunn }[];
 };
 
@@ -170,28 +176,31 @@ export type Utsendelsesplan = {
  * Avmeldte og ubekreftede blir med i hoppetOver, ikke i mottakere.
  */
 export function planleggUtsendelse(rader: Pameldingsrad[]): Utsendelsesplan {
-  const sett = new Map<string, Pameldingsrad>();
+  const sett = new Map<string, KvalifisertMottaker>();
   const hoppetOver: Utsendelsesplan["hoppetOver"] = [];
   const sortert = [...rader].sort((a, b) => a.id - b.id);
   for (const rad of sortert) {
     const epost = normaliserEpost(rad.epost ?? "");
+    const token = rad.avmeldings_token;
     let grunn: Hoppgrunn | null = null;
     if (!erGyldigEpost(epost)) grunn = "ugyldig";
     else if (!rad.samtykke_gitt_at) grunn = "uten_samtykke";
     else if (rad.avmeldt_at) grunn = "avmeldt";
     else if (!rad.bekreftet_at) grunn = "ubekreftet";
-    else if (!erUuid(rad.avmeldings_token)) grunn = "uten_token";
+    else if (!erUuid(token)) grunn = "uten_token";
     else if (sett.has(epost)) grunn = "duplikat";
     if (grunn) {
       hoppetOver.push({ id: rad.id, epost, grunn });
       continue;
     }
-    sett.set(epost, { ...rad, epost });
+    // Samme sjekk som over. Den smalner token til string for typen.
+    if (!erUuid(token)) continue;
+    sett.set(epost, { ...rad, epost, avmeldings_token: token });
   }
   return { mottakere: [...sett.values()], hoppetOver };
 }
 
-export function filtrerMottakere(rader: Pameldingsrad[]): Pameldingsrad[] {
+export function filtrerMottakere(rader: Pameldingsrad[]): KvalifisertMottaker[] {
   return planleggUtsendelse(rader).mottakere;
 }
 

@@ -18,6 +18,7 @@ import {
   erRegjeringenRelevant,
   finnHøringsfrist,
   innholdDedupNokkel,
+  kategoriForEinnsyn,
   kategoriFraTittel,
   kildeNokkel,
   parseStortingetDato,
@@ -745,6 +746,12 @@ Deno.serve(async (req: Request) => {
         }
         // Status gjettes ikke. Uten frist og uten møtedato forblir den normal.
         status = statusForSak(item.frist, item.motedato);
+      }
+
+      // Claude har ingen tilskudds-/budsjettkategori og lander lokale
+      // økonomisaker på kulturarv eller visuell. Tittelen avgjør.
+      if (item.adapter === "einnsyn") {
+        kategori = kategoriForEinnsyn(item.tittel, kategori);
       }
 
       item.sakstype = item.sakstype ?? sakstypeFraSak(item);

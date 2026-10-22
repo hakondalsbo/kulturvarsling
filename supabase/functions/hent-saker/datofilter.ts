@@ -175,6 +175,8 @@ export function planleggKildePublisertBackfill(
   items: Array<{
     kilde?: string | null;
     kilde_publisert?: string | null;
+    /** Møtedato eller rundedato. Leses ikke. Bare et ekte tidsstempel fylles. */
+    publisert_dato?: string | null;
   }>,
   eksisterende: Array<{
     id: string;
@@ -255,13 +257,17 @@ export function byggKildeKjoringRad(input: {
   kjoertAv: string;
   kjoeringstype: Kjoeringstype;
   jobb: KildeJobb;
+  /** Frist- og møtedatoendringer. Ikke nye varsler. Bare oppdater-frister. */
+  antallOppdatert?: number | null;
 }): Record<string, unknown> {
+  const fristjobb = input.jobb === "oppdater-frister";
   return {
     kilde_id: input.kildeId,
     status: input.status,
     antall_funnet: input.antallFunnet,
     antall_etter_filter: input.antallEtterFilter,
-    antall_nye: input.antallNye,
+    antall_nye: fristjobb ? 0 : input.antallNye,
+    antall_oppdatert: fristjobb ? (input.antallOppdatert ?? 0) : null,
     feilmelding: input.feilmelding,
     http_status: input.httpStatus,
     varighet_ms: input.varighetMs,

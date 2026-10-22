@@ -14,6 +14,7 @@ import {
   erKulturSak,
   erPortefoljesak,
   byggSammendragPrompt,
+  kategoriForEinnsyn,
   erRegjeringenHoring,
   erRenIdrett,
   ekstraFristside,
@@ -963,4 +964,73 @@ test("mangler register-rad blir kilde_id null, ukjent URL droppes", () => {
   );
   assert.ok(utenRegister);
   assert.equal(utenRegister.kilde_id, null);
+});
+
+test("eInnsyn-prompten har kulturpolitikk for tilskudd og budsjett", () => {
+  const prompt = byggSammendragPrompt({ tittel: "Kultur- og idrettstilskudd", instans: "Bydel Østensjø" });
+  assert.match(prompt, /kulturpolitikk/);
+  assert.match(prompt, /Ikke bruk kulturarv eller visuell bare fordi saken handler om kultur/);
+});
+
+test("lokale tilskudds- og budsjettsaker fra eInnsyn blir kulturpolitikk", () => {
+  const feil = [
+    ["Fordeling av Kulturmidler i Bydel Nordre Aker", "visuell"],
+    ["Kultur- og idrettstilskudd", "visuell"],
+    ["Revidering av retningslinjer for tilskudd til kultur- og idrettsaktiviteter i Bydel Ullern", "visuell"],
+    ["Tilskudd til kultur- og idrettsaktiviteter i Bydel Ullern - 2026", "visuell"],
+    ["Årsbudsjett 2027 og økonomiplan 2027-2030 Akershus fylkeskommune", "kulturarv"],
+    ["Høring: Bydelsreformen - oppgaveoverføring - lokale kultur og idrettstilskudd", "kulturarv"],
+    ["Klage Driftstilskot - kultur og folkehelse 2026", "kulturarv"],
+    ["Kultur- og utdanningsutvalgets forslag til utvalgsbudsjett 2027", "kulturarv"],
+    ["Opne søknadar kultur og folkehelse", "kulturarv"],
+    ["Oppgavefordeling - lokale kultur- og idrettstilskudd", "kulturarv"],
+    ["Rapportering av tilskudd til kultur- og idrettsaktiviteter i Bydel Ullern 2025", "kulturarv"],
+    ["Tiltaksbudsjett for seksjon kultur, idrett og friluftsliv 2026", "kulturarv"],
+    ["Oversikt over tilskuddsordninger innenfor kultur, kulturarv, idrett og friluftsliv i Buskerud fylkeskommune", "kulturarv"],
+    ["Tilskuddsordninger kultur og idrett - orientering om tildelinger 2026", "visuell"],
+  ] as const;
+  for (const [tittel, gammel] of feil) {
+    assert.equal(kategoriForEinnsyn(tittel, gammel), "kulturpolitikk", tittel);
+  }
+});
+
+test("ekte kulturarv, visuell, film og museer beholder fagfeltet", () => {
+  assert.equal(
+    kategoriForEinnsyn(
+      "Befaring utvalg for kultur, idrett og samfunnsdialog 16.09.2026 - Kunst i offentlig rom",
+      "kulturarv",
+    ),
+    "visuell",
+  );
+  assert.equal(
+    kategoriForEinnsyn("Open søknad kultur og folkehelse - frå Stadsraad Lehmkuhl", "visuell"),
+    "kulturarv",
+  );
+  assert.equal(
+    kategoriForEinnsyn("Budsjettbehov 2027. Kultur og folkehelse, arkeologisk registrering", "visuell"),
+    "kulturarv",
+  );
+  assert.equal(
+    kategoriForEinnsyn(
+      "Presentasjon utvalg for kultur, idrett og samfunnsdialog 14.10.2026 - Den norske filmfestivalen",
+      "kulturarv",
+    ),
+    "film",
+  );
+  assert.equal(
+    kategoriForEinnsyn(
+      "Søknader om økte faste driftstilskudd innen kultur-, kulturarv-, museums- og kulturminnesektoren fra 2027",
+      "visuell",
+    ),
+    "museer",
+  );
+  assert.equal(
+    kategoriForEinnsyn("Mandat Temaplan for kunst og kultur 2027-2035", "kulturarv"),
+    "kulturarv",
+  );
+  assert.equal(kategoriForEinnsyn("Kultur- og miljøprisen 2025", "visuell"), "visuell");
+  assert.equal(
+    kategoriForEinnsyn("Byrådets årsberetning for 2025 - Kultur- og utdanningsutvalgets område", "museer"),
+    "museer",
+  );
 });

@@ -26,6 +26,8 @@ export type KildeKallResultat = {
   forsok: number;
   feilede: number;
   vellykket: number;
+  /** Rader som fikk ny frist eller møtedato. Aldri nye varsler. */
+  oppdatert: number;
 };
 
 export function utfallOk(httpStatus: number | null): KallUtfall {
@@ -73,13 +75,14 @@ export function klassifiserKildeKall(
   const vellykket = kall.length - feil.length;
   if (feil.length === 0) {
     return {
-      status: oppdatert > 0 ? "ok_nye" : "ok_ingen_nye",
+      status: oppdatert > 0 ? "ok_oppdatert" : "ok_ingen_oppdatering",
       httpStatus: kall.find((k) => k.httpStatus != null)?.httpStatus ?? null,
       feilmelding: null,
       alarm: false,
       forsok: kall.length,
       feilede: 0,
       vellykket,
+      oppdatert,
     };
   }
   const httpStatus = dominerende(
@@ -101,6 +104,7 @@ export function klassifiserKildeKall(
     forsok: kall.length,
     feilede: feil.length,
     vellykket,
+    oppdatert,
   };
 }
 
