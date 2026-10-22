@@ -12,6 +12,9 @@
 // Kulturvarsling/1.0 og byttes ikke, og det brukes ingen proxy.
 // Alarm vises i kilde_alarmer_frister, ikke i kilde_alarmer, og
 // kilder.sist_status røres ikke. Det er innhentingens status.
+// Oppdaterte frister og møtedatoer skrives som antall_oppdatert.
+// antall_nye er alltid 0. Status er ok_oppdatert eller
+// ok_ingen_oppdatering, aldri ok_nye.
 
 import { byggKildeKjoringRad } from "../hent-saker/datofilter.ts";
 import {
@@ -290,7 +293,8 @@ async function loggKildeKall(
         status: klass.status,
         antallFunnet: klass.forsok,
         antallEtterFilter: klass.vellykket,
-        antallNye: oppdatert.get(adapter) ?? 0,
+        antallNye: 0,
+        antallOppdatert: klass.oppdatert,
         feilmelding: klass.feilmelding,
         httpStatus: klass.httpStatus,
         varighetMs: Date.now() - start,
