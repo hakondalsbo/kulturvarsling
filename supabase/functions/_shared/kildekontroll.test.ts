@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { finnUdokumenterteTall, kildegrunnlag, loggUdokumenterteTall } from "./kildekontroll.ts";
+import {
+  finnUdokumenterteTall,
+  kildegrunnlag,
+  loggUdokumenterteTall,
+  publiseresEtterKontroll,
+} from "./kildekontroll.ts";
 
 test("årstall og beløp som står i kilden flagges ikke", () => {
   const kilde = "2 søknader innvilget, til sammen 360 000 kr, søknadsfrist 2026-02-20. Størst: Konsert (250 000 kr).";
@@ -61,4 +66,14 @@ test("logging flagger uten å kaste, og lar være når alt står i kilden", () =
   const stille: string[] = [];
   loggUdokumenterteTall("hent-saker", "Frist 2026.", "Frist 2026.", "x", (linje) => stille.push(linje));
   assert.deepEqual(stille, []);
+});
+
+test("tall uten kilde holdes upublisert, og rene sammendrag publiseres", () => {
+  const flagget = finnUdokumenterteTall(
+    "Lokalet avvikles innen 2027.",
+    "Ny reguleringsplan – Rogaland Teater og Stavanger museum",
+  );
+  assert.equal(publiseresEtterKontroll(flagget), false);
+  assert.equal(publiseresEtterKontroll({ aar: [], tall: ["374"] }), false);
+  assert.equal(publiseresEtterKontroll({ aar: [], tall: [] }), true);
 });

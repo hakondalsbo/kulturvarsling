@@ -1,5 +1,5 @@
 import { kallClaude } from "../_shared/claude.ts";
-import { kildegrunnlag, loggUdokumenterteTall } from "../_shared/kildekontroll.ts";
+import { kildegrunnlag, loggUdokumenterteTall, publiseresEtterKontroll } from "../_shared/kildekontroll.ts";
 import {
   genererGenerellKlartekst,
   lagreKlartekstCache,
@@ -767,18 +767,20 @@ Deno.serve(async (req: Request) => {
       // Ordningskoden setter kategorien. Modellen får ikke overstyre den.
       kategori = kategoriFraAdapter(item.kategori, kategori);
 
-      // Tall og årstall som ikke står i kilden logges. Raden lagres likevel.
+      // Tall og årstall som ikke står i kilden logges. Raden lagres likevel,
+      // men upublisert, så en redaktør ser den før den blir synlig.
       // Eksisterende rader, også manuelt_redigert, skrives ikke om (ignoreDuplicates).
-      loggUdokumenterteTall(
+      const tallavvik = loggUdokumenterteTall(
         "hent-saker",
         sammendrag,
         kildegrunnlag([item.tittel, item.sammendrag_raa, item.instans, item.frist]),
         typeof item.kilde === "string" ? item.kilde : "",
       );
+      const publisert = publiseresEtterKontroll(tallavvik);
 
       item.sakstype = item.sakstype ?? sakstypeFraSak(item);
       const rad = byggVarselRad(item, {
-        publisert: true,
+        publisert,
         kategori,
         niva,
         status,
@@ -814,9 +816,9 @@ Deno.serve(async (req: Request) => {
         ) {
           horingUtenFrist.set(item.adapter, (horingUtenFrist.get(item.adapter) ?? 0) + 1);
         }
-        // Klartekst fra #6, bare på publisert innsetting. Upubliserte koblinger
-        // under bruker ikke Sonnet-kvoten.
-        if (anthropicKey && lagret.id) {
+        // Klartekst fra #6, bare på publisert innsetting. Upubliserte rader
+        // og koblinger bruker ikke Sonnet-kvoten.
+        if (publisert && anthropicKey && lagret.id) {
           if (klartekstForsok >= MAKS_KLARTEKST_PER_KJORING) {
             klartekstUtsatt++;
           } else {

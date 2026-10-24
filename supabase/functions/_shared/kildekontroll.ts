@@ -57,8 +57,16 @@ export function kildegrunnlag(deler: Array<string | null | undefined>): string {
 }
 
 /**
- * Logger avviket. Kaster ikke, og returnerer alltid. Kalleren skal lagre
- * sammendraget videre selv om det er flagget.
+ * Nye varsler med avvik lagres upublisert, så en redaktør ser dem før de
+ * blir synlige. Tomt avvik publiseres. Funksjonen kaster ikke.
+ */
+export function publiseresEtterKontroll(avvik: Tallavvik): boolean {
+  return avvik.aar.length === 0 && avvik.tall.length === 0;
+}
+
+/**
+ * Logger avviket. Kaster ikke, og returnerer alltid. Kalleren lagrer
+ * raden videre. Ved avvik skal nye varsler settes inn med publisert=false.
  */
 export function loggUdokumenterteTall(
   oppgave: string,
