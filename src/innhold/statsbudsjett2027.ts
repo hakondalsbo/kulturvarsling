@@ -213,8 +213,17 @@ export function h1Tekst(dok: Dokument): string {
   return renInline(h.barn);
 }
 
+/** Redaksjonell etikett i kildefilen. Skal ikke vises som overskrift. */
+export function erIngressEtikett(b: Blokk): boolean {
+  return b.type === "h" && renInline(b.barn) === "Ingress";
+}
+
+export function synligeBlokker(dok: Dokument): Blokk[] {
+  return dok.blokker.filter((b) => !erIngressEtikett(b));
+}
+
 export function ingressTekst(dok: Dokument): string {
-  const idx = dok.blokker.findIndex((b) => b.type === "h" && b.niva === 2 && renInline(b.barn) === "Ingress");
+  const idx = dok.blokker.findIndex(erIngressEtikett);
   const neste = dok.blokker[idx + 1];
   if (idx < 0 || !neste || neste.type !== "p") throw new Error("Mangler ingress");
   return renInline(neste.barn);

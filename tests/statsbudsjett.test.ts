@@ -10,8 +10,10 @@ import {
   h1Tekst,
   ingressTekst,
   innspillFristPassert,
+  erIngressEtikett,
   parseDokument,
   renTekst,
+  synligeBlokker,
   tabeller,
 } from "../src/innhold/statsbudsjett2027.ts";
 
@@ -42,6 +44,11 @@ function markdownRenTekst(kilde: string): string {
 
 test("publisert tekst er ordrett lik markdown-filen", () => {
   const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+  assert.match(md, /^## Ingress$/m);
+  assert.equal(dok.blokker.some(erIngressEtikett), true);
+  assert.equal(synligeBlokker(dok).some(erIngressEtikett), false);
+  const utenEtikett = (s: string) => norm(s).replace(/ Ingress (?=Regjeringen foreslår)/, " ");
+  assert.equal(utenEtikett(renTekst({ blokker: synligeBlokker(dok) })), utenEtikett(markdownRenTekst(md)));
   assert.equal(norm(renTekst(dok)), norm(markdownRenTekst(md)));
   const fraMd = [...md.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)].map((m) => `${m[1]} ${m[2]}`);
   const fraDok = alleLenker(dok).map((l) => `${l.tekst} ${l.href}`);

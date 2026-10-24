@@ -3,6 +3,7 @@ import type { Blokk, Inline, Tabell } from "./innhold/statsbudsjett2027.ts";
 import {
   INNSPILL_FRIST_ISO,
   finnInnspill,
+  erIngressEtikett,
   h1Tekst,
   ingressTekst,
   innspillFristPassert,
@@ -117,14 +118,14 @@ function TabellVis({ tabell }: { tabell: Tabell }) {
   );
 }
 
-function BlokkVis({ b }: { b: Blokk }) {
+function BlokkVis({ b, ingress = false }: { b: Blokk; ingress?: boolean }) {
   if (b.type === "h") {
     if (b.niva === 1) return <h1><InlineVis barn={b.barn} /></h1>;
     if (b.niva === 2) return <h2><InlineVis barn={b.barn} /></h2>;
     if (b.niva === 3) return <h3><InlineVis barn={b.barn} /></h3>;
     return <h4><InlineVis barn={b.barn} /></h4>;
   }
-  if (b.type === "p") return <p><InlineVis barn={b.barn} /></p>;
+  if (b.type === "p") return <p className={ingress ? "sb-ingress" : undefined}><InlineVis barn={b.barn} /></p>;
   if (b.type === "ul") {
     return (
       <ul>
@@ -170,11 +171,6 @@ export function StatsbudsjettInngang() {
   );
 }
 
-function erIngressAvsnitt(index: number) {
-  const b = dok.blokker[index];
-  return b?.type === "p" && renInline(b.barn) === ingressTekst(dok);
-}
-
 export function StatsbudsjettSide() {
   const nå = useNå();
   useEffect(() => {
@@ -189,12 +185,16 @@ export function StatsbudsjettSide() {
       </header>
       <main className="avis-wrap sb-main">
         <p className="sb-tilbake"><a href="/app">Til forsiden</a></p>
-        {dok.blokker.map((b, i) => (
-          <Fragment key={i}>
-            <BlokkVis b={b} />
-            {erIngressAvsnitt(i) ? <FristMerke nå={nå} /> : null}
-          </Fragment>
-        ))}
+        {dok.blokker.map((b, i) => {
+          if (erIngressEtikett(b)) return null;
+          const ingress = b.type === "p" && i > 0 && erIngressEtikett(dok.blokker[i - 1]);
+          return (
+            <Fragment key={i}>
+              <BlokkVis b={b} ingress={ingress} />
+              {ingress ? <FristMerke nå={nå} /> : null}
+            </Fragment>
+          );
+        })}
       </main>
       <footer className="avis-fot">
         <div className="avis-wrap avis-fot-rad">

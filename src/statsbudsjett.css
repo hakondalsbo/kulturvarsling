@@ -39,9 +39,16 @@ a.avis-tittel.sb-logo span {
 .sb-main h1 {
   font: 500 44px/1.15 var(--serif);
   letter-spacing: -0.02em;
-  margin: 12px 0 28px;
+  margin: 12px 0 18px;
   max-width: 18em;
   color: var(--tekst);
+}
+
+.sb-main p.sb-ingress {
+  font: 400 21px/1.6 var(--serif);
+  color: var(--brod);
+  max-width: 42em;
+  margin: 0 0 8px;
 }
 
 .sb-main h2 {
@@ -303,6 +310,10 @@ a.sb-frist-knapp {
 
   .sb-main h1 {
     font-size: 33px;
+  }
+
+  .sb-main p.sb-ingress {
+    font-size: 18px;
   }
 
   .sb-tabell.bred {
