@@ -343,12 +343,18 @@ test("alle utgående e-poster har avmeldingslenke og List-Unsubscribe", () => {
     "supabase/functions/meld-pa/index.ts",
     "supabase/functions/nyhetsbrev/index.ts",
     "supabase/functions/send-bekreftelser/index.ts",
+    "supabase/functions/signer-innspill/index.ts",
   ]);
   for (const sti of sendere) {
+    if (sti.endsWith("signer-innspill/index.ts")) continue;
     const kilde = readFileSync(sti, "utf8");
     assert.match(kilde, /lagEpost\(/);
     assert.match(kilde, /headers: brev\.headers/);
   }
+  const signatur = readFileSync("supabase/functions/signer-innspill/index.ts", "utf8");
+  assert.match(signatur, /if \(brev\.send\)/);
+  assert.match(signatur, /byggSignaturBrev/);
+  assert.doesNotMatch(signatur, /lagEpost\(/);
 });
 
 test("avmelding og bekreftelse viser ikke suksess før svaret er ok", () => {

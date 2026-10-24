@@ -1,0 +1,198 @@
+.mobiliser {
+  min-height: 100vh;
+  background: var(--papir);
+  color: var(--tekst);
+}
+
+.mobiliser-wrap {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 28px 20px 72px;
+  overflow-wrap: anywhere;
+}
+
+.mobiliser-topp {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px 16px;
+  align-items: baseline;
+  margin-bottom: 20px;
+}
+
+.mobiliser-topp a {
+  color: var(--granitt);
+}
+
+.mobiliser h1,
+.mobiliser h2,
+.mobiliser-panel h2,
+.mobiliser-panel h3,
+.mobiliser-kort h2,
+.mobiliser-kort h3 {
+  font-family: var(--serif);
+  font-weight: 500;
+  letter-spacing: 0;
+  margin: 0 0 12px;
+}
+
+.mobiliser h1 { font-size: 2rem; line-height: 1.15; }
+.mobiliser h2,
+.mobiliser-panel h2 { font-size: 1.55rem; line-height: 1.2; }
+
+.mobiliser-banner {
+  margin: 0 0 24px;
+  padding: 12px 14px;
+  border: 1px solid var(--linje);
+  background: var(--flate);
+  color: var(--oker);
+  font-size: 0.95rem;
+}
+
+.mobiliser-panel,
+.mobiliser-kort,
+.mobiliser-skjema {
+  background: var(--flate);
+  border: 1px solid var(--linje);
+  padding: 22px 18px;
+  margin: 0 0 20px;
+}
+
+.mobiliser-merke {
+  margin: 0 0 10px;
+  font: 600 12px/1.2 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mobiliser-merke.handling { color: var(--tegl); }
+.mobiliser-merke.orientering { color: var(--oker); }
+
+.mobiliser-handling {
+  font-family: var(--serif);
+  font-size: 1.2rem;
+  line-height: 1.35;
+  margin: 0 0 16px;
+}
+
+.mobiliser-fakta {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.mobiliser-fakta div { margin: 0; }
+.mobiliser-fakta dt {
+  font: 600 12px/1.2 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dempet);
+}
+.mobiliser-fakta dd { margin: 4px 0 0; }
+
+.mobiliser-utkast {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 400 15px/1.55 var(--serif);
+  background: var(--papir);
+  border: 1px solid var(--linje);
+  padding: 14px;
+  margin: 0 0 14px;
+  max-width: 100%;
+}
+
+.mobiliser-note,
+.mobiliser-meta {
+  color: var(--dempet);
+  font-size: 0.95rem;
+  margin: 0 0 12px;
+}
+
+.mobiliser-lenker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.mobiliser-samtykke {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 8px 0 16px;
+}
+
+.mobiliser-samtykke input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.2rem;
+  flex: none;
+  accent-color: var(--granitt);
+}
+
+.mobiliser-samtykke span { min-width: 0; }
+
+.mobiliser-honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.mobiliser-tabell-ramme { overflow-x: auto; }
+
+.mobiliser-tabell {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.mobiliser-tabell th,
+.mobiliser-tabell td {
+  text-align: left;
+  padding: 8px 8px 8px 0;
+  border-bottom: 1px solid var(--linje);
+  vertical-align: top;
+}
+
+.mobiliser-tabell th {
+  font: 600 12px/1.2 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dempet);
+}
+
+.mobiliser-tall {
+  font-family: var(--serif);
+  font-size: 2.4rem;
+  line-height: 1;
+  margin: 0 0 8px;
+}
+
+.mobiliser-demo-lenker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0 0 20px;
+}
+
+.avis .mobiliser-panel .kv-knapp:disabled:not(.linje):not(.stille):not(.fare),
+.avis.mobiliser .kv-knapp:disabled:not(.linje):not(.stille):not(.fare),
+.mobiliser input:disabled,
+.mobiliser textarea:disabled,
+.mobiliser select:disabled {
+  opacity: 1;
+  color: #1c1b19;
+  background: #e6e0d4;
+  border-color: #e6e0d4;
+  cursor: not-allowed;
+}
+
+@media (min-width: 900px) {
+  .mobiliser-wrap { padding: 48px 24px 96px; }
+  .mobiliser-panel,
+  .mobiliser-kort,
+  .mobiliser-skjema { padding: 28px 26px; }
+}

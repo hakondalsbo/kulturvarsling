@@ -190,6 +190,16 @@ export function tolkDemo(
   return { modus, steg, endre: q.get("endre") === "1" };
 }
 
+/** Utloggede på /min-side skal møte innlogging, ikke oppsett. Demo er unntaket. */
+export function visInnloggingsport(harBruker: boolean, erDemo: boolean): boolean {
+  return !harBruker && !erDemo;
+}
+
+/** Lenker fra saken skal lande i innholdet, ikke i oppsettsteget. */
+export function hoppOverOppsettForAnker(hash: string): boolean {
+  return hash === "#fulgte" || hash === "#stottet";
+}
+
 export function lesDemo(): { modus: DemoModus | null; steg: 1 | 2 | 3; endre: boolean } {
   if (typeof window === "undefined") return TOM_DEMO;
   return tolkDemo(window.location.search);

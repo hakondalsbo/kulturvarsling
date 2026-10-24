@@ -1,5 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { Rollemerke, type Sak } from "../avis.tsx";
+import { signaturKanSigneres } from "../mobiliser/miljo.ts";
+import { StottetInnspill } from "../mobiliser/StottetInnspill.tsx";
+import type { StottetInnspill as StotteRad } from "../mobiliser/stotte.ts";
 import { Felt, Knapp } from "../ui.tsx";
 import { kategorierForMeny } from "./kategorier.ts";
 import { komiteNavn, KOMITEER } from "./komiteer.ts";
@@ -10,7 +13,9 @@ import {
   DEMO_SOK,
   DEMO_VALG,
   erUtfyltDemo,
+  hoppOverOppsettForAnker,
   lesDemo,
+  visInnloggingsport,
 } from "./demo.ts";
 import { personligKilde, type KampanjeRef } from "./forslag.ts";
 import {
@@ -44,6 +49,8 @@ export type MinSideProps = {
   onSlettSok?: (id: string) => Promise<boolean> | boolean;
   onToggleFolg?: (id: string | number) => void;
   onLogin?: () => void;
+  onRegistrer?: () => void;
+  stotte?: StotteRad[];
   onÅpne?: (sak: MinSak, fane: "horingssvar" | "kampanje" | "mobiliser" | "info") => void;
   kampanjer?: KampanjeRef[];
   apneOppsett?: boolean;
@@ -117,6 +124,8 @@ export function MinSide({
   onSlettSok,
   onToggleFolg,
   onLogin,
+  onRegistrer,
+  stotte = [],
   onÅpne,
   kampanjer = [],
   apneOppsett = false,
@@ -135,6 +144,7 @@ export function MinSide({
   const [fulgt, setFulgt] = useState<string[]>(() => (utfylt ? [...DEMO_FULGTE] : fulgte.map(String)));
   const [steg, setSteg] = useState<1 | 2 | 3>(demo.steg);
   const [visOppsett, setVisOppsett] = useState(() => {
+    if (typeof window !== "undefined" && hoppOverOppsettForAnker(window.location.hash)) return false;
     if (demo.endre || demo.modus === "oppsett") return true;
     if (utfylt || demo.modus === "tom") return false;
     const start = valgFra(user);
@@ -155,7 +165,8 @@ export function MinSide({
     setValg(neste);
     setSokListe(sok);
     setFulgt(fulgte.map(String));
-    setVisOppsett(!user?.minsideKlar && !harAvgrensning(neste) && !neste.varslerAktive && fulgte.length === 0 && sok.length === 0);
+    const anker = typeof window !== "undefined" && hoppOverOppsettForAnker(window.location.hash);
+    setVisOppsett(!anker && !user?.minsideKlar && !harAvgrensning(neste) && !neste.varslerAktive && fulgte.length === 0 && sok.length === 0);
   }, [erDemo, sokLastet, brukerId]);
 
   useEffect(() => {
@@ -270,6 +281,24 @@ export function MinSide({
   const valgteSteder = stedNavn(valg.geografisk);
   const valgteFag = fag.filter((k) => valg.fagfelt.includes(k.id)).map((k) => k.label);
 
+  if (visInnloggingsport(!!user?.id, erDemo)) {
+    return (
+      <div className="minside" data-minside="port">
+        <div className="avis-wrap minside-ark">
+          <p className="kv-steg">Min side</p>
+          <h1>Logg inn</h1>
+          <p className="minside-innledning">
+            Logg inn for å se sakene du følger og innspillene du har støttet.
+          </p>
+          <div className="minside-rad">
+            <Knapp onClick={onLogin}>Logg inn</Knapp>
+            <Knapp variant="linje" onClick={onRegistrer ?? onLogin}>Opprett konto</Knapp>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="minside" data-minside={demo.modus ?? "konto"}>
       <div className="avis-wrap minside-ark">
@@ -323,6 +352,8 @@ export function MinSide({
             onEndre={() => { setSteg(1); setVisOppsett(true); }}
             onLogin={erDemo ? undefined : onLogin}
             onÅpne={apneSak}
+            stotte={stotte}
+            signeringApen={signaturKanSigneres()}
           />
         )}
       </div>
@@ -477,6 +508,8 @@ function Dashboard({
   onLogin,
   kampanjeIds,
   onÅpne,
+  stotte,
+  signeringApen,
 }: {
   deler: ReturnType<typeof delMinSide>;
   sokListe: LagretSok[];
@@ -496,6 +529,8 @@ function Dashboard({
   onEndre: () => void;
   onLogin?: () => void;
   onÅpne: (sak: MinSak, fane: "horingssvar" | "kampanje" | "mobiliser" | "info") => void;
+  stotte: StotteRad[];
+  signeringApen: boolean;
 }) {
   const tom = deler.alle.length === 0;
   return (
@@ -522,30 +557,32 @@ function Dashboard({
           <Seksjon id="handling" tittel="Du kan gjøre noe" tom="Ingen andre saker med handling mulig." saker={deler.handling} nå={nå} fulgt={fulgt} kampanjeIds={kampanjeIds} onFolg={onFolg} onÅpne={onÅpne} />
           <Seksjon id="frister" tittel="Kommende frister" tom="Ingen flere frister i det du følger." saker={deler.frister} nå={nå} fulgt={fulgt} kampanjeIds={kampanjeIds} onFolg={onFolg} onÅpne={onÅpne} />
           <Seksjon id="strom" tittel="Strømmen" tom="Strømmen er tom. Alt som haster, ligger over." saker={deler.strom} nå={nå} fulgt={fulgt} kampanjeIds={kampanjeIds} onFolg={onFolg} onÅpne={onÅpne} />
-          <section aria-labelledby="minside-fulgte">
-            <h2 id="minside-fulgte">Saker du følger</h2>
-            {deler.fulgte.length === 0 ? <p className="minside-tom">Du følger ingen enkeltsaker.</p> : (
-              <ul className="minside-lagret">
-                {deler.fulgte.map((sak) => (
-                  <li key={sak.id}>
-                    <div className="minside-fulgt">
-                      <span>
-                        <Rollemerke sak={tilSak(sak)} nå={nå} medDetalj={false} />
-                        {sak.tittel}
-                      </span>
-                      <span className="minside-status">{statusTekst(sak.status)} · {datoLang(sak.frist)}</span>
-                      <div className="minside-rad">
-                        <Knapp variant="stille" onClick={() => onÅpne(sak, "horingssvar")}>Skriv innspill</Knapp>
-                        {kampanjeIds.includes(String(sak.id)) ? <Knapp variant="stille" onClick={() => onÅpne(sak, "kampanje")}>Støtt innspill</Knapp> : null}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
         </>
       )}
+
+      <section id="fulgte" aria-labelledby="minside-fulgte">
+        <h2 id="minside-fulgte">Saker du følger</h2>
+        {deler.fulgte.length === 0 ? <p className="minside-tom">Du følger ingen enkeltsaker.</p> : (
+          <ul className="minside-lagret">
+            {deler.fulgte.map((sak) => (
+              <li key={sak.id}>
+                <div className="minside-fulgt">
+                  <span>
+                    <Rollemerke sak={tilSak(sak)} nå={nå} medDetalj={false} />
+                    {sak.tittel}
+                  </span>
+                  <span className="minside-status">{statusTekst(sak.status)} · {datoLang(sak.frist)}</span>
+                  <div className="minside-rad">
+                    <Knapp variant="stille" onClick={() => onÅpne(sak, "horingssvar")}>Skriv innspill</Knapp>
+                    {kampanjeIds.includes(String(sak.id)) ? <Knapp variant="stille" onClick={() => onÅpne(sak, "kampanje")}>Støtt innspill</Knapp> : null}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <StottetInnspill innlogget innspill={stotte} aapent={signeringApen} />
 
       <section aria-labelledby="minside-sok">
         <h2 id="minside-sok">Lagrede søk</h2>
