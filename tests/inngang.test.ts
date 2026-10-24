@@ -17,6 +17,8 @@ test("komponentoversikten ligger på /design", () => {
   assert.match(app, /\/design/);
   assert.doesNotMatch(app, /href="\/design"/);
   assert.match(vercel, /"src": "\/design"/);
+  assert.match(vercel, /\{ "src": "\/statsbudsjett", "dest": "\/index.html" \}/);
+  assert.match(vercel, /\{ "src": "\/statsbudsjett\/", "dest": "\/index.html" \}/);
   assert.match(vercel, /\/404\.html/);
   assert.equal(existsSync("public/404.html"), true);
   assert.doesNotMatch(readFileSync("public/404.html", "utf8"), /varslingssystem/);
