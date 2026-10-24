@@ -9,7 +9,7 @@ function reneStier(): Plugin {
     "/bekreft": "/bekreft.html",
     "/avmelding": "/avmelding.html",
   };
-  const appSti = new Set(["/", "/ordliste", "/design", "/statsbudsjett", "/app"]);
+  const appSti = new Set(["/", "/ordliste", "/design", "/statsbudsjett", "/min-side", "/app"]);
   const omskriv = (req: { url?: string; headers?: { accept?: string } }, res: { statusCode?: number }, next: () => void) => {
     const url = req.url ?? "/";
     const q = url.indexOf("?");
