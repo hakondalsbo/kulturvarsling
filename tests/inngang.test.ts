@@ -32,6 +32,7 @@ test("vercel.json omskriver de samme stiene uten routes", () => {
       ["/app/min-side", "/index.html"],
       ["/mobiliser", "/index.html"],
       ["/mobiliser/", "/index.html"],
+      ["/komite/:id", "/index.html"],
       ["/(.*)", "/404.html"],
     ],
   );

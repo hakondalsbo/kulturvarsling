@@ -80,7 +80,7 @@ function reneStier(): Plugin {
     }
     const accept = req.headers?.accept ?? "";
     const erDokument = accept.includes("text/html");
-    const kjent = appSti.has(sti) || sti.startsWith("/app/") || sti.includes(".") || sti.startsWith("/@") || sti.startsWith("/src/") || sti.startsWith("/node_modules/");
+    const kjent = appSti.has(sti) || sti.startsWith("/app/") || sti.startsWith("/komite/") || sti.includes(".") || sti.startsWith("/@") || sti.startsWith("/src/") || sti.startsWith("/node_modules/");
     if (erDokument && !kjent) {
       const svar = res as { statusCode: number; setHeader: (n: string, v: string) => void; end: (b: string) => void };
       svar.statusCode = 404;

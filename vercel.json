@@ -15,6 +15,7 @@
     { "source": "/app/min-side", "destination": "/index.html" },
     { "source": "/mobiliser", "destination": "/index.html" },
     { "source": "/mobiliser/", "destination": "/index.html" },
+    { "source": "/komite/:id", "destination": "/index.html" },
     { "source": "/(.*)", "destination": "/404.html", "statusCode": 404 }
   ],
   "github": {
