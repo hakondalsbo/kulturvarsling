@@ -36,7 +36,7 @@ import {
   tellDatofilter,
   type Kjoeringstype,
 } from "./datofilter.ts";
-import { hentEInnsynKultursaker } from "./einnsyn.ts";
+import { geografiSomLagres, hentEInnsynKultursaker } from "./einnsyn.ts";
 import { hentBergenSaker } from "./bergen.ts";
 import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
 import { hentSametingetSaker } from "./sametinget.ts";
@@ -689,6 +689,7 @@ Deno.serve(async (req: Request) => {
         ? kategoriFraTittel(item.tittel, item.sammendrag_raa ?? "")
         : "scenekunst";
       let niva = item.niva ?? "nasjonalt";
+      let analyseNiva: string | null = null;
       let status = statusForSak(item.frist, item.motedato);
       let sammendrag = item.sammendrag_raa?.slice(0, 400) || item.tittel;
 
@@ -713,13 +714,16 @@ Deno.serve(async (req: Request) => {
           // dedup via kilde-URL stopper den ved neste kjøring.
           // Porteføljesaker publiseres i grenen over. Avvisninger lagres
           // upublisert, med kilde_id, så samme sak ikke vurderes på nytt.
+          const avvistGeo = item.adapter === "einnsyn"
+            ? geografiSomLagres(item, analyse.niva)
+            : { niva: analyse.niva ?? "nasjonalt", sted: "Norge" };
           const avvistRad = byggVarselRad(item, {
             publisert: false,
             kategori: analyse.kategori ?? "kulturpolitikk",
-            niva: analyse.niva ?? "nasjonalt",
+            niva: avvistGeo.niva,
             status: "normal",
             sammendrag: "Automatisk avvist av relevansfilteret",
-            sted: "Norge",
+            sted: avvistGeo.sted,
           }, kilderMap);
           if (!avvistRad) {
             driftFeil.push(`${item.tittel.slice(0, 60)}: mangler kilde-URL`);
@@ -738,6 +742,7 @@ Deno.serve(async (req: Request) => {
         }
         if (analyse.relevant) {
           kategori = analyse.kategori ?? kategori;
+          analyseNiva = analyse.niva ?? null;
           // Adaptere som VET nivået sitt (f.eks. Bergen = kommune) overstyres ikke
           if (!item.niva) niva = analyse.niva ?? niva;
           sammendrag = analyse.sammendrag || sammendrag;
@@ -750,8 +755,12 @@ Deno.serve(async (req: Request) => {
 
       // Claude har ingen tilskudds-/budsjettkategori og lander lokale
       // økonomisaker på kulturarv eller visuell. Tittelen avgjør.
+      let sted: string | null = item.sted ?? null;
       if (item.adapter === "einnsyn") {
         kategori = kategoriForEinnsyn(item.tittel, kategori);
+        const geo = geografiSomLagres(item, analyseNiva ?? niva);
+        niva = geo.niva;
+        sted = geo.sted;
       }
 
       item.sakstype = item.sakstype ?? sakstypeFraSak(item);
@@ -761,7 +770,7 @@ Deno.serve(async (req: Request) => {
         niva,
         status,
         sammendrag,
-        sted: item.sted ?? (niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
+        sted: sted ?? (niva === "nasjonalt" ? "Nasjonalt" : "Norge"),
       }, kilderMap);
       if (!rad) {
         driftFeil.push(`${item.tittel.slice(0, 60)}: mangler kilde-URL`);

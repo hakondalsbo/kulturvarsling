@@ -343,7 +343,58 @@ test("nivaFraEnhetstype utleder nivå fra eInnsyn-enhetstype", async () => {
   assert.equal(nivaFraEnhetstype("FYLKESKOMMUNE"), "fylke");
   assert.equal(nivaFraEnhetstype("DEPARTEMENT"), "nasjonalt");
   assert.equal(nivaFraEnhetstype("VIRKSOMHET"), null);
+  assert.equal(nivaFraEnhetstype("ORGAN"), null);
   assert.equal(nivaFraEnhetstype(undefined), null);
+});
+
+test("Oslo kommune og fylkesting får nivå fra organet, ikke fra Claude", async () => {
+  const { avklarEinnsynGeo, geografiFraBrreg, geografiSomLagres } = await import("./einnsyn.ts");
+  const oslo = geografiFraBrreg({
+    organisasjonsform: { kode: "ORGL" },
+    institusjonellSektorkode: { kode: "6500" },
+    forretningsadresse: { kommunenummer: "0301", kommune: "OSLO" },
+  }, "Bystyrets sekretariat");
+  assert.equal(oslo.niva, "kommune");
+  assert.equal(oslo.sted, "Oslo");
+  assert.equal(oslo.kommunenr, "0301");
+
+  const akershus = avklarEinnsynGeo({
+    enhetstype: "BYDEL",
+    navn: "Akershus fylkesting",
+    brreg: {
+      organisasjonsform: { kode: "BEDR" },
+      postadresse: { kommunenummer: "0301", kommune: "OSLO" },
+      overordnetEnhet: "930580783",
+    },
+    overordnet: {
+      navn: "AKERSHUS FYLKESKOMMUNE",
+      organisasjonsform: { kode: "FYLK" },
+    },
+  });
+  assert.equal(akershus.niva, "fylke");
+  assert.equal(akershus.sted, "Akershus fylkesting");
+  assert.equal(akershus.kommunenr, null);
+
+  const lagret = geografiSomLagres(
+    { niva: "kommune", sted: "Oslo", instans: "Bystyrets sekretariat" },
+    "nasjonalt",
+  );
+  assert.equal(lagret.niva, "kommune");
+  assert.equal(lagret.sted, "Oslo");
+
+  const utenGeo = geografiSomLagres(
+    { niva: null, sted: null, instans: "Bystyrets sekretariat" },
+    "nasjonalt",
+  );
+  assert.equal(utenGeo.niva, "kommune");
+  assert.equal(utenGeo.sted, "Oslo");
+
+  const bydel = geografiSomLagres(
+    { niva: "kommune", sted: null, instans: "Bydel Ullern" },
+    "nasjonalt",
+  );
+  assert.equal(bydel.niva, "kommune");
+  assert.equal(bydel.sted, "Bydel Ullern");
 });
 
 // ─── parseRssItems ────────────────────────────────────────────────────────────

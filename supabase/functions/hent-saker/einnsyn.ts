@@ -12,7 +12,7 @@ import {
 } from "./kildehelse.ts";
 
 const API = "https://api.einnsyn.no";
-const BRREG = "https://data.brreg.no/enhetsregisteret/api/enheter";
+const BRREG_API = "https://data.brreg.no/enhetsregisteret/api";
 
 export type EInnsynMoetesak = {
   id?: string;
@@ -39,10 +39,12 @@ export type BrregAdresse = {
 };
 
 export type BrregEnhet = {
+  navn?: string | null;
   organisasjonsform?: { kode?: string | null } | null;
   institusjonellSektorkode?: { kode?: string | null } | null;
   forretningsadresse?: BrregAdresse | null;
   postadresse?: BrregAdresse | null;
+  overordnetEnhet?: string | null;
 };
 
 type KlassifisertGeo = Required<
@@ -71,13 +73,57 @@ function formaterSted(sted?: string | null): string | null {
   return navn.charAt(0) + navn.slice(1).toLowerCase();
 }
 
+/** Fylkesting og fylkeskommune i navnet er fylke, også når eInnsyn sier BYDEL. */
+export function nivaFraOrgannavn(
+  navn?: string | null,
+): { niva: "kommune" | "fylke"; sted: string } | null {
+  const sted = formaterSted(navn);
+  if (!sted) return null;
+  const n = sted.toLowerCase();
+  if (/fylkeskommune|fylkesting/.test(n)) return { niva: "fylke", sted };
+  // Oslo bystyre ligger ikke i kommunenavnet. Organet er kommunalt.
+  if (/bystyrets sekretariat/.test(n)) return { niva: "kommune", sted: "Oslo" };
+  if (/\bbydel\b/.test(n)) return { niva: "kommune", sted };
+  if (/\bkommune\b/.test(n)) return { niva: "kommune", sted };
+  return null;
+}
+
+function formKode(enhet?: BrregEnhet | null): string {
+  return String(enhet?.organisasjonsform?.kode ?? "").toUpperCase();
+}
+
+function fylkesnrFraAdresse(enhet?: BrregEnhet | null): string | null {
+  const adresse = [enhet?.forretningsadresse, enhet?.postadresse].find((a) =>
+    Boolean(fylkesnrFraKommunenr(a?.kommunenummer))
+  );
+  return fylkesnrFraKommunenr(adresse?.kommunenummer);
+}
+
 // Ren Brreg-mapping. Bare sektorkode 6500 er lokal kommuneforvaltning.
 // FYLK har adresse i administrasjonsbyen og får derfor aldri kommunenummer.
+// Underenhet av en fylkeskommune er fylke, selv om adressen ligger i Oslo.
 export function geografiFraBrreg(
   enhet: BrregEnhet | null,
   organNavn?: string,
+  overordnet?: BrregEnhet | null,
 ): KlassifisertGeo {
   if (!enhet) return { ...TOM_GEO };
+
+  const egetForm = formKode(enhet);
+  const parentForm = formKode(overordnet);
+  if (egetForm === "FYLK" || parentForm === "FYLK") {
+    const fylkesnr = egetForm === "FYLK"
+      ? fylkesnrFraAdresse(enhet)
+      : null;
+    return {
+      kommunenr: null,
+      fylkesnr,
+      sted: nivaFraOrgannavn(organNavn)?.sted
+        ?? formaterSted(overordnet?.navn)
+        ?? formaterSted(organNavn),
+      niva: "fylke",
+    };
+  }
 
   const sektorkode = String(
     enhet.institusjonellSektorkode?.kode ?? "",
@@ -90,9 +136,6 @@ export function geografiFraBrreg(
     };
   }
 
-  const erFylkeskommune = String(
-    enhet.organisasjonsform?.kode ?? "",
-  ).toUpperCase() === "FYLK";
   const adresse = [enhet.forretningsadresse, enhet.postadresse].find((a) =>
     Boolean(fylkesnrFraKommunenr(a?.kommunenummer))
   );
@@ -102,17 +145,7 @@ export function geografiFraBrreg(
   if (!fylkesnr) {
     return {
       ...TOM_GEO,
-      niva: erFylkeskommune ? "fylke" : "kommune",
-    };
-  }
-
-  if (erFylkeskommune) {
-    return {
-      kommunenr: null,
-      fylkesnr,
-      // Bruk organnavnet, aldri administrasjonsbyens kommunenavn.
-      sted: formaterSted(organNavn),
-      niva: "fylke",
+      niva: "kommune",
     };
   }
 
@@ -125,13 +158,79 @@ export function geografiFraBrreg(
 }
 
 // Enhetstype fra eInnsyn → nivå. BYDEL/KOMMUNE = kommune, FYLKESKOMMUNE = fylke,
-// STAT/DEPARTEMENT o.l. = nasjonalt. Ukjent → null (Claude/default bestemmer).
+// STAT/DEPARTEMENT o.l. = nasjonalt. ORGAN, VIRKSOMHET og ukjent → null.
+// BYDEL er upålitelig: Akershus fylkesting er registrert som BYDEL.
 export function nivaFraEnhetstype(t?: string): OrganGeo["niva"] {
   const s = (t ?? "").toUpperCase();
   if (s.includes("FYLKE")) return "fylke";
   if (s === "KOMMUNE" || s === "BYDEL") return "kommune";
   if (s === "STAT" || s.includes("DEPARTEMENT") || s.includes("DIREKTORAT")) return "nasjonalt";
   return null;
+}
+
+/**
+ * Navn som sier fylke vinner over feil enhetstype og over administrasjonsbyen.
+ * Brreg vinner over Claude. Enhetstype brukes når Brreg og navnet tier.
+ */
+export function avklarEinnsynGeo(input: {
+  enhetstype?: string | null;
+  navn?: string | null;
+  brreg?: BrregEnhet | null;
+  overordnet?: BrregEnhet | null;
+}): KlassifisertGeo {
+  const fraNavn = nivaFraOrgannavn(input.navn);
+  const brreg = input.brreg
+    ? geografiFraBrreg(input.brreg, input.navn ?? undefined, input.overordnet)
+    : { ...TOM_GEO };
+  if (fraNavn?.niva === "fylke") {
+    return {
+      kommunenr: null,
+      fylkesnr: brreg.niva === "fylke" ? brreg.fylkesnr : null,
+      sted: fraNavn.sted,
+      niva: "fylke",
+    };
+  }
+  if (brreg.niva) return brreg;
+  if (fraNavn) {
+    return { kommunenr: null, fylkesnr: null, sted: fraNavn.sted, niva: fraNavn.niva };
+  }
+  const fraType = nivaFraEnhetstype(input.enhetstype ?? undefined);
+  if (fraType) {
+    return { kommunenr: null, fylkesnr: null, sted: null, niva: fraType };
+  }
+  return { ...TOM_GEO };
+}
+
+/**
+ * Nivå og sted som lagres. Adapterens geografi vinner over Claude.
+ * Avviste saker skal ikke falle tilbake til nasjonalt/Norge når organet er kjent.
+ */
+export function geografiSomLagres(
+  item: { niva?: string | null; sted?: string | null; instans?: string | null },
+  analyseNiva?: string | null,
+): { niva: "nasjonalt" | "fylke" | "kommune"; sted: string } {
+  const fraNavn = nivaFraOrgannavn(item.instans);
+  if (fraNavn?.niva === "fylke") {
+    return {
+      niva: "fylke",
+      sted: item.niva === "fylke" && item.sted ? item.sted : fraNavn.sted,
+    };
+  }
+  if (item.niva === "kommune" || item.niva === "fylke" || item.niva === "nasjonalt") {
+    return {
+      niva: item.niva,
+      sted: item.sted
+        ?? (item.niva === "nasjonalt" ? "Nasjonalt" : fraNavn?.sted ?? "Norge"),
+    };
+  }
+  if (fraNavn) return { niva: fraNavn.niva, sted: fraNavn.sted };
+  if (analyseNiva === "kommune" || analyseNiva === "fylke" || analyseNiva === "nasjonalt") {
+    return {
+      niva: analyseNiva,
+      sted: item.sted ?? (analyseNiva === "nasjonalt" ? "Nasjonalt" : "Norge"),
+    };
+  }
+  return { niva: "nasjonalt", sted: item.sted ?? "Nasjonalt" };
 }
 
 // Ren mapping — testes i logikk.test.ts uten nettverk.
@@ -183,6 +282,17 @@ export function mapEInnsynItem(
 // Slår opp geografi for ett organ: eInnsyn-enhet → orgnummer + enhetstype,
 // deretter Brønnøysund → sektor, organisasjonsform og adresse. Best effort —
 // ved nettverksfeil beholdes navn/nivå fra eInnsyn, og saken lagres uansett.
+async function lesBrreg(orgnr: string): Promise<BrregEnhet | null> {
+  for (const sti of ["enheter", "underenheter"]) {
+    const res = await fetch(`${BRREG_API}/${sti}/${orgnr}`, {
+      headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" },
+    });
+    if (res.ok) return await res.json() as BrregEnhet;
+    if (res.status !== 404) return null;
+  }
+  return null;
+}
+
 async function slåOppGeo(enhetId: string): Promise<OrganGeo> {
   try {
     const eRes = await fetch(`${API}/enhet/${enhetId}`, {
@@ -190,33 +300,32 @@ async function slåOppGeo(enhetId: string): Promise<OrganGeo> {
     });
     if (!eRes.ok) return {};
     const enhet = await eRes.json();
-    const geo: OrganGeo = {
-      navn: enhet?.navn ?? undefined,
-      niva: nivaFraEnhetstype(enhet?.enhetstype),
-    };
+    const navn = enhet?.navn ?? undefined;
     const orgnr = String(enhet?.orgnummer ?? "").replace(/\D/g, "");
+    let brreg: BrregEnhet | null = null;
+    let overordnet: BrregEnhet | null = null;
     if (orgnr.length === 9) {
       try {
-        const bRes = await fetch(
-          `${BRREG}/${orgnr}`,
-          { headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" } },
-        );
-        if (bRes.ok) {
-          const klassifisert = geografiFraBrreg(
-            await bRes.json() as BrregEnhet,
-            geo.navn,
-          );
-          geo.kommunenr = klassifisert.kommunenr;
-          geo.fylkesnr = klassifisert.fylkesnr;
-          geo.sted = klassifisert.sted;
-          // Brreg overstyrer eInnsyn når sektor/form gir en sikker klassifisering.
-          if (klassifisert.niva) geo.niva = klassifisert.niva;
-        }
+        brreg = await lesBrreg(orgnr);
+        const parent = String(brreg?.overordnetEnhet ?? "").replace(/\D/g, "");
+        if (parent.length === 9) overordnet = await lesBrreg(parent);
       } catch (_) {
         // Brønnøysund utilgjengelig — behold navn/nivå fra eInnsyn
       }
     }
-    return geo;
+    const klass = avklarEinnsynGeo({
+      enhetstype: enhet?.enhetstype,
+      navn,
+      brreg,
+      overordnet,
+    });
+    return {
+      navn,
+      kommunenr: klass.kommunenr,
+      fylkesnr: klass.fylkesnr,
+      sted: klass.sted,
+      niva: klass.niva,
+    };
   } catch (_) {
     return {};
   }
