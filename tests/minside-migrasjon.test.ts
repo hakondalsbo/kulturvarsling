@@ -98,16 +98,26 @@ insert into public.lagrede_sok (bruker_id, navn, sporretekst)
 select 'EGNE=' || count(*)::text as sjekk from public.lagrede_sok;
 `;
 
+const psqlKjor = spawnSync("psql", ["-d", "postgres", "-c", "select 1"], { encoding: "utf8" }).status === 0
+  ? ["psql"]
+  : ["sudo", "-u", "postgres", "psql"];
+
 function psql(db: string, sql: string) {
-  return spawnSync("psql", ["-d", db, "-v", "ON_ERROR_STOP=1", "-q"], {
+  const [bin, ...rest] = psqlKjor;
+  return spawnSync(bin, [...rest, "-d", db, "-v", "ON_ERROR_STOP=1", "-q"], {
     input: sql,
     encoding: "utf8",
   });
 }
 
+function psqlKommando(args: string[], input?: string) {
+  const [bin, ...rest] = psqlKjor;
+  return spawnSync(bin, [...rest, ...args], { input, encoding: "utf8" });
+}
+
 test("migrasjonen holder RLS for anon og authenticated", () => {
   const db = `minside_${process.pid}`;
-  const laget = spawnSync("psql", ["-d", "postgres", "-c", `create database ${db}`], { encoding: "utf8" });
+  const laget = psqlKommando(["-d", "postgres", "-c", `create database ${db}`]);
   if (laget.status !== 0) {
     throw new Error(`Kunne ikke lage testdatabase. ${laget.stderr || laget.stdout}`);
   }
@@ -155,6 +165,6 @@ test("migrasjonen holder RLS for anon og authenticated", () => {
     `);
     assert.notEqual(anonProfil.status, 0, "anon fikk oppdatere organ");
   } finally {
-    spawnSync("psql", ["-d", "postgres", "-c", `drop database if exists ${db} with (force)`], { encoding: "utf8" });
+    psqlKommando(["-d", "postgres", "-c", `drop database if exists ${db} with (force)`]);
   }
 });

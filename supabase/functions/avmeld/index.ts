@@ -11,24 +11,19 @@ import {
   skalSkriveAvmelding,
   svarEtterSkriving,
 } from "../_shared/samtykke.ts";
+import { corsHeadere } from "../_shared/cors.ts";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-};
-
-function svar(body: unknown, status = 200): Response {
+function svar(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json" },
+    headers: { ...corsHeadere(req, "GET, POST, OPTIONS"), "Content-Type": "application/json" },
   });
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeadere(req, "GET, POST, OPTIONS") });
   if (!skalSkriveAvmelding(req.method)) {
-    return svar({
+    return svar(req, {
       ok: false,
       feil: "Ingenting er endret. Åpne avmeldingslenken og trykk på knappen.",
     }, 405);
@@ -39,7 +34,7 @@ Deno.serve(async (req: Request) => {
   const contentType = req.headers.get("content-type") ?? "";
   const token = lesToken(url, bodyTekst, contentType);
   if (!erUuid(token)) {
-    return svar({ ok: false, feil: "Ugyldig avmeldingslenke. Ingenting er endret." }, 400);
+    return svar(req, { ok: false, feil: "Ugyldig avmeldingslenke. Ingenting er endret." }, 400);
   }
 
   const db = createClient(
@@ -51,10 +46,10 @@ Deno.serve(async (req: Request) => {
     .eq("avmeldings_token", token);
   if (error) {
     console.error("avmeld les", error.message);
-    return svar({ ok: false, feil: "Kunne ikke melde deg av. Ingenting er endret." }, 500);
+    return svar(req, { ok: false, feil: "Kunne ikke melde deg av. Ingenting er endret." }, 500);
   }
   if (!data?.length || !data[0].epost_normalisert) {
-    return svar({ ok: false, feil: "Ugyldig avmeldingslenke. Ingenting er endret." }, 404);
+    return svar(req, { ok: false, feil: "Ugyldig avmeldingslenke. Ingenting er endret." }, 404);
   }
 
   const { data: søsken, error: søskenFeil } = await db.from("pamelding")
@@ -62,11 +57,11 @@ Deno.serve(async (req: Request) => {
     .eq("epost_normalisert", data[0].epost_normalisert);
   if (søskenFeil) {
     console.error("avmeld søsken", søskenFeil.message);
-    return svar({ ok: false, feil: "Kunne ikke melde deg av. Ingenting er endret." }, 500);
+    return svar(req, { ok: false, feil: "Kunne ikke melde deg av. Ingenting er endret." }, 500);
   }
   const allerede = (søsken ?? []).length > 0 && (søsken ?? []).every((rad) => rad.avmeldt_at);
   if (allerede) {
-    return svar({ ok: true, melding: "Du er allerede meldt av nyhetsbrevet." });
+    return svar(req, { ok: true, melding: "Du er allerede meldt av nyhetsbrevet." });
   }
 
   const skrevet = await db.from("pamelding")
@@ -76,7 +71,7 @@ Deno.serve(async (req: Request) => {
   const resultat = svarEtterSkriving(skrevet.error?.message ?? null);
   if (!resultat.ok) {
     console.error("avmeld skriv", resultat.feil);
-    return svar({ ok: false, feil: "Kunne ikke melde deg av. Ingenting er endret." }, 500);
+    return svar(req, { ok: false, feil: "Kunne ikke melde deg av. Ingenting er endret." }, 500);
   }
-  return svar({ ok: true, melding: "Du er meldt av nyhetsbrevet." });
+  return svar(req, { ok: true, melding: "Du er meldt av nyhetsbrevet." });
 });

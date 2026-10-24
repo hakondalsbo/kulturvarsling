@@ -11,7 +11,7 @@
 // POST { handling: "bekreft", token }
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { behandlingsansvarlig, bunntekst, lesAvsender } from "../_shared/organisasjon.ts";
 import {
   KILDE_VENTESIDE,
@@ -32,21 +32,16 @@ import {
   svarEtterSkriving,
   validerPamelding,
 } from "../_shared/samtykke.ts";
-
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import { corsHeadere } from "../_shared/cors.ts";
 
 function fraAdresse(): string {
   return lesAvsender(behandlingsansvarlig, Deno.env);
 }
 
-function svar(body: unknown, status = 200): Response {
+function svar(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json" },
+    headers: { ...corsHeadere(req), "Content-Type": "application/json" },
   });
 }
 
@@ -183,12 +178,12 @@ async function loggBekreftelse(
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeadere(req) });
   if (req.method !== "POST") {
-    return svar({ ok: false, feil: "Bruk skjemaet på kulturvarsling.no." }, 405);
+    return svar(req, { ok: false, feil: "Bruk skjemaet på kulturvarsling.no." }, 405);
   }
   if (!opphavTillatt(req.headers.get("origin"))) {
-    return svar({ ok: false, feil: "Forespørselen ble avvist." }, 403);
+    return svar(req, { ok: false, feil: "Forespørselen ble avvist." }, 403);
   }
 
   const db = admin();
@@ -197,25 +192,25 @@ Deno.serve(async (req: Request) => {
 
   if (felt.handling === "bekreft") {
     const token = typeof felt.token === "string" ? felt.token : "";
-    if (!erUuid(token)) return svar({ ok: false, feil: "Ugyldig bekreftelseslenke." }, 400);
+    if (!erUuid(token)) return svar(req, { ok: false, feil: "Ugyldig bekreftelseslenke." }, 400);
     const { data, error } = await db.from("pamelding")
       .select("id, bekreftet_at, avmeldt_at, samtykke_gitt_at")
       .eq("bekreftelses_token", token);
     if (error) {
       console.error("bekreft les", error.message);
-      return svar({ ok: false, feil: "Kunne ikke bekrefte påmeldingen. Prøv igjen." }, 500);
+      return svar(req, { ok: false, feil: "Kunne ikke bekrefte påmeldingen. Prøv igjen." }, 500);
     }
-    if (!data?.length) return svar({ ok: false, feil: "Lenken er ugyldig eller utløpt." }, 404);
+    if (!data?.length) return svar(req, { ok: false, feil: "Lenken er ugyldig eller utløpt." }, 404);
     const utfall = data.map((rad) => ({ id: rad.id, utfall: bekreftelsesutfall(rad) }));
     if (utfall.every((rad) => rad.utfall === "avmeldt")) {
-      return svar({
+      return svar(req, {
         ok: false,
         feil: "Du er meldt av. Denne lenken endrer ingenting. Meld deg på på nytt hvis du vil motta brevet.",
       }, 409);
     }
     const skalBekreftes = utfall.filter((rad) => rad.utfall === "bekreft").map((rad) => rad.id);
     if (!skalBekreftes.length) {
-      return svar({ ok: true, melding: "Påmeldingen er allerede bekreftet." });
+      return svar(req, { ok: true, melding: "Påmeldingen er allerede bekreftet." });
     }
     const skrevet = await db.from("pamelding")
       .update({ bekreftet_at: new Date().toISOString(), avmeldt_at: null })
@@ -223,15 +218,15 @@ Deno.serve(async (req: Request) => {
     const resultat = svarEtterSkriving(skrevet.error?.message ?? null);
     if (!resultat.ok) {
       console.error("bekreft skriv", resultat.feil);
-      return svar({ ok: false, feil: "Kunne ikke lagre bekreftelsen. Ingenting er bekreftet." }, 500);
+      return svar(req, { ok: false, feil: "Kunne ikke lagre bekreftelsen. Ingenting er bekreftet." }, 500);
     }
-    return svar({ ok: true, melding: "Påmeldingen er bekreftet. Du kan lukke denne siden." });
+    return svar(req, { ok: true, melding: "Påmeldingen er bekreftet. Du kan lukke denne siden." });
   }
 
   const validert = validerPamelding(body);
-  if (!validert.ok) return svar({ ok: false, feil: validert.feil }, 400);
+  if (!validert.ok) return svar(req, { ok: false, feil: validert.feil }, 400);
   if (validert.bot) {
-    return svar({ ok: true, melding: "Sjekk e-posten din og klikk på bekreftelseslenken." });
+    return svar(req, { ok: true, melding: "Sjekk e-posten din og klikk på bekreftelseslenken." });
   }
 
   const timeSiden = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -242,10 +237,10 @@ Deno.serve(async (req: Request) => {
     antallSiden(db, ipNokkel, timeSiden),
   ]);
   if (epostAntall == null || ipAntall == null) {
-    return svar({ ok: false, feil: "Påmeldingen er midlertidig utilgjengelig. Prøv igjen." }, 503);
+    return svar(req, { ok: false, feil: "Påmeldingen er midlertidig utilgjengelig. Prøv igjen." }, 503);
   }
   if (erBlokkert(epostAntall, ipAntall)) {
-    return svar({ ok: false, feil: "For mange forsøk. Prøv igjen senere." }, 429);
+    return svar(req, { ok: false, feil: "For mange forsøk. Prøv igjen senere." }, 429);
   }
   const { error: loggFeil } = await db.from("meld_pa_forsok").insert([
     { nokkel: epostNokkel },
@@ -253,7 +248,7 @@ Deno.serve(async (req: Request) => {
   ]);
   if (loggFeil) {
     console.error("rate-limit logg", loggFeil.message);
-    return svar({ ok: false, feil: "Påmeldingen er midlertidig utilgjengelig. Prøv igjen." }, 503);
+    return svar(req, { ok: false, feil: "Påmeldingen er midlertidig utilgjengelig. Prøv igjen." }, 503);
   }
   await db.from("meld_pa_forsok").delete()
     .lt("opprettet_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
@@ -264,7 +259,7 @@ Deno.serve(async (req: Request) => {
     .eq("epost_normalisert", validert.verdi.epost);
   if (lesFeil) {
     console.error("pamelding les", lesFeil.message);
-    return svar({ ok: false, feil: "Kunne ikke lagre påmeldingen. Prøv igjen." }, 500);
+    return svar(req, { ok: false, feil: "Kunne ikke lagre påmeldingen. Prøv igjen." }, 500);
   }
 
   const rader = treff ?? [];
@@ -279,7 +274,7 @@ Deno.serve(async (req: Request) => {
       if (tokenFeil) {
         console.error("meld-pa: allerede bekreftet, men token ble ikke lagret.", tokenFeil.message);
         const kropp = svarAlleredeRegistrert(false);
-        return svar({ ok: true, melding: kropp.melding }, kropp.status);
+        return svar(req, { ok: true, melding: kropp.melding }, kropp.status);
       }
     }
     const resultat = await sendEpost(brevMedAvmelding(
@@ -290,7 +285,7 @@ Deno.serve(async (req: Request) => {
       avToken,
     ), "allerede");
     const kropp = svarAlleredeRegistrert(resultat.ok);
-    return svar({ ok: true, melding: kropp.melding }, kropp.status);
+    return svar(req, { ok: true, melding: kropp.melding }, kropp.status);
   }
 
   const token = crypto.randomUUID();
@@ -317,14 +312,14 @@ Deno.serve(async (req: Request) => {
     }).select("id").single();
     if (error || opprettet?.id == null) {
       console.error("pamelding insert", error?.message ?? "mangler id");
-      return svar({ ok: false, feil: "Kunne ikke lagre påmeldingen. Ingenting er registrert." }, 500);
+      return svar(req, { ok: false, feil: "Kunne ikke lagre påmeldingen. Ingenting er registrert." }, 500);
     }
     ids = [opprettet.id];
   } else {
     const { error } = await db.from("pamelding").update(felles).in("id", rader.map((rad) => rad.id));
     if (error) {
       console.error("pamelding update", error.message);
-      return svar({ ok: false, feil: "Kunne ikke lagre påmeldingen. Ingenting er bekreftet." }, 500);
+      return svar(req, { ok: false, feil: "Kunne ikke lagre påmeldingen. Ingenting er bekreftet." }, 500);
     }
     ids = rader.map((rad) => rad.id);
     const { error: slettLoggFeil } = await db.from("bekreftelse_utsendelser").delete().in("pamelding_id", ids);
@@ -340,7 +335,7 @@ Deno.serve(async (req: Request) => {
       if (tokenFeil) {
         console.error("meld-pa: påmeldingen er lagret, men avmeldingstoken ble ikke skrevet.", tokenFeil.message);
         const kropp = svarEtterLagretPamelding(false);
-        return svar({ ok: true, melding: kropp.melding }, kropp.status);
+        return svar(req, { ok: true, melding: kropp.melding }, kropp.status);
       }
     }
   }
@@ -371,5 +366,5 @@ Deno.serve(async (req: Request) => {
     }
   }
   const kropp = svarEtterLagretPamelding(resultat.ok);
-  return svar({ ok: true, melding: kropp.melding }, kropp.status);
+  return svar(req, { ok: true, melding: kropp.melding }, kropp.status);
 });

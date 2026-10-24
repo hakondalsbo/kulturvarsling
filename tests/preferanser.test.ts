@@ -65,9 +65,34 @@ test("mottakere: fulgt sak, abonnement, og ingen dobbelt", () => {
   assert.deepEqual(
     mottakere.map((m) => [m.brukerId, m.grunn, m.epost, m.varselFrekvens]),
     [
-      ["a", "sak", "a@example.com", "daglig"],
+      ["a", "sak", null, "daglig"],
       ["b", "sak", "b@example.com", "straks"],
-      ["e", "abonnement", "e@example.com", "daglig"],
+      ["e", "abonnement", null, "daglig"],
+    ],
+  );
+});
+
+test("varseladresse er bekreftet auth-e-post, aldri profiler.epost", () => {
+  const sakLokal = { ...sak, id: "sak-epost" };
+  const mottakere = mottakereForSak(
+    sakLokal,
+    [
+      { id: "bekreftet", epost: "gammel@example.com", authEpost: "ekte@example.com", epostBekreftet: true, varsler_aktive: false, fagfelt: [], geografisk: [] },
+      { id: "ubekreftet", epost: "profil@example.com", authEpost: "venter@example.com", epostBekreftet: false, varsler_aktive: false, fagfelt: [], geografisk: [] },
+      { id: "uten-auth", epost: "bare-profil@example.com", varsler_aktive: false, fagfelt: [], geografisk: [] },
+    ],
+    [
+      { brukerId: "bekreftet", sakId: "sak-epost" },
+      { brukerId: "ubekreftet", sakId: "sak-epost" },
+      { brukerId: "uten-auth", sakId: "sak-epost" },
+    ],
+  );
+  assert.deepEqual(
+    mottakere.map((m) => [m.brukerId, m.epost]),
+    [
+      ["bekreftet", "ekte@example.com"],
+      ["ubekreftet", null],
+      ["uten-auth", null],
     ],
   );
 });

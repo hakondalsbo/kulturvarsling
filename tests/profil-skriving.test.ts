@@ -20,6 +20,7 @@ test("profilskriving er update uten id, plan eller stripe_customer_id", () => {
   assert.match(felt, /delete felt\.id/);
   assert.match(felt, /delete felt\.plan/);
   assert.match(felt, /delete felt\.stripe_customer_id/);
+  assert.match(felt, /delete felt\.epost/);
   assert.match(lagre, /\.update\(/);
   assert.match(lagre, /\.eq\("id", userId\)/);
   assert.match(lagre, /profilfelt\(oppdateringer\)/);

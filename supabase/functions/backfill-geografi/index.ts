@@ -5,7 +5,7 @@
 // For hver sak med einnsyn.no/moetesak/{id}-kilde: møtesak → journalenhet →
 // orgnr → Brønnøysund → kommunenr/fylkesnr (samme regel som hent-saker/einnsyn.ts).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { oppdaterVarsel } from "../_shared/varselvern.ts";
 
 const EINNSYN = "https://api.einnsyn.no";

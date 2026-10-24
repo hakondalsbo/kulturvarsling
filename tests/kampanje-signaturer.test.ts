@@ -23,6 +23,9 @@ test("klienten signerer med return=minimal og krever innlogging", () => {
   const slutt = kilde.indexOf("async function sendFeedbackDB");
   const fn = kilde.slice(start, slutt);
   assert.match(fn, /Prefer: "return=minimal"/);
+  assert.match(fn, /res\.status === 409/);
+  assert.match(fn, /return "allerede"/);
+  assert.match(kilde, /Du har allerede signert/);
   assert.doesNotMatch(fn, /\.select\(/);
   assert.doesNotMatch(fn, /brukerId \?\? null/);
   assert.match(kilde, /Logg inn for å signere kampanjen\. Signaturen lagres på kontoen din\./);

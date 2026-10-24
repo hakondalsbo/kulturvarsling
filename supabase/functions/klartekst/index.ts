@@ -27,18 +27,12 @@ import {
   type KlartekstSvar,
   type Profil,
 } from "./logikk.ts";
+import { corsHeadere } from "../_shared/cors.ts";
 
-// Kalles fra nettleseren (i motsetning til hent-saker) — trenger CORS.
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-function svar(body: unknown, status = 200): Response {
+function svar(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json" },
+    headers: { ...corsHeadere(req), "Content-Type": "application/json" },
   });
 }
 
@@ -166,15 +160,15 @@ async function genererKlartekst(
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-  if (req.method !== "POST") return svar({ feil: "Bruk POST" }, 405);
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeadere(req) });
+  if (req.method !== "POST") return svar(req, { feil: "Bruk POST" }, 405);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceRoleKey) {
       console.error("Klartekst mangler påkrevd Supabase-konfigurasjon");
-      return svar({ feil: "Tjenesten er ikke konfigurert" }, 503);
+      return svar(req, { feil: "Tjenesten er ikke konfigurert" }, 503);
     }
 
     const supabase = createClient(
@@ -186,17 +180,17 @@ Deno.serve(async (req: Request) => {
     // Håndhev brukerinnlogging også i funksjonen. Gateway-verifisering er et
     // ekstra lag, men funksjonen skal være sikker selv ved feil deploy-config.
     const token = hentBearerToken(req.headers.get("authorization"));
-    if (!token) return svar({ feil: "Du må være innlogget" }, 401);
+    if (!token) return svar(req, { feil: "Du må være innlogget" }, 401);
     const { data: authData, error: authFeil } = await supabase.auth.getUser(token);
     const bruker = authData.user;
     if (authFeil || !bruker || bruker.is_anonymous === true || bruker.role === "anon") {
-      return svar({ feil: "Du må være innlogget" }, 401);
+      return svar(req, { feil: "Du må være innlogget" }, 401);
     }
 
     const body = await lesJsonBody(req);
-    if (!body.ok) return svar({ feil: body.feil }, body.status);
+    if (!body.ok) return svar(req, { feil: body.feil }, body.status);
     const varselId = normaliserVarselId(body.data.varsel_id);
-    if (!varselId) return svar({ feil: "Ugyldig varsel_id" }, 400);
+    if (!varselId) return svar(req, { feil: "Ugyldig varsel_id" }, 400);
 
     // Profilen kommer fra canonical database-rad, aldri fra klient-body.
     const { data: profilRad, error: profilFeil } = await supabase
@@ -206,10 +200,10 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (profilFeil) {
       console.error("Klartekst profiloppslag feilet");
-      return svar({ feil: "Kunne ikke hente profilen akkurat nå" }, 503);
+      return svar(req, { feil: "Kunne ikke hente profilen akkurat nå" }, 503);
     }
     if (!profilRad) {
-      return svar({ feil: "Fullfør profilen før du ber om klartekst" }, 409);
+      return svar(req, { feil: "Fullfør profilen før du ber om klartekst" }, 409);
     }
     const profil = normaliserProfil(profilRad);
 
@@ -223,15 +217,15 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (sakFeil) {
       console.error("Klartekst saksoppslag feilet");
-      return svar({ feil: "Kunne ikke hente saken akkurat nå" }, 503);
+      return svar(req, { feil: "Kunne ikke hente saken akkurat nå" }, 503);
     }
-    if (!sak) return svar({ feil: "Fant ikke saken" }, 404);
+    if (!sak) return svar(req, { feil: "Fant ikke saken" }, 404);
 
     const profilNøkkel = lagProfilNokkel(profil);
     const innhold = await lagInnholdsNokkel(byggPrompt(sak, profil), KLARTEKST_MODELL);
     const cacheNøkkel = `${varselId}|${profilNøkkel}|${innhold}`;
     const lokaltSvar = lokalCache.get(cacheNøkkel);
-    if (lokaltSvar) return svar({ svar: lokaltSvar, cachet: true });
+    if (lokaltSvar) return svar(req, { svar: lokaltSvar, cachet: true });
 
     // Ved cache-feil genererer vi ikke et nytt, betalbart svar. Det forhindrer
     // en databasefeil fra å bli til en kostnadsløkke.
@@ -243,13 +237,13 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (cacheFeil) {
       console.error("Klartekst cache-oppslag feilet");
-      return svar({ feil: "Kunne ikke hente forklaringen akkurat nå" }, 503);
+      return svar(req, { feil: "Kunne ikke hente forklaringen akkurat nå" }, 503);
     }
     if (cachet?.svar) {
       const validertCache = lesGyldigCache(cachet.svar, innhold);
       if (validertCache) {
         leggILokalCache(cacheNøkkel, validertCache);
-        return svar({ svar: validertCache, cachet: true });
+        return svar(req, { svar: validertCache, cachet: true });
       }
       console.error("Klartekst-cache inneholdt ugyldig svar");
     }
@@ -257,26 +251,26 @@ Deno.serve(async (req: Request) => {
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {
       console.error("ANTHROPIC_API_KEY mangler");
-      return svar({ feil: "AI-laget er ikke konfigurert" }, 503);
+      return svar(req, { feil: "AI-laget er ikke konfigurert" }, 503);
     }
 
     if (
       !pågåendeGenereringer.has(cacheNøkkel) &&
       pågåendeGenereringer.size >= MAKS_SAMTIDIGE_GENERERINGER
     ) {
-      return svar({ feil: "Tjenesten har høy belastning — prøv igjen om litt" }, 429);
+      return svar(req, { feil: "Tjenesten har høy belastning — prøv igjen om litt" }, 429);
     }
 
     // Én pågående generering per cache-nøkkel i samme isolat. Det fjerner den
     // vanligste samtidighetsdobbeltkostnaden uten å utvide databaseskjemaet.
     if (!pågåendeGenereringer.has(cacheNøkkel)) {
       const kvote = await reserverAiKvote(supabase, bruker.id, "klartekst", harPremium(profilRad));
-      if (kvote !== "ok") return svar({ feil: kvote === "grense" ? "Du har nådd grensen for nye forklaringer i dag. Lagrede forklaringer er fortsatt tilgjengelige." : "Kunne ikke kontrollere analysegrensen akkurat nå" }, kvote === "grense" ? 429 : 503);
+      if (kvote !== "ok") return svar(req, { feil: kvote === "grense" ? "Du har nådd grensen for nye forklaringer i dag. Lagrede forklaringer er fortsatt tilgjengelige." : "Kunne ikke kontrollere analysegrensen akkurat nå" }, kvote === "grense" ? 429 : 503);
     }
     const parsed = await genererKlartekst(cacheNøkkel, sak, profil, apiKey);
     if (!parsed) {
       console.error("Klartekst fikk ikke et gyldig AI-svar");
-      return svar({ feil: "AI-laget er utilgjengelig akkurat nå — prøv igjen om litt" }, 502);
+      return svar(req, { feil: "AI-laget er utilgjengelig akkurat nå — prøv igjen om litt" }, 502);
     }
     leggILokalCache(cacheNøkkel, parsed);
 
@@ -287,9 +281,9 @@ Deno.serve(async (req: Request) => {
     );
     if (cacheLagreFeil) console.error("Klartekst cache-lagring feilet");
 
-    return svar({ svar: parsed, cachet: false });
+    return svar(req, { svar: parsed, cachet: false });
   } catch (e) {
     console.error("Klartekst uventet feil:", e instanceof Error ? e.name : "ukjent");
-    return svar({ feil: "Uventet feil i klartekst-tjenesten" }, 500);
+    return svar(req, { feil: "Uventet feil i klartekst-tjenesten" }, 500);
   }
 });

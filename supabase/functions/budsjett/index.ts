@@ -14,13 +14,9 @@ import { kallClaude } from "../_shared/claude.ts";
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
+import { corsHeadere } from "../_shared/cors.ts";
 
 const API = "https://data.ssb.no/api/v0/no/table";
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 const ÅR = ["2021", "2022", "2023", "2024", "2025"];
 
 // Kommune (13135) og fylke (12264): [SSB-kode, etikett, enhet].
@@ -174,10 +170,11 @@ Svar BARE med gyldig JSON, ingen markdown:
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  if (req.method !== "POST") return new Response("Bruk POST", { status: 405, headers: CORS });
+  const cors = corsHeadere(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "POST") return new Response("Bruk POST", { status: 405, headers: cors });
   const json = (o: any, status = 200) =>
-    new Response(JSON.stringify(o), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+    new Response(JSON.stringify(o), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
   try {
     const body = await req.json().catch(() => null);

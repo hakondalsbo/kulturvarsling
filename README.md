@@ -105,7 +105,7 @@ npm run lint       # ESLint, null advarsler tillatt
 npm run build      # tsc -b + vite build
 ```
 
-Appen laster `@supabase/supabase-js` via esm.sh i `App.tsx`. Supabase anon-nøkkel er offentlig av
+Appen laster `@supabase/supabase-js` som npm-avhengighet i `src/App.tsx`. Supabase anon-nøkkel er offentlig av
 design (ligger i frontend). Hemmeligheter (`ANTHROPIC_API_KEY`, `STRIPE_*`, `RESEND_API_KEY`)
 settes som Supabase function secrets – aldri i koden.
 
