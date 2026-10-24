@@ -224,6 +224,17 @@ test("handling er nullable uten default, og triggeren sperrer den ikke", () => {
   assert.doesNotMatch(frist, /handling/);
 });
 
+test("anon og authenticated mister skriving på varsler, lesing blir stående", () => {
+  const sql = readFileSync("supabase/migrations/20261024160600_varsler_ingen_skriving_for_anon.sql", "utf8");
+  const utsagn = sql
+    .split("\n")
+    .map((linje) => linje.replace(/--.*$/, "").trim())
+    .filter(Boolean);
+  assert.deepEqual(utsagn, [
+    "revoke insert, update, delete, truncate on public.varsler from anon, authenticated;",
+  ]);
+});
+
 test("manglende høringsfrist er kjørestatus, ikke en varsler.status", () => {
   const sql = readFileSync("supabase/migrations/20261020260000_kilde_manglende_frist.sql", "utf8");
   assert.match(sql, /kilde_kjoringer\.status/);
