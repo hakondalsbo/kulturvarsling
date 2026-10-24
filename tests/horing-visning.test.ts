@@ -73,4 +73,8 @@ test("følg komité er av og spør ikke databasen", async () => {
   assert.match(ui, /Det er høring i denne saken\./);
   assert.match(ui, /Følg komiteen/);
   assert.equal(ui.includes("siden forrige besøk"), false);
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const vercel = readFileSync(new URL("../vercel.json", import.meta.url), "utf8");
+  assert.match(app, /if \(komiteFraSti\(\)\) return "komite"/);
+  assert.match(vercel, /"source": "\/komite\/:id"/);
 });
