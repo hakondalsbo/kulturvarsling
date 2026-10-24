@@ -8,6 +8,9 @@ import { delOppDokument } from "./innhold/treff.ts";
 import { UNDERTEKST } from "./tekster.ts";
 import { behandlingsansvarlig, orgnr, poststed } from "./selskap.ts";
 import { Knapp, Felt, Tekstfelt, Velger, Dialog } from "./ui.tsx";
+import { HoringForhandsvisning, HoringssvarSkjema } from "./horingssvar.tsx";
+import { horingshjelpAktiv } from "./horingshjelp.ts";
+import { InnspillForhandsvisning, KommuneInnspillSkjema } from "./kommuneinnspill.tsx";
 import { kommuneLoginSynlig } from "./kommunelogin.ts";
 import { PREMIUM_AAR_KR, PREMIUM_MAANED_KR, sparProsentArlig } from "./priser.ts";
 import { dagerTilFrist, fristEtikett } from "./frist.ts";
@@ -738,6 +741,8 @@ function visningFraSti(): string {
   const vis = forhandsvisning();
   if (vis === "profil" || vis === "varsler") return "profil";
   if (vis === "mobiliser") return "mobiliser";
+  if (vis === "horing") return "horing";
+  if (vis === "innspill") return "innspill";
   return "forside";
 }
 
@@ -1020,7 +1025,9 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         {view==="kilder" && <KildeHelseSide onBack={()=>gå("forside")}/>}
         {view==="ordliste" && <OrdlisteSide />}
         {view==="design" && <DesignSide />}
-        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&(
+        {view==="horing" && <HoringForhandsvisning />}
+        {view==="innspill" && <InnspillForhandsvisning />}
+        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&(
           <div className="avis-wrap avis-annet">
             {annenTittel&&<h1>{annenTittel}</h1>}
             {view==="historikk" && <SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
@@ -1501,7 +1508,74 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
           </div>
         </div>
       )}
-      {tab==="horingssvar"&&<HøringssvarMini sak={sak}/>}
+      {tab==="horingssvar"&&(
+        <div className="kv-stakk">
+          <HoringssvarSkjema
+            sak={sak}
+            user={user}
+            hjelpAktiv={horingshjelpAktiv}
+            onInnlogging={() => onKrevInnlogging?.("Logg inn for å skrive og lagre et utkast.")}
+            hent={async (sakId) => {
+              const { data, error } = await sb.from("horingssvar")
+                .select("id, org, tekst, kilde_url, kilde_hentet, kilde_hash, oppdatert")
+                .eq("sak_id", sakId)
+                .order("oppdatert", { ascending: false });
+              if (error) throw new Error("Kunne ikke hente utkastene.");
+              return data ?? [];
+            }}
+            lagre={async (rad) => {
+              if (!user?.id) throw new Error("Du må være innlogget.");
+              const payload = {
+                org: rad.org,
+                tekst: rad.tekst,
+                kilde_url: rad.kilde_url ?? null,
+                kilde_hentet: rad.kilde_hentet ?? null,
+                kilde_hash: rad.kilde_hash ?? null,
+              };
+              const spørring = rad.id
+                ? sb.from("horingssvar").update(payload).eq("id", rad.id)
+                : sb.from("horingssvar").insert({ ...payload, bruker_id: user.id, sak_id: sak.id });
+              const { data, error } = await spørring
+                .select("id, org, tekst, kilde_url, kilde_hentet, kilde_hash, oppdatert")
+                .single();
+              if (error || !data) throw new Error("Kunne ikke lagre utkastet.");
+              return data;
+            }}
+            foreslaa={async (body) => {
+              const { data, error } = await sb.functions.invoke("horingshjelp", { body });
+              if (data?.utkast) return data;
+              let msg = data?.feil || "Utkastet kunne ikke lages. Prøv igjen om litt.";
+              try { const d = await error?.context?.json?.(); if (d?.feil) msg = d.feil; } catch { /* behold */ }
+              throw new Error(msg);
+            }}
+          />
+          {sak.nivå==="kommune" && (
+            <KommuneInnspillSkjema
+              user={user}
+              onInnlogging={() => onKrevInnlogging?.("Logg inn for å sende et innspill.")}
+              lastHoringer={async () => {
+                const { data, error } = await sb.from("kommune_horinger")
+                  .select("id, tittel, frist")
+                  .eq("publisert", true)
+                  .order("frist", { ascending: true });
+                if (error) throw new Error("Kunne ikke hente de kommunale høringene.");
+                return data ?? [];
+              }}
+              lagre={async (rad) => {
+                if (!user?.id) throw new Error("Du må være innlogget.");
+                const { error } = await sb.from("kommune_innspill").insert({
+                  bruker_id: user.id,
+                  horing_id: rad.horing_id,
+                  org: rad.org,
+                  tekst: rad.tekst,
+                  status: "ny",
+                });
+                if (error) throw new Error("Kunne ikke lagre innspillet.");
+              }}
+            />
+          )}
+        </div>
+      )}
       {tab==="del"&&<DelMini sak={sak}/>}
     </Dialog>
   );
@@ -1539,40 +1613,6 @@ function KampanjeSignerMini({k,user=null,onKrevInnlogging}:{k:any;user?:any;onKr
     </div>
   );
   return <Knapp onClick={beOmSignatur}>Signer denne kampanjen</Knapp>;
-}
-
-function HøringssvarMini({sak}) {
-  const [tekst,setTekst]=useState(
-    "Høringssvar \u2013 "+sak.tittel+"\n\nFra: [Organisasjonsnavn]\nTil: "+sak.instans+"\nDato: "+new Date().toLocaleDateString("no-NO")+"\n\n--- Vår vurdering ---\n[Skriv din vurdering her. Vær konkret og bruk fakta.]\n\n--- Konsekvenser for vårt felt ---\n[Hva betyr dette for din organisasjon eller gruppe?]\n\n--- Konklusjon og krav ---\n[Skriv tydelig hva dere krever eller anbefaler]\n\nMed vennlig hilsen,\n[Navn, tittel]\n[Organisasjon]\n[E-post / telefon]"
-  );
-  const [kopiert,setKopiert]=useState(false);
-  const [sendt,setSendt]=useState(false);
-  if(sendt) return (
-    <div className="kv-stakk">
-      <p className="kv-brod">E-postprogrammet er åpnet. Sjekk at meldingen går til riktig adresse hos {sak.instans}.</p>
-      <p><a className="kv-lenke" href={sak.kilde} target="_blank" rel="noreferrer">Les saken hos {sak.instans}</a></p>
-    </div>
-  );
-  return (
-    <div className="kv-stakk">
-      <p className="kv-brod">Et høringssvar er et formelt skriftlig innspill til en offentlig prosess. Når en myndighet vurderer en beslutning, legges forslaget ut på høring, og alle kan uttale seg. Høringssvar er offentlige dokumenter som skal vurderes. Flere innspill med samme syn kan påvirke utfallet, særlig lokalt og regionalt. Vær konkret, bruk tall, og avslutt med et tydelig krav.</p>
-      <p className="kv-meta">
-        Leveres til {sak.instans}.{" "}
-        <a className="kv-lenke" href={sak.kilde} target="_blank" rel="noreferrer">Innlevering hos {sak.instans}</a>
-      </p>
-      <textarea className="kv-input" value={tekst} onChange={e=>setTekst(e.target.value)} rows={12} aria-label="Innspill" />
-      <div className="kv-klynge">
-        <Knapp onClick={()=>{
-          window.open("mailto:?subject="+encodeURIComponent("Høringssvar \u2013 "+sak.tittel)+"&body="+encodeURIComponent(tekst));
-          setSendt(true);
-        }}>Åpne i e-post</Knapp>
-        <Knapp variant="linje" onClick={()=>{navigator.clipboard?.writeText(tekst);setKopiert(true);setTimeout(()=>setKopiert(false),2500);}}>
-          {kopiert?"Kopiert":"Kopier tekst"}
-        </Knapp>
-      </div>
-      <p className="kv-meta">Uten e-postprogram kan teksten kopieres og limes inn i nettpost. Adressen finner du hos {sak.instans}.</p>
-    </div>
-  );
 }
 
 function DelMini({sak}) {
@@ -1807,8 +1847,8 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}:{type:stri
   }
 
   const titler: Record<string,string> = {komite:"Kontakt komité",politiker:"Kontakt politiker",horing:"Skriv høringssvar",pressem:"Pressemelding",sosiale:"Sosiale medier"};
-  const sendLabel: Record<string,string> = {komite:"Send til komiteen",politiker:`Send til ${kontekst?.navn||"politikeren"}`,horing:"Send høringssvar",pressem:"Kopier og send til media",sosiale:"Kopier tekst"};
-  const canSend = ["komite","politiker","horing"].includes(type);
+  const sendLabel: Record<string,string> = {komite:"Send til komiteen",politiker:`Send til ${kontekst?.navn||"politikeren"}`,pressem:"Kopier og send til media",sosiale:"Kopier tekst"};
+  const canSend = ["komite","politiker"].includes(type);
 
   return (
     <Dialog tittel={titler[type]||"Mal"} onClose={onClose}>
@@ -1818,6 +1858,8 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}:{type:stri
       <p className="kv-feltnavn">Mal</p>
       <Enkeltvalg valg={maler} valgt={valgtMal} onVelg={velgMal} />
       <p className="kv-meta">Tekst i klammer skal byttes ut. {user?.org?"Navn og kontakt er hentet fra profilen.":""}</p>
+      {type==="horing"&&<p className="kv-brod">Kulturvarsling sender ikke inn svaret. Kopier eller last ned teksten, og send den inn selv.</p>}
+      {type==="horing"&&kontekst?.kilde&&<p><a className="kv-lenke" href={kontekst.kilde} target="_blank" rel="noreferrer">Offisiell innsending</a></p>}
       {sendt ? (
         <div className="kv-stakk">
           <p className="kv-brod">Meldingen er registrert.</p>
@@ -1838,6 +1880,17 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}:{type:stri
             <Knapp variant="linje" onClick={()=>{navigator.clipboard?.writeText(tekst);setKopiert(true);setTimeout(()=>setKopiert(false),2000);}}>
               {kopiert?"Kopiert":"Kopier tekst"}
             </Knapp>
+            {type==="horing"&&(
+              <Knapp variant="linje" onClick={()=>{
+                const blob = new Blob([tekst],{type:"text/plain;charset=utf-8"});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "horingssvar.txt";
+                a.click();
+                URL.revokeObjectURL(url);
+              }}>Last ned</Knapp>
+            )}
             {type==="politiker"&&kontekst?.kontakt&&(
               <Knapp variant="linje" onClick={()=>window.open(`mailto:${kontekst.kontakt}?body=${encodeURIComponent(tekst)}`)}>Åpne i e-post</Knapp>
             )}
@@ -1862,7 +1915,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
   const handlinger=[
     {tittel:"Kontakt stortingskomité",tekst:"Familie- og kulturkomiteen behandler de fleste kultursaker. Åpner en brevmal.",type:"komite"},
     {tittel:"Skriv til en politiker",tekst:"Henvendelse med mal til en politiker.",type:"politiker_oversikt"},
-    {tittel:"Send høringssvar",tekst:"Formelt innspill til en åpen sak.",type:"horing_oversikt"},
+    {tittel:"Skriv høringssvar",tekst:"Utkast til en åpen sak. Det sendes ikke inn herfra.",type:"horing_oversikt"},
     {tittel:"Skriv pressemelding",tekst:"Mal for pressemelding.",type:"pressem"},
     {tittel:"Del på sosiale medier",tekst:"Tekst til deling, med tittel, sammendrag og frist.",type:"sosiale"},
     {tittel:"Signer kampanjer",tekst:`${kampanjerData.length} åpne kampanjer.`,type:"kampanje"},
