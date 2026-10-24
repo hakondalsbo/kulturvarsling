@@ -1,10 +1,10 @@
 // Samme tre verdier som public/organisasjon.js.
 // Testen «organisasjon er lik i funksjoner og nettleser» holder dem like.
 // Funksjonene importerer ikke filer utenfor supabase/functions.
-export const behandlingsansvarlig = "KULTURVARSLING AS";
+export const behandlingsansvarlig = "Kulturvarsling AS";
 
 export const orgnr = "936 282 881";
-export const poststed = "Oslo";
+export const poststed = "Middelthuns gate 11 B, 0368 Oslo";
 
 export const STANDARD_AVSENDER_EPOST = "nyhetsbrev@kulturvarsling.no";
 
@@ -28,5 +28,5 @@ export function lesAvsender(
 }
 
 export function bunntekst(navn: string): string {
-  return `Behandlingsansvarlig: ${navn}.`;
+  return `Behandlingsansvarlig: ${navn}, org.nr. ${orgnr}, ${poststed}.`;
 }

@@ -182,14 +182,16 @@ function lesOrgKonstanter(kilde: string): Record<string, string> {
 test("organisasjon er lik i funksjoner og nettleser", () => {
   const js = readFileSync("public/organisasjon.js", "utf8");
   const ts = readFileSync("supabase/functions/_shared/organisasjon.ts", "utf8");
+  const ui = readFileSync("src/selskap.ts", "utf8");
   const html = readFileSync("public/personvern.html", "utf8");
   const meldPa = readFileSync("supabase/functions/meld-pa/index.ts", "utf8");
   const nyhetsbrev = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
   assert.deepEqual(lesOrgKonstanter(js), lesOrgKonstanter(ts));
+  assert.deepEqual(lesOrgKonstanter(js), lesOrgKonstanter(ui));
   assert.equal(lesOrgKonstanter(js).behandlingsansvarlig, behandlingsansvarlig);
-  assert.equal(behandlingsansvarlig, "KULTURVARSLING AS");
+  assert.equal(behandlingsansvarlig, "Kulturvarsling AS");
   assert.equal(orgnr, "936 282 881");
-  assert.equal(poststed, "Oslo");
+  assert.equal(poststed, "Middelthuns gate 11 B, 0368 Oslo");
   assert.doesNotMatch(js, /PLASSHOLDER/);
   assert.doesNotMatch(ts, /from\s+["'][^"']*public\//);
   assert.doesNotMatch(html, /PLASSHOLDER/);
@@ -199,25 +201,25 @@ test("organisasjon er lik i funksjoner og nettleser", () => {
   assert.doesNotMatch(html, /Åndsverkstedet AS/);
   assert.equal(
     avsender(behandlingsansvarlig),
-    '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
+    '"Kulturvarsling AS" <nyhetsbrev@kulturvarsling.no>',
   );
   assert.equal(
     lesAvsender(behandlingsansvarlig, { get: () => undefined }),
-    '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
+    '"Kulturvarsling AS" <nyhetsbrev@kulturvarsling.no>',
   );
   assert.equal(
     lesAvsender(behandlingsansvarlig, { get: () => "  " }),
-    '"KULTURVARSLING AS" <nyhetsbrev@kulturvarsling.no>',
+    '"Kulturvarsling AS" <nyhetsbrev@kulturvarsling.no>',
   );
   assert.equal(
     lesAvsender(behandlingsansvarlig, { get: () => LEVERT }),
-    `"KULTURVARSLING AS" <${LEVERT}>`,
+    `"Kulturvarsling AS" <${LEVERT}>`,
   );
   assert.equal(
-    avsender("Åndsverkstedet AS", "Kulturvarsling <post@example.com>"),
-    '"Åndsverkstedet AS" <post@example.com>',
+    avsender("Eksempel AS", "Kulturvarsling <post@example.com>"),
+    '"Eksempel AS" <post@example.com>',
   );
-  assert.equal(bunntekst("Kulturvarsling AS"), "Behandlingsansvarlig: Kulturvarsling AS.");
+  assert.equal(bunntekst("Kulturvarsling AS"), "Behandlingsansvarlig: Kulturvarsling AS, org.nr. 936 282 881, Middelthuns gate 11 B, 0368 Oslo.");
   assert.match(meldPa, /lesAvsender\(behandlingsansvarlig, Deno\.env\)/);
   assert.match(meldPa, /bunntekst\(behandlingsansvarlig\)/);
   assert.match(nyhetsbrev, /bunntekst\(behandlingsansvarlig\)/);
@@ -232,7 +234,7 @@ test("personvernsiden dekker pliktene og navngir behandlingsansvarlig", () => {
   for (const del of ["Nyhetsbrev", "Varsler", "Konto", "Behandlingsgrunnlag", "Lagringstid", "Dine rettigheter", "Kontakt"]) {
     assert.match(html, new RegExp(del));
   }
-  assert.equal(behandlingsansvarlig, "KULTURVARSLING AS");
+  assert.equal(behandlingsansvarlig, "Kulturvarsling AS");
   assert.equal(orgnr, "936 282 881");
   assert.match(html, new RegExp(PERSONVERN_VERSJON));
   assert.match(html, /papir\.css/);

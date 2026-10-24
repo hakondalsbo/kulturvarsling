@@ -8,6 +8,8 @@
     { "src": "/avmelding", "dest": "/avmelding.html" },
     { "src": "/statsbudsjett", "dest": "/index.html" },
     { "src": "/statsbudsjett/", "dest": "/index.html" },
+    { "src": "/ordliste", "dest": "/index.html" },
+    { "src": "/app/ordliste", "dest": "/index.html" },
     { "src": "/(.*)", "dest": "/vente.html" }
   ],
   "github": {

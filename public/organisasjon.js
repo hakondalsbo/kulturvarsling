@@ -1,10 +1,10 @@
 // Behandlingsansvarlig, verifisert i Enhetsregisteret.
 // Samme tre verdier som supabase/functions/_shared/organisasjon.ts.
 // Testen i samtykke.test.ts holder dem like. Endre begge steder.
-export const behandlingsansvarlig = "KULTURVARSLING AS";
+export const behandlingsansvarlig = "Kulturvarsling AS";
 
 export const orgnr = "936 282 881";
-export const poststed = "Oslo";
+export const poststed = "Middelthuns gate 11 B, 0368 Oslo";
 
 const felter = { behandlingsansvarlig, orgnr, poststed };
 
