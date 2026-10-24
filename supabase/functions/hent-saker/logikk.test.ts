@@ -15,6 +15,7 @@ import {
   erPortefoljesak,
   byggSammendragPrompt,
   kategoriForEinnsyn,
+  kategoriFraAdapter,
   erRegjeringenHoring,
   erRenIdrett,
   ekstraFristside,
@@ -660,6 +661,27 @@ test("sammendragsprompten krever nøytral bokmål og avviser pressemeldingssprå
   assert.match(prompt, /rekordstor/);
   assert.match(prompt, /innfrir lovnaden/);
   assert.match(prompt, /Ikke gjett/);
+  assert.match(prompt, /kilden sier ikke/);
+  assert.match(prompt, /superlativer/);
+  assert.doesNotMatch(prompt, /på vanlig norsk/);
+});
+
+test("sammendragsprompten sender offisielt ordningsnavn og ber modellen la ukjente koder stå", () => {
+  const kjent = byggSammendragPrompt({
+    tittel: "Tildeling (NKF-IAB)",
+    sammendrag_raa: `${"x".repeat(450)} ordning NKF-IAB`,
+  });
+  assert.match(kjent, /NKF-IAB: Ny norsk skjønnlitteratur for barn og unge – automatisk innkjøpsordning/);
+  assert.match(kjent, /Ikke tolk den/);
+  assert.doesNotMatch(kjent, /på vanlig norsk/);
+
+  const ukjent = byggSammendragPrompt({
+    tittel: "Tildeling (NKF-XYZ)",
+    sammendrag_raa: "Ordning NKF-XYZ.",
+  });
+  assert.match(ukjent, /NKF-XYZ: ikke i ordlisten/);
+  assert.match(ukjent, /Ikke tolk dem/);
+  assert.doesNotMatch(ukjent, /skjønnlitteratur/);
 });
 
 test("hørings- og tilskuddsfrister leses, og seneste merkede dato vinner", () => {
@@ -1085,4 +1107,14 @@ test("ekte kulturarv, visuell, film og museer beholder fagfeltet", () => {
     kategoriForEinnsyn("Byrådets årsberetning for 2025 - Kultur- og utdanningsutvalgets område", "museer"),
     "museer",
   );
+});
+
+test("kategori satt av adapteren vinner over modellen", () => {
+  assert.equal(kategoriFraAdapter("litteratur", "film"), "litteratur");
+  assert.equal(kategoriFraAdapter(" scenekunst ", "musikk"), "scenekunst");
+  assert.equal(kategoriFraAdapter("kulturpolitikk", "film"), "kulturpolitikk");
+  assert.equal(kategoriFraAdapter("", "film"), "film");
+  assert.equal(kategoriFraAdapter("  ", "visuell"), "visuell");
+  assert.equal(kategoriFraAdapter(undefined, "kulturarv"), "kulturarv");
+  assert.equal(kategoriFraAdapter(null, "musikk"), "musikk");
 });

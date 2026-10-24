@@ -3,9 +3,11 @@
 // Feil returneres som null — kalleren skal ikke la dem velte innhentingen.
 
 import { kallClaude } from "../_shared/claude.ts";
+import { kildegrunnlag, loggUdokumenterteTall } from "../_shared/kildekontroll.ts";
 import {
   byggPrompt,
   generellProfilNokkel,
+  klartekstSomTekst,
   KLARTEKST_MAKS_TOKENS,
   KLARTEKST_MODELL,
   lagInnholdsNokkel,
@@ -58,6 +60,13 @@ export async function genererGenerellKlartekst(
     const data = await res.json();
     const parsed = parseKlartekstSvar(trekkUtTekst(data.content));
     if (!parsed) return null;
+    // Flagget stopper ikke klarteksten. Cache-raden skrives likevel.
+    loggUdokumenterteTall(
+      "klartekst",
+      klartekstSomTekst(parsed),
+      kildegrunnlag([sak.tittel, sak.sammendrag, sak.instans, sak.frist, sak.sted]),
+      sak.tittel,
+    );
     return {
       svar: parsed,
       profilNokkel: generellProfilNokkel(),

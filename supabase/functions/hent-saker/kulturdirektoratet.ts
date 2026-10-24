@@ -8,9 +8,16 @@
 //
 // RESSURSVALG: CSV-en har 5 000+ innvilgede enkeltvedtak per år og ingen ID-kolonne.
 // Enkeltvedtak som varsler ville aldri tømt Claude-køen (25/kjøring) — derfor
-// aggregeres det til ÉN varsel per tildelingsrunde (ordning + søknadsfrist),
-// med stabil fragment-URL som dedup-nøkkel. ~105 runder siste halvår.
+// aggregeres det til ÉN varsel per tildelingsrunde (ordning + søknadsfrist).
+// Innkjøpsordningene har samme søknadsfrist per runde, så det blir én sak
+// per runde uten en egen nøkkel. rundedato er per tittel og brukes ikke
+// som gruppe. Fragment-URL er dedup-nøkkel. Eksisterende rader skrives ikke om.
 
+import {
+  erInnkjopsordning,
+  kategoriForOrdning,
+  ordningsetikett,
+} from "../_shared/ordningskoder.ts";
 import {
   feilFraUnntak,
   feilUtfall,
@@ -89,9 +96,10 @@ export function parseVedtakCsv(
 const formaterKr = (n: number) =>
   String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
-// Aggregerer innvilgede vedtak til én varsel per tildelingsrunde.
+// Aggregerer innvilgede vedtak til én varsel per ordning og søknadsfrist.
 // Vindu: runder med søknadsfrist siste ~6 mnd — vedtakene publiseres 2–4 mnd
 // etter frist, så dette fanger nye runder uten å grave opp fjorårets.
+// rundedato grupperes ikke: på innkjøpsordningene er den per tittel.
 // `nå` kan injiseres i tester; produksjon bruker klokka.
 export function grupperTildelinger(
   rader: VedtakRad[],
@@ -102,6 +110,7 @@ export function grupperTildelinger(
   type Gruppe = {
     ordning: string;
     frist: string;
+    innkjop: boolean;
     finansieringskilde: string;
     antall: number;
     sum: number;
@@ -122,6 +131,7 @@ export function grupperTildelinger(
       g = {
         ordning,
         frist,
+        innkjop: erInnkjopsordning(ordning),
         finansieringskilde: rad.hovedfinansieringskilde || "Kulturdirektoratet",
         antall: 0,
         sum: 0,
@@ -130,7 +140,8 @@ export function grupperTildelinger(
       grupper.set(nøkkel, g);
     }
     g.antall++;
-    if (rad.verdi_type === "Beløp") {
+    // Innkjøp har verdi_type «Innkjøp». Tallet der er ikke et kronebeløp.
+    if (!g.innkjop && rad.verdi_type === "Beløp") {
       const beløp = Number(rad.verdi_innvilget);
       if (Number.isFinite(beløp) && beløp > 0) {
         g.sum += beløp;
@@ -140,29 +151,36 @@ export function grupperTildelinger(
   }
 
   return [...grupper.values()].map((g) => {
+    // Navnet fra ordlisten ligger i kildeteksten før modellen ser saken.
+    // Ukjente koder blir stående som koden, uten en oppdiktet forklaring.
+    const etikett = ordningsetikett(g.ordning);
     const topp = g.størst
       .sort((a, b) => b.beløp - a.beløp)
       .slice(0, 3)
       .filter((t) => t.navn)
       .map((t) => `${t.navn} (${formaterKr(t.beløp)} kr)`);
     const sumTekst = g.sum > 0 ? `, til sammen ${formaterKr(g.sum)} kr` : "";
+    const kategori = kategoriForOrdning(g.ordning);
+    const nokkel = `${g.ordning}-${g.frist}`;
     return {
       tittel:
-        `Tildeling: ${g.finansieringskilde} — ${g.antall} søknader innvilget (${g.ordning}, runde ${g.frist})`,
+        `Tildeling: ${g.finansieringskilde} — ${g.antall} søknader innvilget (${etikett}, runde ${g.frist})`,
       instans: g.finansieringskilde,
-      kilde: `${BASE}/vedtak#${g.ordning}-${g.frist}`,
+      kilde: `${BASE}/vedtak#${nokkel}`,
       frist: null, // søknadsfristen er passert — dette er et vedtaksvarsel, ikke en frist
       sammendrag_raa:
+        `Ordning ${etikett}. ` +
         `${g.antall} søknader innvilget${sumTekst} i runden med søknadsfrist ${g.frist} ` +
-        `(ordning ${g.ordning}, ${g.finansieringskilde}).` +
+        `(${g.finansieringskilde}).` +
         (topp.length ? ` Størst: ${topp.join("; ")}.` : ""),
-      kilde_id: `kulturdirektoratet-${g.ordning}-${g.frist}`,
-      // rundedato er vedtaksrunden, ikke når listen ble publisert. Dedup er URL-en.
+      kilde_id: `kulturdirektoratet-${nokkel}`,
+      // rundedato er ikke publiseringstid og ikke dedup-nøkkel. Dedup er URL-en.
       publisert_dato: null,
       kilde_publisert: null,
       sakstype: "tildeling",
       // Kulturspesifikk kilde — alt her ER kulturfeltet. Claude vurderer uansett.
       forhåndsgodkjent: true,
+      ...(kategori ? { kategori } : {}),
     };
   });
 }

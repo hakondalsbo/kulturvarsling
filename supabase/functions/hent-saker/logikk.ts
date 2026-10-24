@@ -1,6 +1,8 @@
 // Ren, testbar logikk for hent-saker — ingen nettverkskall, ingen Deno-avhengigheter.
 // Importeres av index.ts (Deno/Supabase) OG av logikk.test.ts (Node --test / CI).
 
+import { ordningsforklaring } from "../_shared/ordningskoder.ts";
+
 // ─── Kulturrelevante nøkkelord ────────────────────────────────────────────────
 export const KULTUR_NØKKELORD = [
   "kultur", "kunst", "scenekunst", "musikk", "film", "museum", "museer",
@@ -78,6 +80,15 @@ export function erRegjeringenRelevant(tittel: string, tekst = ""): boolean {
   if (erRenIdrett(tittel, tekst)) return false;
   if (erPortefoljesak(tittel, tekst)) return true;
   return erKulturRelevant(utenDepartementsnavn(tittel), utenDepartementsnavn(tekst));
+}
+
+/**
+ * Kategori adapteren allerede har satt, vinner over modellens forslag.
+ * Tom eller manglende verdi lar modellens kategori stå.
+ */
+export function kategoriFraAdapter(satt: unknown, fraModell: string): string {
+  if (typeof satt === "string" && satt.trim()) return satt.trim();
+  return fraModell;
 }
 
 export function kategoriFraTittel(tittel: string, tekst = ""): string {
@@ -270,6 +281,10 @@ export function byggSammendragPrompt(item: {
   instans?: string | null;
   frist?: string | null;
 }): string {
+  const grunnlag = [item.tittel, item.sammendrag_raa, item.instans, item.frist]
+    .filter((del) => typeof del === "string" && del.trim())
+    .join("\n");
+  const forklaring = ordningsforklaring(grunnlag);
   return `Du er ekspert på norsk kulturpolitikk. Vurder om denne saken er DIREKTE relevant for profesjonelle aktører i norsk kultursektor (kunstnere, kulturinstitusjoner, kulturorganisasjoner).
 
 Tittel: ${item.tittel}
@@ -281,25 +296,28 @@ RELEVANT = ja BARE hvis saken direkte berører: finansiering av kunst/kultur, ku
 
 IKKE RELEVANT = saker om: forsvar, beredskap, helse, skole (unntatt kulturskole), justis, samferdsel, idrett og toppidrett, AI i utdanning generelt, helikopter, redning, eller andre saker som bare nevner "kultur" i forbifarten (for eksempel fordi Kultur- og likestillingsdepartementet står som avsender uten at innholdet gjelder kultur, medier, spill eller stipend).
 
-SPRÅKGUIDE FOR SAMMENDRAGET:
+KILDETROSKAP FOR SAMMENDRAGET:
+- Bruk bare opplysninger som står i tittel, beskrivelse, instans eller frist over. Ikke gjett og ikke finn på.
+- Ikke legg til vurderinger, superlativer, konsekvenser, datoer eller tall som ikke står i kilden.
+- Hvis kilden ikke sier det, skriv «kilden sier ikke …».
+- En ordningskode skal bruke navnet fra kilden eller fra listen under. Finnes ingen av delene, gjengi koden. Ikke tolk den.
 - Skriv nøytral bokmål, også når kilden er på nynorsk.
 - Ikke ta med partimerkelapper som Arbeiderpartiet eller Arbeidarparti-regjeringa.
 - Ikke ta med pressemeldingens reklamespråk, som rekordstor eller innfrir lovnaden.
 - Ikke la et sitat fra en statsråd være hele sammendraget.
-- Bruk bare tall, navn og frister som står i kilden. Ikke gjett og ikke finn på.
-- 1-2 konkrete setninger om hva saken gjelder.
+- Én til to konkrete setninger om hva saken gjelder.
 
 KATEGORI: Velg kunstformen når tittelen navngir den. Generelle tilskudd, budsjett, økonomiplan og fordeling av kulturmidler uten navngitt kunstform, museum eller kulturminne er "kulturpolitikk". Ikke bruk kulturarv eller visuell bare fordi saken handler om kultur.
 
 NIVÅ: Kommune, bydel og bystyre er "kommune". Fylkeskommune og fylkesting er "fylke". "nasjonalt" bare når organet er statlig.
-
+${forklaring ? `\n${forklaring}\n` : ""}
 Svar BARE med gyldig JSON, ingen markdown:
 {
   "relevant": true eller false,
   "kategori": "scenekunst" | "musikk" | "dans" | "opera" | "litteratur" | "film" | "visuell" | "museer" | "spill" | "kulturarv" | "kulturpolitikk",
   "niva": "nasjonalt" | "fylke" | "kommune",
   "status": "kritisk" | "viktig" | "normal",
-  "sammendrag": "1-2 setninger på nøytral bokmål"
+  "sammendrag": "én til to setninger på nøytral bokmål"
 }`;
 }
 

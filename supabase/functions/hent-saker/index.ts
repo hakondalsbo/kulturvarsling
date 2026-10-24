@@ -1,4 +1,5 @@
 import { kallClaude } from "../_shared/claude.ts";
+import { kildegrunnlag, loggUdokumenterteTall, publiseresEtterKontroll } from "../_shared/kildekontroll.ts";
 import {
   genererGenerellKlartekst,
   lagreKlartekstCache,
@@ -19,6 +20,7 @@ import {
   finnHøringsfrist,
   innholdDedupNokkel,
   kategoriForEinnsyn,
+  kategoriFraAdapter,
   kategoriFraTittel,
   kildeNokkel,
   parseStortingetDato,
@@ -719,7 +721,7 @@ Deno.serve(async (req: Request) => {
             : { niva: analyse.niva ?? "nasjonalt", sted: "Norge" };
           const avvistRad = byggVarselRad(item, {
             publisert: false,
-            kategori: analyse.kategori ?? "kulturpolitikk",
+            kategori: kategoriFraAdapter(item.kategori, analyse.kategori ?? "kulturpolitikk"),
             niva: avvistGeo.niva,
             status: "normal",
             sammendrag: "Automatisk avvist av relevansfilteret",
@@ -762,10 +764,23 @@ Deno.serve(async (req: Request) => {
         niva = geo.niva;
         sted = geo.sted;
       }
+      // Ordningskoden setter kategorien. Modellen får ikke overstyre den.
+      kategori = kategoriFraAdapter(item.kategori, kategori);
+
+      // Tall og årstall som ikke står i kilden logges. Raden lagres likevel,
+      // men upublisert, så en redaktør ser den før den blir synlig.
+      // Eksisterende rader, også manuelt_redigert, skrives ikke om (ignoreDuplicates).
+      const tallavvik = loggUdokumenterteTall(
+        "hent-saker",
+        sammendrag,
+        kildegrunnlag([item.tittel, item.sammendrag_raa, item.instans, item.frist]),
+        typeof item.kilde === "string" ? item.kilde : "",
+      );
+      const publisert = publiseresEtterKontroll(tallavvik);
 
       item.sakstype = item.sakstype ?? sakstypeFraSak(item);
       const rad = byggVarselRad(item, {
-        publisert: true,
+        publisert,
         kategori,
         niva,
         status,
@@ -801,9 +816,9 @@ Deno.serve(async (req: Request) => {
         ) {
           horingUtenFrist.set(item.adapter, (horingUtenFrist.get(item.adapter) ?? 0) + 1);
         }
-        // Klartekst fra #6, bare på publisert innsetting. Upubliserte koblinger
-        // under bruker ikke Sonnet-kvoten.
-        if (anthropicKey && lagret.id) {
+        // Klartekst fra #6, bare på publisert innsetting. Upubliserte rader
+        // og koblinger bruker ikke Sonnet-kvoten.
+        if (publisert && anthropicKey && lagret.id) {
           if (klartekstForsok >= MAKS_KLARTEKST_PER_KJORING) {
             klartekstUtsatt++;
           } else {
@@ -834,7 +849,10 @@ Deno.serve(async (req: Request) => {
       item.sakstype = item.sakstype ?? sakstypeFraSak(item);
       const rad = byggVarselRad(item, {
         publisert: false,
-        kategori: kategoriFraTittel(item.tittel, item.sammendrag_raa ?? ""),
+        kategori: kategoriFraAdapter(
+          item.kategori,
+          kategoriFraTittel(item.tittel, item.sammendrag_raa ?? ""),
+        ),
         niva: item.niva ?? "nasjonalt",
         status: statusForSak(item.frist, item.motedato),
         sammendrag: "Samme sak som en allerede registrert høring eller pressemelding.",

@@ -106,6 +106,19 @@ test("prompten inneholder sak og profil", () => {
   assert.ok(p.includes("kunstner"));
   assert.ok(p.includes("Vestland"));
   assert.ok(p.includes("gyldig JSON"));
+  assert.ok(p.includes("kilden sier ikke"));
+  assert.equal(p.includes("på vanlig norsk"), false);
+});
+
+test("klartekst-prompten forklarer kjent ordningskode og tolker ikke ukjent", () => {
+  const p = byggPrompt(
+    { tittel: "Tildeling NKF-IAB", sammendrag: "Også kode NKF-XYZ." },
+    null,
+  );
+  assert.ok(p.includes("NKF-IAB: Ny norsk skjønnlitteratur for barn og unge – automatisk innkjøpsordning"));
+  assert.ok(p.includes("NKF-XYZ: ikke i ordlisten"));
+  assert.ok(p.includes("Ikke tolk dem"));
+  assert.equal(p.includes("på vanlig norsk"), false);
 });
 
 test("fritekst i org_type når ikke prompten", () => {

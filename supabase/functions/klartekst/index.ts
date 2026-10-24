@@ -1,5 +1,6 @@
 import { harPremium, reserverAiKvote } from "../_shared/tilgang.ts";
 import { kallClaude } from "../_shared/claude.ts";
+import { kildegrunnlag, loggUdokumenterteTall } from "../_shared/kildekontroll.ts";
 // Klartekst (VEIKART E2): «Hva betyr dette for deg?»
 // POST {varsel_id} med innlogget bruker-JWT →
 //   {svar: {hva_skjer, hvem_pavirkes, tall_belop, frist, hva_kan_du_gjore}, cachet}
@@ -15,6 +16,7 @@ import {
   hentBearerToken,
   KLARTEKST_MAKS_TOKENS,
   KLARTEKST_MODELL,
+  klartekstSomTekst,
   lagProfilNokkel,
   lagInnholdsNokkel,
   lesGyldigCache,
@@ -140,7 +142,17 @@ async function genererKlartekst(
   const generering = (async () => {
     const prompt = byggPrompt(sak, profil);
     const tekst = await spørClaude(prompt, apiKey);
-    return tekst ? parseKlartekstSvar(tekst) : null;
+    const parsed = tekst ? parseKlartekstSvar(tekst) : null;
+    if (parsed) {
+      // Flagget stopper ikke svaret. varsler-raden skrives ikke.
+      loggUdokumenterteTall(
+        "klartekst",
+        klartekstSomTekst(parsed),
+        kildegrunnlag([sak.tittel, sak.sammendrag, sak.instans, sak.frist, sak.sted]),
+        sak.tittel,
+      );
+    }
+    return parsed;
   })();
 
   pågåendeGenereringer.set(cacheNøkkel, generering);
