@@ -1,11 +1,11 @@
 @import url("https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap");
 
 /*
-  Kulturavisen v2 — designvariabler for de ombygde flatene.
-  Resten av appen (kommune, premium, modaler, profil) bruker fortsatt
-  const C og inline-stiler. Senere migrering: la C peke på disse
-  variablene, bytt Playfair/DM Sans til var(--serif)/var(--sans), og
-  flytt gjenværende flater over på avis-klassene.
+  Designsystem for Kulturvarsling.
+  Tokens, typografi og komponentklasser ligger i denne filen.
+  React-komponentene som bruker dem, ligger i src/ui.tsx.
+  Statiske sider (personvern, påmelding, bekreftelse, avmelding) speiler
+  de samme tokenene i public/papir.css.
 
   Kontrast på avispapir #FBF8F2 (målt):
   - Dempet #6B665C = 5.38:1, WCAG AA for brødtekst. Beholdt.
@@ -55,6 +55,11 @@ p {
 .avis input {
   font: inherit;
   color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--tekst);
+  outline-offset: 3px;
 }
 
 .avis :focus-visible {
@@ -176,9 +181,11 @@ button.avis-tittel {
 }
 
 .avis-under {
-  font: italic 400 18px/1.4 var(--serif);
+  font: italic 400 18px/1.45 var(--serif);
   color: var(--dempet);
-  margin-top: 12px;
+  margin: 14px auto 0;
+  max-width: 34em;
+  text-wrap: pretty;
 }
 
 .avis-menyknapp {
@@ -485,7 +492,7 @@ button.avis-tittel {
 .avis-varselknapp {
   background: transparent;
   border: 1px solid var(--linje-myk);
-  border-radius: 999px;
+  border-radius: 2px;
   padding: 8px 14px;
   min-height: 40px;
   font: 500 14px var(--sans);
@@ -614,7 +621,7 @@ button.avis-tittel {
   background: var(--flate);
   padding: 0 18px;
   min-height: 44px;
-  border-radius: 22px;
+  border-radius: 2px;
   cursor: pointer;
 }
 
@@ -634,10 +641,8 @@ button.avis-tittel {
   left: 0;
   width: min(420px, 80vw);
   background: var(--flate);
-  border: 1px solid var(--linje);
-  box-shadow: 0 18px 40px -18px rgba(31, 29, 26, 0.25);
+  border: 1px solid var(--linje-mork);
   padding: 28px 28px 20px;
-  border-radius: 4px;
 }
 
 .avis-geo-panel h3 {
@@ -714,7 +719,7 @@ button.avis-tittel {
   border: 0;
   padding: 8px 14px;
   min-height: 40px;
-  border-radius: 18px;
+  border-radius: 2px;
   font: 500 14px var(--sans);
   color: var(--dempet);
   cursor: pointer;
@@ -1103,22 +1108,25 @@ button.avis-tittel {
   color: var(--dempet);
 }
 
+.avis-fot-rad > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 24px;
+  row-gap: 4px;
+}
+
 .avis-fot-rad button,
 .avis-fot-rad a {
   background: none;
   border: 0;
   padding: 8px 0;
-  margin-left: 24px;
+  margin: 0;
   min-height: 44px;
   color: var(--dempet);
   font: inherit;
   cursor: pointer;
   text-decoration: none;
-}
-
-.avis-fot-rad button:first-child,
-.avis-fot-rad a:first-child {
-  margin-left: 0;
 }
 
 .avis-bunn {
@@ -1144,9 +1152,7 @@ button.avis-tittel {
   display: block;
   height: 14px;
   margin-bottom: 10px;
-  background: linear-gradient(90deg, var(--linje) 25%, var(--flate) 50%, var(--linje) 75%);
-  background-size: 200% 100%;
-  animation: avis-shimmer 1.4s infinite;
+  background: var(--linje);
 }
 
 @keyframes avis-shimmer {
@@ -1235,9 +1241,39 @@ button.avis-tittel {
     letter-spacing: -0.02em;
   }
 
-  .avis-under,
   .avis-meny {
     display: none;
+  }
+
+  .avis-mast {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 8px;
+    text-align: left;
+  }
+
+  button.avis-tittel {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  .avis-menyknapp {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .avis-under {
+    display: block;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0;
+    max-width: 36ch;
+    font-size: 15px;
+    line-height: 1.45;
+    text-align: left;
   }
 
   .avis-menyknapp {
@@ -1463,7 +1499,7 @@ button.avis-tittel {
     width: auto;
     max-height: min(86vh, 640px);
     overflow: auto;
-    border-radius: 16px 16px 0 0;
+    border-radius: 0;
     z-index: 70;
     padding: 18px 24px calc(56px + env(safe-area-inset-bottom, 0px));
   }
@@ -1609,7 +1645,812 @@ button.avis-tittel {
 
   .avis-fot-rad button,
   .avis-fot-rad a {
-    margin-left: 0;
-    margin-right: 18px;
+    margin: 0;
   }
 }
+
+/* Forside: forklaring, oversikt, handling mot orientering */
+
+.avis-intro {
+  padding: 28px 0 0;
+}
+
+.avis-forklar {
+  max-width: 62ch;
+  margin: 0;
+  font: 400 18px/1.55 var(--serif);
+  color: var(--brod);
+}
+
+.avis-oversikt {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--linje);
+}
+
+.avis-oversikt p {
+  margin: 10px 0 0;
+  font: 500 22px/1.35 var(--serif);
+  color: var(--tekst);
+}
+
+.avis-oversikt-fag {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-top: 14px;
+}
+
+.avis-oversikt-fag button {
+  background: none;
+  border: 0;
+  padding: 8px 0;
+  min-height: 44px;
+  font: 400 17px/1.2 var(--serif);
+  color: var(--brod);
+  cursor: pointer;
+}
+
+.avis-oversikt-fag button sup,
+.avis-handlingrad button sup {
+  font: 500 11px var(--sans);
+  color: var(--dempet);
+  margin-left: 4px;
+}
+
+.avis-deling {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px 64px;
+  padding: 12px 0 64px;
+}
+
+.avis-deling h2 {
+  font: 500 28px/1.2 var(--serif);
+  margin: 0 0 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--linje-mork);
+}
+
+.avis-deling-tom {
+  color: var(--dempet);
+  font: 400 15px/1.5 var(--sans);
+  margin-top: 12px;
+}
+
+.avis-deling-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.avis-deling-liste li {
+  border-bottom: 1px solid var(--linje);
+}
+
+.avis-deling-liste button {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 16px 0;
+  cursor: pointer;
+  color: var(--tekst);
+}
+
+.avis-deling-liste button > span:first-child {
+  font: 500 14px/1.3 var(--sans);
+  color: var(--tegl);
+}
+
+.avis-deling-liste.rolig button > span:first-child {
+  color: var(--dempet);
+}
+
+.avis-deling-liste strong {
+  display: block;
+  font: 500 18px/1.35 var(--serif);
+  font-weight: 500;
+}
+
+.avis-deling-liste small {
+  display: block;
+  margin-top: 4px;
+  font: 400 13px/1.4 var(--sans);
+  color: var(--dempet);
+}
+
+.avis-deling .avis-uka-alle {
+  grid-column: 1 / -1;
+}
+
+.avis-merke {
+  display: inline-block;
+  margin: 0 8px 0 0;
+  font: 600 11px/1.3 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dempet);
+}
+
+.avis-merke.handling {
+  color: var(--granitt);
+}
+
+.avis-merke.mobiliser {
+  color: var(--tegl);
+}
+
+.avis-filterledd {
+  margin: 18px 0 8px;
+  font: 600 11.5px/1 var(--sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dempet);
+}
+
+.avis-filterledd.geo {
+  display: inline;
+  margin: 0 8px 0 14px;
+  letter-spacing: 0.08em;
+}
+
+.avis-handlingrad {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-top: 18px;
+  border-bottom: 1px solid var(--linje);
+}
+
+.avis-handlingrad button {
+  background: none;
+  border: 0;
+  padding: 10px 0 12px;
+  min-height: 44px;
+  font: 500 14px/1.2 var(--sans);
+  color: var(--brod);
+  cursor: pointer;
+}
+
+.avis-handlingrad button.aktiv {
+  color: var(--tekst);
+  box-shadow: inset 0 -2px 0 var(--tegl);
+}
+
+.avis-fagnav {
+  border-bottom: 1px solid var(--linje);
+}
+
+.avis-fagnav .avis-wrap {
+  display: flex;
+  gap: 8px 26px;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-top: 4px;
+  padding-bottom: 0;
+}
+
+.avis-fagnav .avis-wrap::-webkit-scrollbar {
+  display: none;
+}
+
+.avis-fagnav button {
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 12px 0;
+  min-height: 44px;
+  font: 400 17px/1.2 var(--serif);
+  color: var(--brod);
+  cursor: pointer;
+}
+
+.avis-fagnav button.aktiv {
+  color: var(--tekst);
+  box-shadow: inset 0 -2px 0 var(--tegl);
+}
+
+/* Felles komponenter. Brukes likt på alle sider. */
+
+.kv-knapp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--tegl);
+  color: #fff;
+  font: 600 15px/1 var(--sans);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.kv-knapp.linje,
+.kv-knapp.stille,
+.kv-knapp.fare {
+  background: transparent;
+}
+
+.kv-knapp.linje {
+  color: var(--tekst);
+  border: 1px solid var(--linje-myk);
+}
+
+.kv-knapp.stille {
+  min-height: 44px;
+  padding: 8px 0;
+  border-radius: 0;
+  color: var(--granitt);
+  border-bottom: 1px solid rgba(43, 74, 63, 0.35);
+}
+
+.kv-knapp.fare {
+  color: var(--tegl);
+  border: 1px solid var(--tegl);
+}
+
+.kv-knapp.bred { width: 100%; }
+.kv-knapp.vokse { flex: 1; }
+.kv-knapp:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.kv-felt { display: block; margin: 0 0 16px; }
+
+.kv-feltnavn,
+.kv-felt > span {
+  display: block;
+  margin-bottom: 8px;
+  font: 600 12px/1 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dempet);
+}
+
+.kv-input,
+.kv-felt input,
+.kv-felt textarea,
+.kv-felt select,
+input.kv-input,
+textarea.kv-input,
+select.kv-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--linje-myk);
+  border-radius: 2px;
+  background: var(--flate);
+  color: var(--tekst);
+  font: 400 16px/1.45 var(--sans);
+}
+
+textarea.kv-input,
+.kv-felt textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.kv-kort {
+  background: var(--flate);
+  border: 1px solid var(--linje);
+  padding: 20px 22px;
+}
+
+.kv-dialog-bak {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow: auto;
+  background: rgba(28, 27, 25, 0.46);
+}
+
+.kv-dialog {
+  width: 100%;
+  max-width: 720px;
+  margin: 32px 0 64px;
+  background: var(--flate);
+  border: 1px solid var(--linje);
+  color: var(--tekst);
+}
+
+.kv-dialog.smal { max-width: 520px; }
+.kv-dialog-hode {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 28px 32px 0;
+  background: var(--flate);
+}
+.kv-dialog-kropp { padding: 20px 32px 36px; }
+
+.kv-lukk {
+  background: none;
+  border: 0;
+  min-height: 44px;
+  padding: 8px 0;
+  font: 500 14px var(--sans);
+  color: var(--granitt);
+  cursor: pointer;
+}
+
+.kv-faner {
+  display: flex;
+  gap: 22px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--linje);
+  scrollbar-width: none;
+}
+
+.kv-faner::-webkit-scrollbar { display: none; }
+
+.kv-faner button {
+  flex: none;
+  background: none;
+  border: 0;
+  min-height: 48px;
+  padding: 12px 0;
+  font: 500 15px/1 var(--sans);
+  color: var(--brod);
+  cursor: pointer;
+}
+
+.kv-faner button[aria-selected="true"] {
+  color: var(--tekst);
+  box-shadow: inset 0 -2px 0 var(--tegl);
+}
+
+.kv-valg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.kv-valg button {
+  background: none;
+  border: 0;
+  min-height: 44px;
+  padding: 8px 0;
+  font: 500 15px/1 var(--sans);
+  color: var(--brod);
+  cursor: pointer;
+}
+
+.kv-valg button[aria-pressed="true"] {
+  color: var(--tekst);
+  box-shadow: inset 0 -2px 0 var(--tegl);
+}
+
+.kv-klynge {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: center;
+}
+
+.kv-klynge.mellom { justify-content: space-between; }
+.kv-klynge.slutt { justify-content: flex-end; }
+.kv-stakk { display: flex; flex-direction: column; gap: 16px; }
+.kv-rutenett { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.kv-rutenett-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+.kv-notis {
+  padding: 14px 0;
+  border-top: 1px solid var(--linje);
+  border-bottom: 1px solid var(--linje);
+  color: var(--brod);
+}
+.kv-feil { color: var(--tegl); font: 400 14px/1.5 var(--sans); }
+.kv-dempet { color: var(--dempet); }
+.kv-brod { color: var(--brod); font: 400 16px/1.6 var(--sans); }
+.kv-ingress { font: italic 400 18px/1.45 var(--serif); color: var(--dempet); }
+.kv-tittel { font: 500 32px/1.15 var(--serif); letter-spacing: -0.02em; color: var(--tekst); }
+.kv-undertittel { font: 500 22px/1.3 var(--serif); color: var(--tekst); }
+.kv-meta { font: 400 13px/1.45 var(--sans); color: var(--dempet); }
+.kv-liste { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--linje-mork); }
+.kv-rad { padding: 16px 0; border-bottom: 1px solid var(--linje); }
+.kv-tom { padding: 28px 0; color: var(--dempet); }
+.kv-skjerm {
+  min-height: 100vh;
+  background: var(--papir);
+  color: var(--tekst);
+}
+.kv-ark {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+.kv-ark.smal { max-width: 480px; }
+.kv-prosent { height: 2px; background: var(--linje); }
+.kv-prosent > i { display: block; height: 2px; background: var(--granitt); }
+.kv-samtykke { display: flex; gap: 12px; align-items: flex-start; }
+.kv-samtykke input { width: 20px; height: 20px; margin-top: 3px; accent-color: var(--granitt); }
+.kv-tall {
+  font: 500 28px/1 var(--serif);
+  color: var(--tekst);
+}
+.kv-lenke {
+  color: var(--granitt);
+  border-bottom: 1px solid rgba(43, 74, 63, 0.35);
+  text-decoration: none;
+}
+.kv-kode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--tekst);
+}
+.kv-steg { font: 600 12px/1 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--dempet); }
+
+.kv-rolle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  margin: 0 0 6px;
+  font: 600 11px/1.35 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tekst);
+}
+
+.kv-rolle-ikon {
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.kv-rolle.handling .kv-rolle-ikon { color: var(--tegl); }
+.kv-rolle.orientering .kv-rolle-ikon { color: var(--dempet); }
+
+.kv-rolle-detalj {
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--dempet);
+  text-transform: none;
+}
+
+.kv-sakrolle {
+  margin: 0 0 16px;
+  padding: 12px 0 12px 14px;
+  border-left: 3px solid var(--linje-mork);
+}
+
+.kv-sakrolle.handling { border-left-color: var(--tegl); }
+.kv-sakrolle.orientering { border-left-style: dashed; }
+
+.avis-deling h2 .kv-rolle-ikon { margin-right: 6px; }
+.avis-deling.liste { padding-top: 8px; }
+.avis-deling.liste .avis-sak {
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px 0;
+}
+.avis-deling.liste h2 { font-size: 22px; }
+
+.ord {
+  position: relative;
+  display: inline;
+}
+
+.ord-knapp {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dotted var(--dempet);
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ord-panel {
+  display: block;
+  margin: 8px 0 12px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--linje-myk);
+  font: 400 14px/1.5 var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--brod);
+}
+
+.ord-panel a {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--granitt);
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.budsjett-utkast {
+  margin: 0 0 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--linje);
+  font: 600 12px/1.4 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--oker);
+}
+
+.budsjett-frist {
+  margin: 28px 0;
+  padding: 8px 0 8px 16px;
+  border-left: 3px solid var(--tegl);
+}
+
+.budsjett-frist strong {
+  display: block;
+  margin-top: 6px;
+  font: 500 28px/1.2 var(--serif);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--tekst);
+}
+
+.budsjett h2 {
+  margin: 36px 0 12px;
+  font: 500 32px/1.2 var(--serif);
+}
+
+.budsjett h3 {
+  margin: 28px 0 8px;
+  font: 500 22px/1.3 var(--serif);
+}
+
+.budsjett p { margin: 0 0 12px; max-width: 68ch; }
+.budsjett .kilde { font: 400 14px/1.5 var(--sans); color: var(--dempet); }
+.budsjett .hvem { font: 500 15px/1.45 var(--sans); }
+
+.ordliste-bokstav {
+  margin: 36px 0 8px;
+  font: 500 28px/1 var(--serif);
+}
+
+.ordliste-innslag {
+  padding: 16px 0;
+  border-top: 1px solid var(--linje);
+}
+
+.ordliste-innslag h3 {
+  margin: 0 0 8px;
+  font: 500 22px/1.3 var(--serif);
+}
+
+.ordliste-nav a {
+  margin-right: 16px;
+  color: var(--granitt);
+}
+
+.avis-sb {
+  border-bottom: 1px solid var(--linje-mork);
+}
+
+.avis-sb-rad {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.85fr);
+  gap: 48px;
+  align-items: end;
+  padding-top: 36px;
+  padding-bottom: 32px;
+}
+
+.avis-sb h2 {
+  margin: 0 0 12px;
+  font: 500 40px/1.15 var(--serif);
+  letter-spacing: -0.02em;
+}
+
+.avis-sb h2 a {
+  color: var(--tekst);
+  text-underline-offset: 0.12em;
+}
+
+.avis-sb-rad > div > p {
+  margin: 0;
+  max-width: 42em;
+  font: 400 19px/1.55 var(--serif);
+  color: var(--brod);
+}
+
+.avis-sb-frist {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--linje-mork);
+  border-bottom: 1px solid var(--linje);
+}
+
+.avis-sb-dato {
+  margin: 0;
+  font: 500 56px/0.85 var(--serif);
+  color: var(--tekst);
+  letter-spacing: -0.03em;
+  text-align: center;
+}
+
+.avis-sb-dato small {
+  display: block;
+  margin-top: 6px;
+  font: 600 12px/1 var(--sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.avis-sb-status {
+  margin: 0 0 6px;
+  font: 600 13px/1.2 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tekst);
+}
+
+.avis-sb-frist time {
+  font: 400 16px/1.4 var(--sans);
+  color: var(--brod);
+}
+
+.avis-sb-frist .avis-btn {
+  margin-top: 12px;
+}
+
+.avis-sb-frist.er-passert .avis-sb-dato,
+.avis-sb-frist.er-passert .avis-sb-status {
+  color: var(--dempet);
+}
+
+.kv-galleri {
+  padding-bottom: 64px;
+}
+
+.kv-galleri section {
+  padding-top: 28px;
+  border-top: 1px solid var(--linje);
+  margin-top: 28px;
+}
+
+.kv-galleri h2 {
+  margin: 0 0 8px;
+}
+
+.kv-galleri .kv-toast {
+  position: static;
+  transform: none;
+  left: auto;
+  bottom: auto;
+}
+
+@media (max-width: 860px) {
+  .avis-sb-rad { grid-template-columns: 1fr; gap: 24px; }
+  .avis-sb h2 { font-size: 32px; }
+}
+
+.kv-knapp:hover:not(:disabled) { filter: none; }
+.kv-knapp:active:not(:disabled) { transform: none; }
+
+/* .avis button setter color: inherit og slår ellers ut hvit tekst på tegl. */
+.avis .kv-knapp:not(.linje):not(.stille):not(.fare),
+.avis .kv-knapp:not(.linje):not(.stille):not(.fare):hover:not(:disabled),
+.avis .kv-knapp:not(.linje):not(.stille):not(.fare):focus-visible,
+.avis .kv-knapp:not(.linje):not(.stille):not(.fare):active:not(:disabled),
+.avis .kv-knapp.vis-hover:not(.linje):not(.stille):not(.fare),
+.avis .kv-knapp.vis-fokus:not(.linje):not(.stille):not(.fare),
+.avis .kv-knapp.vis-aktiv:not(.linje):not(.stille):not(.fare),
+.avis .avis-btn,
+.avis .avis-btn:hover,
+.avis .avis-btn:focus-visible,
+.avis .avis-btn:active {
+  color: var(--papir);
+}
+
+.avis .kv-knapp.linje,
+.avis .kv-knapp.linje:hover:not(:disabled),
+.avis .kv-knapp.linje:focus-visible,
+.avis .kv-knapp.linje:active:not(:disabled) {
+  color: var(--tekst);
+  background: transparent;
+}
+
+.avis .kv-knapp.stille,
+.avis .kv-knapp.stille:hover:not(:disabled),
+.avis .kv-knapp.stille:focus-visible,
+.avis .kv-knapp.stille:active:not(:disabled) {
+  color: var(--granitt);
+  background: transparent;
+}
+
+.avis .kv-knapp.fare,
+.avis .kv-knapp.fare:focus-visible {
+  color: var(--tegl);
+  background: transparent;
+}
+
+.avis .kv-knapp.fare:hover:not(:disabled),
+.avis .kv-knapp.fare:active:not(:disabled) {
+  background: var(--tegl);
+  color: var(--papir);
+}
+
+.kv-knapp.prim:hover:not(:disabled),
+.kv-knapp:hover:not(:disabled):not(.linje):not(.stille):not(.fare),
+.kv-knapp.vis-hover:not(.linje):not(.stille):not(.fare),
+.avis .avis-btn:hover,
+.avis .avis-btn:active {
+  background: #7f2219;
+}
+.kv-knapp.linje:hover:not(:disabled),
+.kv-knapp.linje:focus-visible,
+.kv-knapp.linje:active:not(:disabled),
+.kv-knapp.linje.vis-hover { border-color: var(--tekst); }
+.kv-knapp:active:not(:disabled):not(.linje):not(.stille):not(.fare),
+.kv-knapp.vis-aktiv:not(.linje):not(.stille):not(.fare) { background: #641910; }
+.kv-knapp.vis-fokus { outline: 2px solid var(--tekst); outline-offset: 3px; }
+.kv-knapp:disabled,
+.kv-knapp.er-inaktiv { opacity: 0.45; cursor: not-allowed; }
+.kv-knapp.laster { cursor: progress; }
+.kv-knapp.laster i {
+  width: 0.7em;
+  height: 0.7em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+@media (max-width: 860px) {
+  .avis-deling { grid-template-columns: 1fr; gap: 28px; }
+  .avis-deling.side-om-side { grid-template-columns: 1fr 1fr; gap: 16px 18px; }
+  .kv-rutenett, .kv-rutenett-3 { grid-template-columns: 1fr; }
+  .kv-dialog-hode, .kv-dialog-kropp { padding-left: 18px; padding-right: 18px; }
+  .avis-fagnav { display: block; }
+}
+
+@media (max-width: 720px) {
+  .avis-forklar { font-size: 17px; }
+  .avis-oversikt p { font-size: 18px; }
+  .avis-fagnav .avis-wrap { padding-left: 24px; padding-right: 24px; }
+  .avis-handlingrad { flex-wrap: nowrap; overflow-x: auto; }
+  .avis-handlingrad button { flex: none; }
+  .avis-deling.side-om-side.liste {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
+}
+
+.kv-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  background: var(--tekst);
+  color: var(--papir);
+  padding: 12px 18px;
+  font: 500 14px var(--sans);
+  max-width: min(440px, calc(100% - 32px));
+  text-align: center;
+}
+.kv-toast.feil { background: var(--tegl); }

@@ -8,7 +8,11 @@
     { "src": "/avmelding", "dest": "/avmelding.html" },
     { "src": "/statsbudsjett", "dest": "/index.html" },
     { "src": "/statsbudsjett/", "dest": "/index.html" },
-    { "src": "/(.*)", "dest": "/vente.html" }
+    { "src": "/ordliste", "dest": "/index.html" },
+    { "src": "/app/ordliste", "dest": "/index.html" },
+    { "src": "/design", "dest": "/index.html" },
+    { "src": "/app/design", "dest": "/index.html" },
+    { "src": "/(.*)", "status": 404, "dest": "/404.html" }
   ],
   "github": {
     "silent": true

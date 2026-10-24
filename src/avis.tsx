@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { forsidePrioritet, matcherHandling, vurderSak, type HandlingFilter } from "./handling.ts";
 import { utvalgErDekket } from "./preferanser.ts";
 import { StatsbudsjettInngang } from "./statsbudsjett.tsx";
 
@@ -25,6 +26,9 @@ export type Sak = {
   status?: string;
   opprettet?: string;
   kilde?: string;
+  konsekvens?: string | null;
+  konsekvens_sikkerhet?: string | null;
+  mobiliser_dato?: string | null;
   handling?: VarselHandling | null;
 };
 
@@ -326,19 +330,20 @@ export function KildeDetaljer({ kilder, lastet }: { kilder: KildeRad[]; lastet: 
   );
 }
 
+function sammenlignForside(a: Sak, b: Sak, nå: Date) {
+  const rang = forsidePrioritet(a, nå) - forsidePrioritet(b, nå);
+  if (rang !== 0) return rang;
+  const fristRang = (s: Sak) => (s.frist && dagerTil(s.frist, nå) >= 0 ? dagerTil(s.frist, nå) : 10_000);
+  const frist = fristRang(a) - fristRang(b);
+  if (frist !== 0) return frist;
+  return (b.opprettet || "").localeCompare(a.opprettet || "");
+}
+
 function velgHovedsak(saker: Sak[], nå: Date) {
-  const medFrist = saker
-    .filter((s) => s.frist && dagerTil(s.frist, nå) >= 0)
-    .sort((a, b) => dagerTil(a.frist as string, nå) - dagerTil(b.frist as string, nå));
-  const haster = medFrist.find((s) => erHaster(s, nå));
-  if (haster) return haster;
-  if (medFrist[0]) return medFrist[0];
-  return [...saker].sort((a, b) => {
-    const rang = (s: Sak) => (s.status === "kritisk" ? 0 : s.status === "viktig" ? 1 : 2);
-    const diff = rang(a) - rang(b);
-    if (diff !== 0) return diff;
-    return (b.opprettet || "").localeCompare(a.opprettet || "");
-  })[0] ?? null;
+  const kan = saker.filter((s) => vurderSak(s, nå).handlingsrettet);
+  const grunnlag = kan.length > 0 ? kan : saker;
+  if (grunnlag.length === 0) return null;
+  return [...grunnlag].sort((a, b) => sammenlignForside(a, b, nå))[0];
 }
 
 function ogsaaDenneUka(saker: Sak[], lead: Sak | null, nå: Date) {
@@ -361,6 +366,31 @@ function ogsaaDenneUka(saker: Sak[], lead: Sak | null, nå: Date) {
   return { tittel: "Andre saker", saker: siste.slice(0, 3) };
 }
 
+export function Rollemerke({ sak, nå, medDetalj = true }: { sak: Sak; nå: Date; medDetalj?: boolean }) {
+  const v = vurderSak(sak, nå);
+  const handling = v.handlingsrettet;
+  return (
+    <span className={handling ? "kv-rolle handling" : "kv-rolle orientering"}>
+      <span className="kv-rolle-ikon" aria-hidden="true">{handling ? "▸" : "–"}</span>
+      <span>{handling ? "Du kan gjøre noe" : "Til orientering"}</span>
+      {medDetalj && v.merke ? <span className="kv-rolle-detalj">{v.merke}</span> : null}
+    </span>
+  );
+}
+
+function Merke({ sak, nå }: { sak: Sak; nå: Date }) {
+  return <Rollemerke sak={sak} nå={nå} />;
+}
+
+function fagMedTall(saker: Sak[]) {
+  const kjente = new Set(FAGOMRADER.map((f) => f.id));
+  const ekstra = [...new Set(saker.map((s) => s.kategori).filter((id): id is string => !!id && !kjente.has(id)))];
+  return [...FAGOMRADER.map((f) => f.id), ...ekstra]
+    .map((id) => ({ id, label: fagLabel(id), n: saker.filter((s) => s.kategori === id).length }))
+    .filter((f) => f.n > 0)
+    .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, "nb"));
+}
+
 export function ForsideAvis({
   saker,
   lastet,
@@ -368,6 +398,7 @@ export function ForsideAvis({
   onToggleFølg,
   onÅpne,
   onAlle,
+  onVelgFag,
   kampanjeAntall,
   onKampanjer,
 }: {
@@ -377,6 +408,7 @@ export function ForsideAvis({
   onToggleFølg: (id: string | number) => void;
   onÅpne: (sak: Sak, fane: SakFane) => void;
   onAlle: () => void;
+  onVelgFag?: (id: string) => void;
   kampanjeAntall: number;
   onKampanjer: () => void;
 }) {
@@ -384,9 +416,41 @@ export function ForsideAvis({
   const lead = velgHovedsak(saker, nå);
   const side = ogsaaDenneUka(saker, lead, nå);
   const følger = lead ? fulgte.includes(lead.id) : false;
+  const leadV = lead ? vurderSak(lead, nå) : null;
+  const vist = new Set<string | number>([lead?.id, ...side.saker.map((s) => s.id)].filter((id) => id != null) as Array<string | number>);
+  const handling = saker.filter((s) => vurderSak(s, nå).handlingsrettet && !vist.has(s.id));
+  const orientering = saker.filter((s) => !vurderSak(s, nå).handlingsrettet && !vist.has(s.id));
+  const antallHandling = saker.filter((s) => vurderSak(s, nå).handlingsrettet).length;
+  const antallOrientering = saker.length - antallHandling;
+  const fag = fagMedTall(saker);
+  const mange = saker.length > 4;
   return (
     <>
       <StatsbudsjettInngang />
+      <section className="avis-intro avis-wrap">
+        <p className="avis-forklar">
+          Kulturvarsling samler kulturpolitiske saker fra Stortinget, regjeringen, Kulturrådet og kommunene, og viser fristen mens det fortsatt er tid til å si ifra.
+        </p>
+        {lastet && saker.length > 0 ? (
+          <div className="avis-oversikt">
+            <span className="avis-versal">Oversikt</span>
+            <p>
+              <strong>{antallHandling}</strong> {antallHandling === 1 ? "sak" : "saker"} du kan gjøre noe med
+              <span className="avis-oversikt-skille" aria-hidden="true"> · </span>
+              <strong>{antallOrientering}</strong> til orientering
+            </p>
+            {fag.length > 0 ? (
+              <div className="avis-oversikt-fag" role="navigation" aria-label="Fagområder">
+                {fag.map((f) => (
+                  <button type="button" key={f.id} onClick={() => onVelgFag?.(f.id)}>
+                    {f.label}<sup>{f.n}</sup>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
       <section className="avis-forside avis-wrap">
         <article className="avis-lead">
           {!lastet ? (
@@ -399,8 +463,8 @@ export function ForsideAvis({
           ) : (
             <>
               <div className="avis-kicker avis-versal">
-                {erHaster(lead, nå) ? <b>Haster</b> : erSnart(lead, nå) ? <b className="snart">Snart</b> : null}
-                {(erHaster(lead, nå) || erSnart(lead, nå)) ? " · " : null}
+                {leadV?.mobiliserNaa ? <b>Mobiliser nå</b> : erHaster(lead, nå) ? <b>Haster</b> : erSnart(lead, nå) ? <b className="snart">Snart</b> : leadV?.merke ? <b>{leadV.merke}</b> : null}
+                {(leadV?.merke || erHaster(lead, nå) || erSnart(lead, nå)) ? " · " : null}
                 {fagLabel(lead.kategori)} · {nivaaTekst(lead)}
               </div>
               <h1>{lead.tittel}</h1>
@@ -423,7 +487,7 @@ export function ForsideAvis({
                   {følger ? "Følger" : "Følg saken"}
                 </button>
                 <button type="button" className="avis-stille" onClick={() => onÅpne(lead, "del")}>Del</button>
-                <button type="button" className="avis-stille" onClick={() => onÅpne(lead, "info")}>Hva betyr dette</button>
+                <button type="button" className="avis-stille" onClick={() => onÅpne(lead, "info")}>Les saken</button>
               </div>
             </>
           )}
@@ -438,12 +502,13 @@ export function ForsideAvis({
                     <b className={s.frist && erHaster(s, nå) ? undefined : "rolig"}>{kortDato(s.frist || s.opprettet)}</b>
                     {s.instans ? ` · ${s.instans}` : ""}
                   </div>
+                  <Merke sak={s} nå={nå} />
                   <h3>{s.tittel}</h3>
                 </button>
               </li>
             ))}
           </ul>
-          <button type="button" className="avis-uka-alle" onClick={onAlle}>Alle frister</button>
+          <button type="button" className="avis-uka-alle" onClick={onAlle}>Hele arkivet</button>
           {kampanjeAntall > 0 ? (
             <p className="avis-kampanjehint">
               {kampanjeAntall} {kampanjeAntall === 1 ? "kampanje" : "kampanjer"} pågår.{" "}
@@ -452,6 +517,53 @@ export function ForsideAvis({
           ) : null}
         </aside>
       </section>
+      {lastet && mange ? (
+        <section className="avis-deling side-om-side avis-wrap" aria-label="Saker delt etter hva du kan gjøre">
+          <div>
+            <h2><span className="kv-rolle-ikon" aria-hidden="true">▸</span> Du kan gjøre noe</h2>
+            {handling.length === 0 ? (
+              <p className="avis-deling-tom">De åpne fristene står ovenfor.</p>
+            ) : (
+              <ul className="avis-deling-liste">
+                {handling.slice(0, 6).map((s) => (
+                  <li key={s.id}>
+                    <button type="button" onClick={() => onÅpne(s, vurderSak(s, nå).handlingsrettet ? "horingssvar" : "info")}>
+                      <span>{kortDato(s.frist || s.opprettet) || "–"}</span>
+                      <span>
+                        <Merke sak={s} nå={nå} />
+                        <strong>{s.tittel}</strong>
+                        <small>{fagLabel(s.kategori)} · {s.instans || s.sted || ""}</small>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <h2><span className="kv-rolle-ikon" aria-hidden="true">–</span> Til orientering</h2>
+            {orientering.length === 0 ? (
+              <p className="avis-deling-tom">Ingen saker bare til orientering i dette utvalget.</p>
+            ) : (
+              <ul className="avis-deling-liste rolig">
+                {orientering.slice(0, 6).map((s) => (
+                  <li key={s.id}>
+                    <button type="button" onClick={() => onÅpne(s, "info")}>
+                      <span>{kortDato(s.frist || s.opprettet) || "–"}</span>
+                      <span>
+                        <Merke sak={s} nå={nå} />
+                        <strong>{s.tittel}</strong>
+                        <small>{fagLabel(s.kategori)} · {s.instans || s.sted || ""}</small>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <button type="button" className="avis-uka-alle" onClick={onAlle}>Åpne saksarkivet</button>
+        </section>
+      ) : null}
       <section className="avis-metode" id="metode">
         <div className="avis-wrap">
           <span className="avis-versal">Slik jobber vi</span>
@@ -489,11 +601,7 @@ function synligeFag(saker: Sak[], valgt: string, prioritet: string[]) {
     .filter((f) => !pri.includes(f.id))
     .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, "nb"));
   const rekkefolge = [...pri.map((id) => medTall.find((f) => f.id === id)!), ...resten];
-  let rad = rekkefolge.filter((f) => f.n > 0).slice(0, 4);
-  if (valgt !== "alle" && !rad.some((f) => f.id === valgt)) {
-    const valgtFag = medTall.find((f) => f.id === valgt);
-    if (valgtFag) rad = [...rad.slice(0, 3), valgtFag];
-  }
+  const rad = rekkefolge.filter((f) => f.n > 0 || f.id === valgt);
   const iRad = new Set(rad.map((f) => f.id));
   return { rad, flere: rekkefolge.filter((f) => !iRad.has(f.id)) };
 }
@@ -593,7 +701,7 @@ function Handling({
   onÅpne: (sak: Sak, fane: SakFane) => void;
 }) {
   const følger = fulgte.includes(sak.id);
-  if (erHaster(sak, nå)) {
+  if (vurderSak(sak, nå).handlingsrettet) {
     return <button type="button" className="avis-gjor prim" onClick={() => onÅpne(sak, "horingssvar")}>Skriv innspill</button>;
   }
   if (følger) {
@@ -613,6 +721,8 @@ export function VarselArkiv({
   varslerAktive = false,
   geografisk = [],
   onToggleVarsler,
+  katStyrt,
+  onKat,
 }: {
   saker: Sak[];
   fulgte: Array<string | number>;
@@ -624,6 +734,8 @@ export function VarselArkiv({
   varslerAktive?: boolean;
   geografisk?: string[];
   onToggleVarsler?: (kat: string, geo: Geo) => void;
+  katStyrt?: string;
+  onKat?: (id: string) => void;
 }) {
   const nå = new Date();
   const [kat, setKat] = useState("alle");
@@ -636,10 +748,20 @@ export function VarselArkiv({
   const [geoSok, setGeoSok] = useState("");
   const [alleFylker, setAlleFylker] = useState(false);
   const [utvidet, setUtvidet] = useState(false);
+  const [slag, setSlag] = useState<HandlingFilter>("alle");
   const geoWrap = useRef<HTMLDivElement>(null);
   const geoSokRef = useRef<HTMLInputElement>(null);
   const geoKnapp = useRef<HTMLButtonElement>(null);
   const geoPanel = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (katStyrt && katStyrt !== kat) setKat(katStyrt);
+  }, [katStyrt, kat]);
+
+  function velgKat(id: string) {
+    setKat(id);
+    onKat?.(id);
+  }
 
   const { rad, flere } = useMemo(() => synligeFag(saker, kat, prioriterteFag), [saker, kat, prioriterteFag]);
   const iFag = useMemo(() => saker.filter((s) => kat === "alle" || s.kategori === kat), [saker, kat]);
@@ -650,13 +772,14 @@ export function VarselArkiv({
   const filtrert = useMemo(() => {
     const q = søk.trim().toLowerCase();
     return iFag.filter((s) => {
+      if (!matcherHandling(s, slag, nå)) return false;
       if (!matcherGeo(s, geo)) return false;
       if (bareFulgte && !fulgte.includes(s.id)) return false;
       if (!q) return true;
       const hay = `${s.tittel ?? ""} ${s.sammendrag ?? ""} ${s.instans ?? ""} ${s.sted ?? ""}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [iFag, geo, bareFulgte, fulgte, søk]);
+  }, [iFag, geo, bareFulgte, fulgte, søk, slag, nå]);
 
   const fagNavn = kat === "alle" ? "" : fagLabel(kat).toLowerCase();
   const setning = filtrert.length === 1 ? "1 sak" : `${filtrert.length} saker`;
@@ -714,7 +837,7 @@ export function VarselArkiv({
     else if (e.key === "End") n = ids.length - 1;
     else return;
     e.preventDefault();
-    setKat(ids[n] ?? "alle");
+    velgKat(ids[n] ?? "alle");
     document.getElementById(`fag-${ids[n]}`)?.focus();
   }
 
@@ -741,20 +864,23 @@ export function VarselArkiv({
   const skjulte = grupper.reduce((sum, n) => sum + Math.max(0, (bucket.get(n)?.length ?? 0) - (utvidet ? 10000 : 4)), 0);
 
   function nullstill() {
-    setKat("alle");
+    velgKat("alle");
     setGeo({ type: "alle" });
     setSøk("");
     setBareFulgte(false);
+    setSlag("alle");
   }
 
   const aktivFagId = kat === "alle" ? "fag-alle" : `fag-${kat}`;
   const varslerDekket = utvalgErDekket(varslerAktive, prioriterteFag, geografisk, kat, geo);
+  const handlingListe = sortert.filter((s) => vurderSak(s, nå).handlingsrettet);
+  const orienteringListe = sortert.filter((s) => !vurderSak(s, nå).handlingsrettet);
 
   return (
     <section className="avis-varsler" id="varsler">
       <div className="avis-wrap">
         <div className="avis-varsler-hode">
-          <h2>Varsler</h2>
+          <h2>Saksarkiv</h2>
           <div className="avis-varsler-status">
             <p>sortert etter frist</p>
             {onToggleVarsler ? (
@@ -772,6 +898,7 @@ export function VarselArkiv({
         </div>
 
         <div className="avis-fagfest">
+          <p className="avis-filterledd">Fagområde</p>
           <div className="avis-fagrad" role="tablist" aria-label="Fagområde" onKeyDown={fagTaster}>
             <button
               type="button"
@@ -780,7 +907,7 @@ export function VarselArkiv({
               aria-selected={kat === "alle"}
               tabIndex={kat === "alle" ? 0 : -1}
               className={kat === "alle" ? "aktiv" : undefined}
-              onClick={() => setKat("alle")}
+              onClick={() => velgKat("alle")}
             >
               Alle<sup>{saker.length}</sup>
             </button>
@@ -793,7 +920,7 @@ export function VarselArkiv({
                 aria-selected={kat === f.id}
                 tabIndex={kat === f.id ? 0 : -1}
                 className={kat === f.id ? "aktiv" : undefined}
-                onClick={() => setKat(f.id)}
+                onClick={() => velgKat(f.id)}
               >
                 {f.label}<sup>{f.n}</sup>
               </button>
@@ -816,7 +943,7 @@ export function VarselArkiv({
                   type="button"
                   key={f.id}
                   className={kat === f.id ? "aktiv" : undefined}
-                  onClick={() => { setKat(f.id); setFlereÅpen(false); }}
+                  onClick={() => { velgKat(f.id); setFlereÅpen(false); }}
                 >
                   {f.label}<sup>{f.n}</sup>
                 </button>
@@ -824,10 +951,31 @@ export function VarselArkiv({
             </div>
           ) : null}
 
+          <div className="avis-handlingrad" role="tablist" aria-label="Hva du kan gjøre">
+            {([
+              ["alle", "Alle saker"],
+              ["handling", "Du kan gjøre noe"],
+              ["mobiliser", "Mobiliser nå"],
+              ["orientering", "Til orientering"],
+            ] as Array<[HandlingFilter, string]>).map(([id, label]) => (
+              <button
+                type="button"
+                role="tab"
+                key={id}
+                aria-selected={slag === id}
+                className={slag === id ? "aktiv" : undefined}
+                onClick={() => setSlag(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="avis-setning">
             <div className="avis-setning-tekst">
               <strong>{setning}</strong>
               {fagNavn ? ` i ${fagNavn}` : ""}
+              <span className="avis-filterledd geo">Geografi</span>
               <span className="avis-geo" ref={geoWrap}>
                 <button
                   type="button"
@@ -922,7 +1070,8 @@ export function VarselArkiv({
                       {s.frist ? <>{kortDato(s.frist)}{erPassert(s, nå) ? <span className="avis-frist-uten"> Passert</span> : null}</> : erPassert(s, nå) ? <span className="avis-frist-uten">Passert</span> : <><span className="avis-frist-strek">–</span><span className="avis-frist-uten">Uten frist</span></>}
                     </td>
                     <td className="t">
-                      <button type="button" onClick={() => onÅpne(s, "info")}>
+                      <Merke sak={s} nå={nå} />
+                      <button type="button" data-handling={s.handling ?? ""} onClick={() => onÅpne(s, "info")}>
                         {erNy(s, nå) ? <span className="avis-ny">Ny </span> : null}
                         {s.tittel}
                       </button>
@@ -933,6 +1082,37 @@ export function VarselArkiv({
                 ))}
               </tbody>
             </table>
+          ) : slag === "alle" ? (
+            <div className="avis-deling side-om-side liste" aria-label="Saker delt etter hva du kan gjøre">
+              {([
+                ["handling", "Du kan gjøre noe", "▸", handlingListe],
+                ["orientering", "Til orientering", "–", orienteringListe],
+              ] as const).map(([nokkel, tittel, ikon, liste]) => (
+                <div key={nokkel}>
+                  <h2><span className="kv-rolle-ikon" aria-hidden="true">{ikon}</span> {tittel}</h2>
+                  {liste.length === 0 ? (
+                    <p className="avis-deling-tom">Ingen saker i denne kolonnen.</p>
+                  ) : (
+                    <div>
+                      {(utvidet ? liste : liste.slice(0, 8)).map((s) => (
+                        <article key={s.id} className={`avis-sak${vurderSak(s, nå).handlingsrettet ? " er-handling" : " er-orientering"}`}>
+                          <div className="dato">{s.frist ? kortDato(s.frist) : "–"}<small>{omDager(s, nå)}</small></div>
+                          <div>
+                            <Merke sak={s} nå={nå} />
+                            <h4>
+                              <button type="button" data-handling={s.handling ?? ""} onClick={() => onÅpne(s, vurderSak(s, nå).handlingsrettet ? "horingssvar" : "info")}>
+                                {s.tittel}
+                              </button>
+                            </h4>
+                            <div className="avis-instans">{s.instans || s.sted}</div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           ) : (
             grupper.map((n) => {
               const liste = bucket.get(n) ?? [];
@@ -945,14 +1125,15 @@ export function VarselArkiv({
                   <h3>{tekst.tittel}<small>{tekst.under}</small></h3>
                   <div>
                     {vist.map((s) => (
-                      <article key={s.id} className={`avis-sak${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}${erPassert(s, nå) ? " passert" : ""}`}>
+                      <article key={s.id} className={`avis-sak${vurderSak(s, nå).handlingsrettet ? " er-handling" : " er-orientering"}${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}${erPassert(s, nå) ? " passert" : ""}`}>
                         <div className={`dato${erHaster(s, nå) ? " haster" : ""}${erSnart(s, nå) ? " snart" : ""}`}>
                           {s.frist ? kortDato(s.frist) : "–"}
                           <small>{omDager(s, nå)}</small>
                         </div>
                         <div>
+                          <Merke sak={s} nå={nå} />
                           <h4>
-                            <button type="button" onClick={() => onÅpne(s, "info")}>
+                            <button type="button" data-handling={s.handling ?? ""} onClick={() => onÅpne(s, "info")}>
                               {erNy(s, nå) ? <span className="avis-ny">Ny</span> : null}
                               {s.tittel}
                             </button>
@@ -967,7 +1148,7 @@ export function VarselArkiv({
               );
             })
           )}
-          {filtrert.length > 0 && skjulte > 0 && visning === "notiser" ? (
+          {filtrert.length > 0 && visning === "notiser" && (slag === "alle" ? !utvidet && (handlingListe.length > 8 || orienteringListe.length > 8) : skjulte > 0) ? (
             <div className="avis-mer-saker">
               <button type="button" onClick={() => setUtvidet(true)}>Vis alle {filtrert.length} saker</button>
             </div>
