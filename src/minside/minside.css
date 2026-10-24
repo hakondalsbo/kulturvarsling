@@ -159,83 +159,84 @@
   font: 500 14px/1.4 var(--sans);
 }
 
-.personlig {
-  padding: 28px 0 8px;
+.folge-boks {
+  max-width: 640px;
+  margin: 28px 0 8px;
+  padding: 22px 24px 18px;
+  background: var(--flate);
+  border: 1px solid var(--linje);
   overflow-x: clip;
-  max-width: 100%;
 }
 
-.personlig-ark {
-  max-width: 720px;
-}
-
-.personlig h2 {
-  font: 500 32px/1.2 var(--serif);
-  margin: 0 0 10px;
+.folge-boks h2 {
+  font: 500 28px/1.2 var(--serif);
+  margin: 0 0 12px;
   color: var(--tekst);
 }
 
-.personlig-setning,
-.personlig-meta {
-  font: 400 18px/1.5 var(--serif);
-  color: var(--brod);
-  max-width: 62ch;
-  margin: 0 0 16px;
-}
-
-.personlig-meta {
-  font: 500 14px/1.45 var(--sans);
-  color: var(--dempet);
-  margin: 0 0 8px;
-}
-
-.personlig-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 8px;
-  padding: 0;
+.folge-liste {
   list-style: none;
-}
-
-.personlig-chips li {
-  font: 500 14px/1.3 var(--sans);
-  color: var(--granitt);
-  background: var(--granitt-lys);
-  padding: 6px 10px;
-}
-
-.personlig-snarveier {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  margin: 0 0 8px;
-}
-
-.personlig-saker {
-  list-style: none;
-  margin: 12px 0 0;
+  margin: 0;
   padding: 0;
 }
 
-.personlig-sak {
-  padding: 16px 0 8px;
+.avis .folge-linje {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 12px 0;
+  border: 0;
   border-top: 1px solid var(--linje);
-  min-width: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--tekst);
+  text-align: left;
+  cursor: pointer;
+  font: 500 18px/1.35 var(--serif);
 }
 
-.personlig-sak h3 {
-  font: 500 22px/1.3 var(--serif);
-  margin: 0 0 6px;
-  color: var(--tekst);
+.folge-tittel {
+  display: block;
   overflow-wrap: anywhere;
+}
+
+.folge-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font: 500 14px/1.4 var(--sans);
+  color: var(--dempet);
+}
+
+.folge-meta .frist {
+  color: var(--oker);
+}
+
+.folge-tom {
+  margin: 0 0 12px;
+  color: var(--dempet);
+  font: 400 17px/1.45 var(--serif);
+}
+
+.avis .folge-alt {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(43, 74, 63, 0.45);
+  border-radius: 0;
+  background: transparent;
+  color: var(--granitt);
+  font: 500 16px/1.3 var(--sans);
+  cursor: pointer;
 }
 
 @media (max-width: 720px) {
   .minside h1 { font-size: 34px; }
   .minside h2 { font-size: 24px; }
-  .personlig h2 { font-size: 28px; }
+  .folge-boks { padding: 18px 16px 14px; }
+  .folge-boks h2 { font-size: 24px; }
   .minside-rad .kv-knapp:not(.stille) { width: 100%; }
   .minside-sok .kv-knapp { width: 100%; }
-  .personlig-sak .kv-knapp:not(.stille) { width: 100%; }
 }

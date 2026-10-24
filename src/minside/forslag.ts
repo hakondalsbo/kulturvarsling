@@ -1,5 +1,5 @@
-import { kategorierForMeny } from "./kategorier.ts";
-import { komiteNavn } from "./komiteer.ts";
+import { dagerTilFrist } from "../frist.ts";
+import { forsidePrioritet, vurderSak } from "../handling.ts";
 import {
   DEMO_DAG,
   DEMO_FULGTE,
@@ -13,7 +13,6 @@ import {
   type DemoModus,
 } from "./demo.ts";
 import { delMinSide, TOMT_VALG, type LagretSok, type MinSak, type MinValg } from "./filter.ts";
-import { stedNavn } from "./steder.ts";
 
 export type KampanjeRef = {
   id: string | number;
@@ -22,92 +21,57 @@ export type KampanjeRef = {
   sakId?: string | number | null;
 };
 
-export type ForslagSak = {
+export type BoksLinje = {
   id: string | number;
   tittel: string;
-  instans: string;
-  handling: boolean;
-  kampanjeTittel: string | null;
+  frist: string | null;
+  rolle: "handling" | "orientering";
 };
 
-export type SnarveiId = "forside" | "minside" | "varsler" | "mobiliser" | "innspill";
-
-export type Forslag = {
-  setning: string;
-  folger: string[];
-  saker: ForslagSak[];
-  snarveier: { id: SnarveiId; label: string; tekst: string }[];
-};
-
-const ORGAN: Record<string, string> = {
-  stortinget: "Stortinget",
-  regjeringen: "Regjeringen",
-};
-
-function oppramsing(deler: string[]): string {
-  if (deler.length <= 1) return deler[0] ?? "";
-  return `${deler.slice(0, -1).join(", ")} og ${deler[deler.length - 1]}`;
+/** Samme hovedsak som avisen velger, så boksen ikke gjentar den. */
+function hovedsakId(saker: MinSak[], nå: Date): string | null {
+  const kan = saker.filter((s) => vurderSak(s, nå).handlingsrettet);
+  const grunnlag = kan.length > 0 ? kan : saker;
+  if (grunnlag.length === 0) return null;
+  const sortert = [...grunnlag].sort((a, b) => {
+    const rang = forsidePrioritet(a, nå) - forsidePrioritet(b, nå);
+    if (rang !== 0) return rang;
+    const da = dagerTilFrist(a.frist, nå);
+    const db = dagerTilFrist(b.frist, nå);
+    return (da == null || da < 0 ? 10_000 : da) - (db == null || db < 0 ? 10_000 : db);
+  });
+  return String(sortert[0].id);
 }
 
-function kampanjeFor(kampanjer: KampanjeRef[], sak: MinSak): KampanjeRef | undefined {
-  return kampanjer.find((k) => k.sakId != null && String(k.sakId) === String(sak.id));
-}
-
-export function forslagTilDeg(
+/**
+ * Inntil fire saker fra det brukeren følger, uten avisens hovedsak.
+ * Resten ligger på Min side. Avisen selv endres ikke.
+ */
+export function boksForForside(
   valg: MinValg,
   saker: MinSak[],
   fulgte: Array<string | number>,
   sok: LagretSok[],
-  kampanjer: KampanjeRef[],
   nå: Date,
-  sted: "forside" | "minside",
-): Forslag {
-  const fagNavn = new Map(kategorierForMeny().map((k) => [k.id, k.label]));
-  const folger = [
-    ...stedNavn(valg.geografisk),
-    ...valg.fagfelt.map((id) => fagNavn.get(id)).filter((n): n is string => !!n),
-    ...valg.organ.map((id) => ORGAN[id]).filter((n): n is string => !!n),
-    ...valg.komiteer.map(komiteNavn),
-    ...sok.map((s) => `søket «${s.navn}»`),
-  ];
+): BoksLinje[] {
   const deler = delMinSide(saker, valg, fulgte, sok, nå);
-  const grunnlag = [...deler.mobiliser, ...deler.handling];
-  const valgt = (grunnlag.length > 0 ? grunnlag : deler.fulgte).slice(0, 2);
-  const forslagSaker: ForslagSak[] = valgt.map((sak) => {
-    const kampanje = kampanjeFor(kampanjer, sak);
-    return {
-      id: sak.id,
-      tittel: sak.tittel || "Sak uten tittel",
-      instans: sak.instans || "Ukjent instans",
-      handling: sak.handling === "handling_mulig",
-      kampanjeTittel: kampanje?.tittel ?? null,
-    };
-  });
-  const harInnspill = kampanjer.some((k) =>
-    forslagSaker.some((s) => String(s.id) === String(k.sakId))
-    || (k.kategori && valg.fagfelt.includes(k.kategori))
-    || fulgte.some((id) => String(id) === String(k.sakId)),
-  );
-  const setning = folger.length > 0
-    ? sted === "forside"
-      ? `Du følger ${oppramsing(folger)}. Forsiden under viser fortsatt alt. Dette feltet er tilpasset deg.`
-      : `Du følger ${oppramsing(folger)}. Samme valg styrer varslene. Herfra skriver du innspill eller støtter et felles innspill.`
-    : fulgte.length > 0
-      ? `Du følger ${fulgte.length === 1 ? "én sak" : `${fulgte.length} saker`}. Forsiden viser fortsatt alt det andre.`
-      : "Velg sted og fag, så tilpasses dette feltet og varslene. Forsiden viser fortsatt alt.";
-
-  return {
-    setning,
-    folger,
-    saker: forslagSaker,
-    snarveier: [
-      { id: "forside", label: "Forsiden", tekst: "Alt som er publisert" },
-      { id: "minside", label: "Min side", tekst: "Bare det du følger" },
-      { id: "varsler", label: "Varslingsvalg", tekst: "Samme avkrysning som her" },
-      { id: "mobiliser", label: "Mobiliser", tekst: "Brev og innspill" },
-      { id: "innspill", label: "Felles innspill", tekst: harInnspill ? "Et innspill treffer det du følger" : "Kampanjer du kan støtte" },
-    ],
-  };
+  const sett = new Set<string>();
+  const rekkefolge: MinSak[] = [];
+  for (const sak of [...deler.mobiliser, ...deler.handling, ...deler.frister, ...deler.fulgte, ...deler.strom]) {
+    const id = String(sak.id);
+    if (sett.has(id)) continue;
+    sett.add(id);
+    rekkefolge.push(sak);
+  }
+  const lead = hovedsakId(saker, nå);
+  const utenLead = rekkefolge.filter((s) => String(s.id) !== lead);
+  const valgt = (utenLead.length > 0 ? utenLead : rekkefolge).slice(0, 4);
+  return valgt.map((sak) => ({
+    id: sak.id,
+    tittel: sak.tittel || "Sak uten tittel",
+    frist: sak.frist ? String(sak.frist).slice(0, 10) : null,
+    rolle: sak.handling === "handling_mulig" ? "handling" : "orientering",
+  }));
 }
 
 export type PersonligKilde = {
