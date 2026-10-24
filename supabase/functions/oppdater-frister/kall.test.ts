@@ -4,6 +4,8 @@ import { byggKildeKjoringRad } from "../hent-saker/datofilter.ts";
 import {
   harKildeAlarm,
   klassifiserKildeKall,
+  planleggDatoSkriving,
+  tolkSkriving,
   utfallFeil,
   utfallOk,
 } from "./kall.ts";
@@ -75,6 +77,67 @@ test("nesten alle feil blir delvis og alarm, spredte feil logges uten alarm", ()
   assert.equal(spredt.alarm, false);
   assert.match(spredt.feilmelding ?? "", /HTTP 500/);
   assert.equal(harKildeAlarm([spredt]), false);
+});
+
+test("én saks 500 logges per sak og gjør ikke kilden til http_feil", () => {
+  const kall = [
+    utfallFeil("http", 500, "sak"),
+    ...Array.from({ length: 12 }, () => utfallOk(200)),
+  ];
+  const ut = klassifiserKildeKall(kall);
+  assert.ok(ut);
+  assert.equal(ut.status, "ok_ingen_oppdatering");
+  assert.equal(ut.alarm, false);
+  assert.notEqual(ut.status, "http_feil");
+  assert.match(ut.feilmelding ?? "", /1 av 13 enkeltsaker/);
+  assert.match(ut.feilmelding ?? "", /HTTP 500/);
+  assert.equal(harKildeAlarm([ut]), false);
+
+  const medEndring = klassifiserKildeKall(kall, 2);
+  assert.ok(medEndring);
+  assert.equal(medEndring.status, "ok_oppdatert");
+  assert.equal(medEndring.oppdatert, 2);
+});
+
+test("alle saks-500 er fortsatt kildefeil med alarm", () => {
+  const ut = klassifiserKildeKall(Array.from({ length: 13 }, () => utfallFeil("http", 500, "sak")));
+  assert.ok(ut);
+  assert.equal(ut.status, "feil_http");
+  assert.equal(ut.alarm, true);
+  assert.equal(harKildeAlarm([ut]), true);
+});
+
+test("403 på én sak er fortsatt http_feil", () => {
+  const ut = klassifiserKildeKall([
+    utfallFeil("auth", 403, "sak"),
+    utfallOk(200),
+    utfallOk(200),
+    utfallOk(200),
+    utfallOk(200),
+  ]);
+  assert.ok(ut);
+  assert.equal(ut.status, "http_feil");
+  assert.equal(ut.alarm, false);
+});
+
+test("dato skrives bare når verdien endres, og bare rader som kom tilbake telles", () => {
+  const naa = "2026-10-24T06:30:00.000Z";
+  assert.equal(planleggDatoSkriving("2026-10-14", "2026-10-14", naa), null);
+  assert.equal(planleggDatoSkriving(null, "", naa), null);
+  assert.deepEqual(planleggDatoSkriving(null, "2026-11-04", naa), {
+    verdi: "2026-11-04",
+    oppdatert: naa,
+  });
+  assert.deepEqual(planleggDatoSkriving("2026-10-01", "2026-11-04T00:00:00Z", naa), {
+    verdi: "2026-11-04",
+    oppdatert: naa,
+  });
+  assert.deepEqual(tolkSkriving(null, []), { feil: null, antall: 0 });
+  assert.deepEqual(tolkSkriving({ message: "Kan ikke endre møtedato" }, null), {
+    feil: "Kan ikke endre møtedato",
+    antall: 0,
+  });
+  assert.deepEqual(tolkSkriving(null, [{ id: "a" }]), { feil: null, antall: 1 });
 });
 
 test("oppdaterte frister er ikke nye saker", () => {

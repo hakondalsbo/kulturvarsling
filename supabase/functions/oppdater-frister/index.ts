@@ -12,7 +12,10 @@
 // Kulturvarsling/1.0 og byttes ikke, og det brukes ingen proxy.
 // Alarm vises i kilde_alarmer_frister, ikke i kilde_alarmer, og
 // kilder.sist_status røres ikke. Det er innhentingens status.
-// Oppdaterte frister og møtedatoer skrives som antall_oppdatert.
+// Oppdaterte frister og møtedatoer skrives som antall_oppdatert,
+// og bare når raden faktisk ble skrevet. Da settes også varsler.oppdatert.
+// Upubliserte varsler hoppes over, for alle kilder.
+// Én saks 404/500 logges per sak og gjør ikke kilden til http_feil.
 // antall_nye er alltid 0. Status er ok_oppdatert eller
 // ok_ingen_oppdatering, aldri ok_nye.
 
@@ -52,6 +55,8 @@ import { REDAKTOR_FELT_LAAS, skalSkriveFrist, skalSkriveMotedato } from "../_sha
 import {
   harKildeAlarm,
   klassifiserKildeKall,
+  planleggDatoSkriving,
+  tolkSkriving,
   utfallFeil,
   utfallOk,
   type KallUtfall,
@@ -96,8 +101,8 @@ async function hentTekst(url: string): Promise<Lest> {
   }
 }
 
-function somUtfall(lest: Lest): KallUtfall {
-  if ("feil" in lest) return utfallFeil(lest.feil.type, lest.feil.httpStatus);
+function somUtfall(lest: Lest, omfang?: "sak" | "kilde"): KallUtfall {
+  if ("feil" in lest) return utfallFeil(lest.feil.type, lest.feil.httpStatus, omfang);
   return utfallOk(lest.httpStatus);
 }
 
@@ -115,22 +120,24 @@ async function hentStortingFrist(
   }
 }
 
-async function oppdaterFrist(
+async function skrivDato(
   supabase: { from: (t: string) => any },
   id: string,
-  frist: string,
-): Promise<string | null> {
-  const { error } = await supabase.from("varsler").update({ frist }).eq("id", id).eq("manuelt_redigert", false);
-  return error ? error.message : null;
-}
-
-async function oppdaterMotedato(
-  supabase: { from: (t: string) => any },
-  id: string,
-  motedato: string,
-): Promise<string | null> {
-  const { error } = await supabase.from("varsler").update({ motedato }).eq("id", id).eq("manuelt_redigert", false);
-  return error ? error.message : null;
+  felt: "frist" | "motedato",
+  har: string | null,
+  ny: string,
+): Promise<{ feil: string | null; skrevet: boolean }> {
+  const plan = planleggDatoSkriving(har, ny, new Date().toISOString());
+  if (!plan) return { feil: null, skrevet: false };
+  const { data, error } = await supabase
+    .from("varsler")
+    .update({ [felt]: plan.verdi, oppdatert: plan.oppdatert })
+    .eq("id", id)
+    .eq("manuelt_redigert", false)
+    .eq("publisert", true)
+    .select("id");
+  const ut = tolkSkriving(error, data);
+  return { feil: ut.feil, skrevet: ut.antall > 0 };
 }
 
 function isoDato(verdi: unknown): string | null {
@@ -143,27 +150,27 @@ async function hentEinnsynMotedato(sakId: string): Promise<{ dato: string | null
   const sakUrl = `https://api.einnsyn.no/moetesak/${encodeURIComponent(sakId)}`;
   const sak = await hentTekst(sakUrl);
   if ("feil" in sak) {
-    kall.push(somUtfall(sak));
+    kall.push(somUtfall(sak, "sak"));
     return { dato: null, kall };
   }
   let mappe = "";
   try {
     mappe = String(JSON.parse(sak.tekst)?.moetemappe ?? "");
   } catch {
-    kall.push(utfallFeil("parse", sak.httpStatus));
+    kall.push(utfallFeil("parse", sak.httpStatus, "sak"));
     return { dato: null, kall };
   }
   kall.push(utfallOk(sak.httpStatus));
   if (!mappe) return { dato: null, kall };
   const m = await hentTekst(`https://api.einnsyn.no/moetemappe/${encodeURIComponent(mappe)}`);
   if ("feil" in m) {
-    kall.push(somUtfall(m));
+    kall.push(somUtfall(m, "sak"));
     return { dato: null, kall };
   }
   try {
     return { dato: isoDato(JSON.parse(m.tekst)?.moetedato), kall: [...kall, utfallOk(m.httpStatus)] };
   } catch {
-    kall.push(utfallFeil("parse", m.httpStatus));
+    kall.push(utfallFeil("parse", m.httpStatus, "sak"));
     return { dato: null, kall };
   }
 }
@@ -202,7 +209,8 @@ async function merkFristStatus(
     return (data ?? []).length as number;
   };
   const statusOp = (status: string) =>
-    supabase.from("varsler").update({ status })
+    supabase.from("varsler").update({ status, oppdatert: new Date().toISOString() })
+      .eq("publisert", true)
       .eq("manuelt_redigert", false)
       .not("id", "in", REDAKTOR_ID_FILTER)
       .neq("status", status);
@@ -357,6 +365,7 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await supabase
       .from("varsler")
       .select("id, kilde, instans, tittel, frist, motedato, manuelt_redigert")
+      .eq("publisert", true)
       .or("kilde.ilike.%stortinget.no%,kilde.ilike.%regjeringen.no%,kilde.ilike.%sametinget.no%,kilde.ilike.%einnsyn.no%,kilde.ilike.%bergen.kommune.no%");
     if (error) return jsonSvar({ feil: "Kunne ikke hente saker" }, 503);
     const rader = (data ?? []) as Rad[];
@@ -387,7 +396,7 @@ Deno.serve(async (req: Request) => {
           continue;
         }
         const lest = await hentTekst(url);
-        merk("regjeringen-rss", somUtfall(lest));
+        merk("regjeringen-rss", somUtfall(lest, "sak"));
         if ("feil" in lest) {
           console.error(`Regjeringen detalj ${innholdId}: ${lest.feil.melding}`);
           regjeringen.feil++;
@@ -400,10 +409,12 @@ Deno.serve(async (req: Request) => {
         regjeringen.uendret++;
         continue;
       }
-      const feil = await oppdaterFrist(supabase, rad.id, frist);
-      if (feil) {
-        console.error(`frist ${rad.id}: ${feil}`);
+      const skrevet = await skrivDato(supabase, rad.id, "frist", rad.frist, frist);
+      if (skrevet.feil) {
+        console.error(`frist ${rad.id}: ${skrevet.feil}`);
         regjeringen.feil++;
+      } else if (!skrevet.skrevet) {
+        regjeringen.uendret++;
       } else {
         regjeringen.oppdatert++;
         merkOppdatert("regjeringen-rss");
@@ -424,7 +435,7 @@ Deno.serve(async (req: Request) => {
       merk(
         "stortinget-saker",
         oppslag.feil
-          ? utfallFeil(oppslag.feil.type, oppslag.feil.httpStatus)
+          ? utfallFeil(oppslag.feil.type, oppslag.feil.httpStatus, "sak")
           : utfallOk(oppslag.httpStatus),
       );
       if (oppslag.feil) {
@@ -437,10 +448,12 @@ Deno.serve(async (req: Request) => {
         stortinget.uendret++;
         continue;
       }
-      const feil = await oppdaterFrist(supabase, rad.id, oppslag.frist);
-      if (feil) {
-        console.error(`frist ${rad.id}: ${feil}`);
+      const skrevet = await skrivDato(supabase, rad.id, "frist", rad.frist, oppslag.frist);
+      if (skrevet.feil) {
+        console.error(`frist ${rad.id}: ${skrevet.feil}`);
         stortinget.feil++;
+      } else if (!skrevet.skrevet) {
+        stortinget.uendret++;
       } else {
         stortinget.oppdatert++;
         merkOppdatert("stortinget-saker");
@@ -455,7 +468,7 @@ Deno.serve(async (req: Request) => {
     for (const rad of sametingKandidater) {
       if (!rad.kilde) continue;
       const lest = await hentTekst(rad.kilde);
-      merk("sametinget", somUtfall(lest));
+      merk("sametinget", somUtfall(lest, "sak"));
       if ("feil" in lest) {
         console.error(`Sametinget ${rad.id}: ${lest.feil.melding}`);
         sametinget.feil++;
@@ -466,10 +479,12 @@ Deno.serve(async (req: Request) => {
         sametinget.uendret++;
         continue;
       }
-      const feil = await oppdaterFrist(supabase, rad.id, frist);
-      if (feil) {
-        console.error(`frist ${rad.id}: ${feil}`);
+      const skrevet = await skrivDato(supabase, rad.id, "frist", rad.frist, frist);
+      if (skrevet.feil) {
+        console.error(`frist ${rad.id}: ${skrevet.feil}`);
         sametinget.feil++;
+      } else if (!skrevet.skrevet) {
+        sametinget.uendret++;
       } else {
         sametinget.oppdatert++;
         merkOppdatert("sametinget");
@@ -488,11 +503,11 @@ Deno.serve(async (req: Request) => {
         const dato = hentet.datoer.get(`${nokkel.mote}/${nokkel.sak}`);
         if (!dato) continue;
         moter.bergen++;
-        const feil = await oppdaterMotedato(supabase, rad.id, dato);
-        if (feil) {
-          console.error(`motedato ${rad.id}: ${feil}`);
+        const skrevet = await skrivDato(supabase, rad.id, "motedato", rad.motedato, dato);
+        if (skrevet.feil) {
+          console.error(`motedato ${rad.id}: ${skrevet.feil}`);
           moter.feil++;
-        } else {
+        } else if (skrevet.skrevet) {
           moter.oppdatert++;
           merkOppdatert("bergen");
           rad.motedato = dato;
@@ -508,11 +523,11 @@ Deno.serve(async (req: Request) => {
       for (const utfall of hentet.kall) merk("einnsyn", utfall);
       if (hentet.kall.some((utfall) => !utfall.ok)) moter.feil++;
       if (!hentet.dato) continue;
-      const feil = await oppdaterMotedato(supabase, rad.id, hentet.dato);
-      if (feil) {
-        console.error(`motedato ${rad.id}: ${feil}`);
+      const skrevet = await skrivDato(supabase, rad.id, "motedato", rad.motedato, hentet.dato);
+      if (skrevet.feil) {
+        console.error(`motedato ${rad.id}: ${skrevet.feil}`);
         moter.feil++;
-      } else {
+      } else if (skrevet.skrevet) {
         moter.oppdatert++;
         merkOppdatert("einnsyn");
         rad.motedato = hentet.dato;

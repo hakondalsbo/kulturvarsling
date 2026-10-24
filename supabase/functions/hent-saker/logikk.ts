@@ -291,6 +291,8 @@ SPRÅKGUIDE FOR SAMMENDRAGET:
 
 KATEGORI: Velg kunstformen når tittelen navngir den. Generelle tilskudd, budsjett, økonomiplan og fordeling av kulturmidler uten navngitt kunstform, museum eller kulturminne er "kulturpolitikk". Ikke bruk kulturarv eller visuell bare fordi saken handler om kultur.
 
+NIVÅ: Kommune, bydel og bystyre er "kommune". Fylkeskommune og fylkesting er "fylke". "nasjonalt" bare når organet er statlig.
+
 Svar BARE med gyldig JSON, ingen markdown:
 {
   "relevant": true eller false,

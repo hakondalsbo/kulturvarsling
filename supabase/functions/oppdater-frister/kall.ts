@@ -6,6 +6,9 @@
 // - alle kall feilet → feil_http / feil_auth / feil_timeout / feil_parse / feil_nett
 // - minst 80 % feilet, men ikke alle → delvis («nesten alle»)
 // - spredte feil under 80 % → http_feil, med HTTP-kode, uten alarm
+// - enkeltstående 404/500 på én sak (omfang "sak") logges i feilmelding
+//   og gjør ikke raden til http_feil, så lenge andelen er under 80 %.
+//   Alle kall eller minst 80 % feil er fortsatt kildefeil med alarm.
 // 403 er feil_auth. Den rapporteres. Den omgås ikke.
 
 export const NESTEN_ALLE_ANDEL = 0.8;
@@ -16,6 +19,8 @@ export type KallUtfall = {
   ok: boolean;
   httpStatus: number | null;
   type: KallType;
+  /** "sak" er ett dokument. Listekall er kilde. */
+  omfang?: "sak" | "kilde";
 };
 
 export type KildeKallResultat = {
@@ -34,8 +39,44 @@ export function utfallOk(httpStatus: number | null): KallUtfall {
   return { ok: true, httpStatus, type: "ok" };
 }
 
-export function utfallFeil(type: Exclude<KallType, "ok">, httpStatus: number | null): KallUtfall {
-  return { ok: false, httpStatus, type };
+export function utfallFeil(
+  type: Exclude<KallType, "ok">,
+  httpStatus: number | null,
+  omfang?: "sak" | "kilde",
+): KallUtfall {
+  return { ok: false, httpStatus, type, omfang };
+}
+
+/** 404/500 på ett dokument. Kilden kan fortsatt være oppe. */
+export function erEnkeltsakHttp(k: KallUtfall): boolean {
+  return !k.ok
+    && k.omfang === "sak"
+    && (k.httpStatus === 404 || k.httpStatus === 500);
+}
+
+/**
+ * Ny dato som faktisk skiller seg fra den lagrede. Samme dag skrives ikke,
+ * og da settes heller ikke endringstidspunktet.
+ */
+export function planleggDatoSkriving(
+  har: string | null | undefined,
+  ny: string | null | undefined,
+  naa: string,
+): { verdi: string; oppdatert: string } | null {
+  const neste = String(ny ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(neste)) return null;
+  const gammel = har ? String(har).slice(0, 10) : null;
+  if (gammel === neste) return null;
+  return { verdi: neste, oppdatert: naa };
+}
+
+/** Tomt svar fra update er ikke en endring. Feil er ikke en endring. */
+export function tolkSkriving(
+  error: { message: string } | null,
+  rader: unknown[] | null | undefined,
+): { feil: string | null; antall: number } {
+  if (error) return { feil: error.message, antall: 0 };
+  return { feil: null, antall: Array.isArray(rader) ? rader.length : 0 };
 }
 
 function dominerende<T>(verdier: T[]): T | null {
@@ -73,14 +114,22 @@ export function klassifiserKildeKall(
   if (kall.length === 0) return null;
   const feil = kall.filter((k) => !k.ok);
   const vellykket = kall.length - feil.length;
-  if (feil.length === 0) {
+  const sakIsolert = feil.length > 0
+    && feil.every(erEnkeltsakHttp)
+    && feil.length / kall.length < NESTEN_ALLE_ANDEL;
+  if (feil.length === 0 || sakIsolert) {
+    const sakHttp = dominerende(
+      feil.map((k) => k.httpStatus).filter((s): s is number => s != null),
+    );
     return {
       status: oppdatert > 0 ? "ok_oppdatert" : "ok_ingen_oppdatering",
-      httpStatus: kall.find((k) => k.httpStatus != null)?.httpStatus ?? null,
-      feilmelding: null,
+      httpStatus: kall.find((k) => k.ok && k.httpStatus != null)?.httpStatus ?? sakHttp,
+      feilmelding: sakIsolert
+        ? `${feil.length} av ${kall.length} enkeltsaker svarte HTTP ${sakHttp ?? "feil"} og er logget per sak`
+        : null,
       alarm: false,
       forsok: kall.length,
-      feilede: 0,
+      feilede: feil.length,
       vellykket,
       oppdatert,
     };
