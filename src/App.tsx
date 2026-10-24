@@ -21,6 +21,10 @@ import type { LagretSok, MinValg } from "./minside/filter.ts";
 import { FolgeBoks } from "./minside/Personlig.tsx";
 import { boksForForside, personligKilde } from "./minside/forslag.ts";
 import { demoParameter } from "./minside/demo.ts";
+import { MobiliserInngang } from "./mobiliser/MobiliserInngang.tsx";
+import { MobiliserPanel } from "./mobiliser/MobiliserPanel.tsx";
+import { signaturKanSigneres } from "./mobiliser/miljo.ts";
+import { stotteFraSvar, type StottetInnspill as StotteRad } from "./mobiliser/stotte.ts";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase, Settings, API
@@ -617,11 +621,11 @@ function FeedbackModal({onClose, kontekst=null as any}: any) {
   );
 }
 
-function BrukerLogin({setScreen,setUser,grunn=""}: any) {
+function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
   const [epost,setEpost]=useState("");
   const [pw,setPw]=useState("");
   const [navn,setNavn]=useState("");
-  const [mode,setMode]=useState("login");
+  const [mode,setMode]=useState(start === "register" ? "register" : "login");
   const [feil,setFeil]=useState("");
   const [laster,setLaster]=useState(false);
   const [bekreftSendt,setBekreftSendt]=useState(false);
@@ -767,6 +771,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [minSak,setMinSak]=useState<any>(null);
   const [minFane,setMinFane]=useState("horingssvar");
   const [apneOppsett,setApneOppsett]=useState(false);
+  const [stotte,setStotte]=useState<StotteRad[]>([]);
   const isPremium = user?.plan==="premium";
   const [aktivitet,setAktivitet]=useState<any[]>(AKTIVITET_INIT);
 
@@ -781,6 +786,18 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const aktiveVarsler = useMemo(()=>varsler.filter(v=>!erHistorisk(v)),[varsler]);
   const historiskeVarsler = useMemo(()=>varsler.filter(erHistorisk),[varsler]);
   const fristSynlige = useMemo(()=>varsler.filter((v: any)=>v.frist || v.status==="passert" || !erHistorisk(v)),[varsler]);
+
+  useEffect(() => {
+    if (!user?.id || !signaturKanSigneres()) {
+      setStotte([]);
+      return;
+    }
+    let aktiv = true;
+    void sb.functions.invoke("mine-innspill", { body: {} }).then(({ data }) => {
+      if (aktiv) setStotte(stotteFraSvar(data));
+    });
+    return () => { aktiv = false; };
+  }, [user?.id]);
 
   useEffect(()=>{
     async function lastData() {
@@ -914,7 +931,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     setMerÅpen(false);
     if(id==="premium"&&!isPremium){setShowPremium(true);return;}
     const demo = demoNå();
-    if(id==="mobiliser"&&!user&&!demo){setScreen("bruker-login");return;}
+    if(id==="mobiliser"&&!user&&!demo){beOmInnlogging("");return;}
     if(id==="ordliste") window.history.pushState({}, "", "/ordliste");
     else if(id==="minside") {
       const m = demo === "tom" || demo === "oppsett" ? demo : demo ? "side" : "";
@@ -1031,7 +1048,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
 
   return (
     <div className="avis">
-      {showPremium&&<PremiumModal user={user} onClose={()=>setShowPremium(false)} onLogin={()=>{setShowPremium(false);setScreen("bruker-login");}}/>}
+      {showPremium&&<PremiumModal user={user} onClose={()=>setShowPremium(false)} onLogin={()=>{setShowPremium(false);beOmInnlogging("");}}/>}
       {showVarselReg&&<VarselRegistreringModal user={user} setUser={setUser} onClose={()=>setShowVarselReg(false)} beOmInnlogging={beOmInnlogging}/>}
       {showOnboarding&&user&&view!=="minside"&&<OnboardingWizard user={user} setUser={setUser} onDone={()=>setShowOnboarding(false)}/>}
       {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
@@ -1050,7 +1067,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
                 <button type="button" onClick={loggUt}>Logg ut</button>
               </>
             ) : (
-              <button type="button" onClick={()=>setScreen("bruker-login")}>Logg inn</button>
+              <button type="button" onClick={()=>beOmInnlogging("")}>Logg inn</button>
             )}
           </div>
         </div>
@@ -1105,7 +1122,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
           {kommuneLoginSynlig && <button type="button" onClick={()=>setScreen("kommune-login")}>For kommuner</button>}
           {user
             ? <button type="button" onClick={loggUt}>Logg ut</button>
-            : <button type="button" onClick={()=>setScreen("bruker-login")}>Logg inn</button>}
+            : <button type="button" onClick={()=>beOmInnlogging("")}>Logg inn</button>}
         </div>
       )}
 
@@ -1119,7 +1136,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             isPremium={isPremium}
             fulgte={personlig.mock ? personlig.fulgte : fulgte}
             toggleFølg={toggleFølg}
-            onLogin={()=>setScreen("bruker-login")}
+            onLogin={()=>beOmInnlogging("")}
             onKrevInnlogging={beOmInnlogging}
             dataLastet={personlig.mock ? true : dataLastet}
             user={user}
@@ -1163,7 +1180,9 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             onLagreSok={lagreSokMinSide}
             onSlettSok={slettSokMinSide}
             onToggleFolg={toggleFølg}
-            onLogin={()=>setScreen("bruker-login")}
+            onLogin={()=>beOmInnlogging("Logg inn for å se sakene du følger.")}
+            onRegistrer={()=>beOmInnlogging("Opprett en gratis konto for å se sakene du følger.", "register")}
+            stotte={stotte}
             onÅpne={(sak, fane)=>{ setMinSak(sak); setMinFane(fane); }}
             kampanjer={personlig.kampanjer}
             apneOppsett={apneOppsett}
@@ -1341,7 +1360,10 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
                 <p className="kv-meta">{metaLinje([katNavn(v.kategori), fristEtikett(v)])}</p>
                 <h3 className="kv-undertittel">{v.tittel}</h3>
                 <p className="kv-meta">{v.instans}</p>
-                <FølgKnapp sakId={v.id} fulgte={fulgte} toggleFølg={toggleFølg}/>
+                <div className="kv-klynge">
+                  <FølgKnapp sakId={v.id} fulgte={fulgte} toggleFølg={toggleFølg}/>
+                  <MobiliserInngang sakId={v.id}/>
+                </div>
               </li>
             ))}
           </ul>
@@ -1480,6 +1502,7 @@ export function VarselKort({v,compact=false,onClick,fulgte=[],toggleFølg=()=>{}
       <div className="kv-klynge">
         {onClick && <Knapp variant="linje" onClick={()=>onClick(v)}>Åpne</Knapp>}
         <FølgKnapp sakId={v.id} fulgte={fulgte} toggleFølg={toggleFølg}/>
+        <MobiliserInngang sakId={v.id}/>
       </div>
     </article>
   );
@@ -1600,6 +1623,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
       )}
       {tab==="info"&&(
         <div className="kv-stakk">
+          <MobiliserPanel sak={sak} />
           <p className="kv-brod"><MerketTekst deler={merket[1]} /></p>
           {klartekstStatus!=="ok"&&klartekstStatus!=="ikke-innlogget"&&(
             <Knapp onClick={hentKlartekst} disabled={klartekstStatus==="laster"}>
@@ -2797,8 +2821,10 @@ export default function App() {
   const [kommune,setKommune]=useState<any>(null);
   const [sessionSjekket,setSessionSjekket]=useState(false);
   const [loginGrunn,setLoginGrunn]=useState("");
-  function beOmInnlogging(grunn: any) {
-    setLoginGrunn(grunn);
+  const [loginStart,setLoginStart]=useState("login");
+  function beOmInnlogging(grunn: any, start?: string) {
+    setLoginGrunn(typeof grunn === "string" ? grunn : "");
+    setLoginStart(start === "register" ? "register" : "login");
     setScreen("bruker-login");
   }
 
@@ -2858,7 +2884,7 @@ export default function App() {
     </div>
   );
 
-  if(screen==="bruker-login")    return <><ToastContainer/><BrukerLogin setScreen={setScreen} setUser={setUser} grunn={loginGrunn}/></>;
+  if(screen==="bruker-login")    return <><ToastContainer/><BrukerLogin key={loginStart} setScreen={setScreen} setUser={setUser} grunn={loginGrunn} start={loginStart}/></>;
   if(screen==="bruker-app")      return <><ToastContainer/><BrukerApp user={user} setUser={setUser} setScreen={setScreen} beOmInnlogging={beOmInnlogging}/></>;
   if(kommuneLoginSynlig && screen==="kommune-login") return <><ToastContainer/><KommuneLogin setScreen={setScreen} setKommune={setKommune}/></>;
   if(kommuneLoginSynlig && screen==="kommune-app")   return <><ToastContainer/><KommuneApp kommune={kommune} setScreen={setScreen}/></>;

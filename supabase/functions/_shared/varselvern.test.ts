@@ -235,6 +235,20 @@ test("anon og authenticated mister skriving på varsler, lesing blir stående", 
   ]);
 });
 
+test("automatiske oppdateringer skriver ikke fase", () => {
+  const åpen = oppdaterVarsel(
+    { id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", manuelt_redigert: false },
+    { fase: "vedtak", kilde_id: "2522cd41-b313-443d-9a4a-9dabd9b73119", status: "normal" },
+  );
+  assert.equal("fase" in åpen, false);
+  assert.equal(åpen.status, "normal");
+  const låst = oppdaterVarsel(
+    { id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", manuelt_redigert: true },
+    { fase: "vedtak", kilde_id: "2522cd41-b313-443d-9a4a-9dabd9b73119" },
+  );
+  assert.deepEqual(låst, { kilde_id: "2522cd41-b313-443d-9a4a-9dabd9b73119" });
+});
+
 test("manglende høringsfrist er kjørestatus, ikke en varsler.status", () => {
   const sql = readFileSync("supabase/migrations/20261020260000_kilde_manglende_frist.sql", "utf8");
   assert.match(sql, /kilde_kjoringer\.status/);

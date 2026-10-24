@@ -66,6 +66,8 @@ export function oppdaterVarsel<T extends Record<string, unknown>>(
   endring: T,
 ): Partial<T> {
   const kopi: Record<string, unknown> = { ...endring };
+  // Fase settes av varselredaktøren via sett_varsel_fase, aldri av jobb.
+  delete kopi.fase;
   if (erRedaktorFeltLaast(eksisterende.id)) {
     for (const felt of REDAKTOR_FELT) delete kopi[felt];
     return kopi as Partial<T>;

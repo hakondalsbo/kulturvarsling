@@ -32,3 +32,14 @@ verify_jwt = false
 
 [functions.horingshjelp]
 verify_jwt = true
+
+# Signering og lenker i e-post har ingen brukersesjon, som meld-pa.
+[functions.signer-innspill]
+verify_jwt = false
+
+# Krever i tillegg x-cron-secret. Ikke planlagt i cron.
+[functions.slett-signaturer]
+verify_jwt = true
+
+[functions.mine-innspill]
+verify_jwt = true
