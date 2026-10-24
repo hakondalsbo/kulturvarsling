@@ -205,6 +205,25 @@ test("rollesjekken leser claims-JSON og faller tilbake til den gamle innstilling
   })), false);
 });
 
+test("handling er nullable uten default, og triggeren sperrer den ikke", () => {
+  const sql = readFileSync("supabase/migrations/20261024155500_varsel_handling.sql", "utf8");
+  const trigger = readFileSync("supabase/migrations/20261020250000_overstyr_og_emne.sql", "utf8");
+  assert.match(sql, /create type public\.varsel_handling as enum \(\s*'handling_mulig',\s*'bare_orientering'\s*\)/);
+  assert.match(sql, /add column handling public\.varsel_handling/);
+  assert.match(sql, /grant usage on type public\.varsel_handling to anon, authenticated, service_role/);
+  assert.doesNotMatch(sql, /default/i);
+  assert.doesNotMatch(sql, /not null/i);
+  assert.doesNotMatch(sql, /update public\.varsler/i);
+  assert.doesNotMatch(sql, /create or replace function public\.overstyr_varsel/);
+  assert.doesNotMatch(trigger, /new\.handling/);
+  assert.match(trigger, /new\.tittel is distinct from old\.tittel/);
+  assert.match(trigger, /new\.status is distinct from old\.status/);
+  const hent = readFileSync("supabase/functions/hent-saker/index.ts", "utf8");
+  const frist = readFileSync("supabase/functions/oppdater-frister/index.ts", "utf8");
+  assert.doesNotMatch(hent, /handling/);
+  assert.doesNotMatch(frist, /handling/);
+});
+
 test("manglende høringsfrist er kjørestatus, ikke en varsler.status", () => {
   const sql = readFileSync("supabase/migrations/20261020260000_kilde_manglende_frist.sql", "utf8");
   assert.match(sql, /kilde_kjoringer\.status/);

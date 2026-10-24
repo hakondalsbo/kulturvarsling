@@ -967,6 +967,7 @@ test("innsettingsrad setter kilde_id og normalisert kilde, aldri kilde_nokkel", 
     "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak?p=200367",
   );
   assert.equal("kilde_nokkel" in rad, false);
+  assert.equal("handling" in rad, false);
   assert.equal(rad.publisert, true);
   assert.equal(rad.sakstype, "høring");
 });

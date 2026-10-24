@@ -6,6 +6,9 @@ import { utvalgErDekket } from "./preferanser.ts";
  * Ingen datahenting: flatene får saker inn og kaller tilbake når noen trykker.
  */
 
+/** Ved siden av konsekvens. Null til redaktøren har satt verdien. */
+export type VarselHandling = "handling_mulig" | "bare_orientering";
+
 export type Sak = {
   id: string | number;
   tittel?: string;
@@ -21,6 +24,7 @@ export type Sak = {
   status?: string;
   opprettet?: string;
   kilde?: string;
+  handling?: VarselHandling | null;
 };
 
 export type Fylke = { nr: string; navn: string };
