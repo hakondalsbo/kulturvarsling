@@ -18,6 +18,8 @@ import { geografiskFraNivaa, leggTilUtvalg, nivaaFraGeografisk, preferanserFraPr
 import { MinSide } from "./minside/MinSide.tsx";
 import { kategorierForMeny } from "./minside/kategorier.ts";
 import type { LagretSok, MinValg } from "./minside/filter.ts";
+import { PersonligFelt } from "./minside/Personlig.tsx";
+import { forslagTilDeg, personligKilde, type SnarveiId } from "./minside/forslag.ts";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase, Settings, API
@@ -761,6 +763,9 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [fulgte,setFullgte]=useState<any[]>([]);
   const [lagredeSok,setLagredeSok]=useState<LagretSok[]>([]);
   const [sokLastet,setSokLastet]=useState(false);
+  const [minSak,setMinSak]=useState<any>(null);
+  const [minFane,setMinFane]=useState("horingssvar");
+  const [apneOppsett,setApneOppsett]=useState(false);
   const isPremium = user?.plan==="premium";
   const [aktivitet,setAktivitet]=useState<any[]>(AKTIVITET_INIT);
 
@@ -835,6 +840,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
 
   async function toggleFølg(sakId) {
     if(!user?.id) {
+      if (new URLSearchParams(window.location.search).get("demo")) return;
       beOmInnlogging("Logg inn for å følge saken. Valget lagres på kontoen din.");
       return;
     }
@@ -899,15 +905,38 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  function demoNå() {
+    return new URLSearchParams(window.location.search).get("demo");
+  }
   function gå(id: string){
     setMenyÅpen(false);
     setMerÅpen(false);
     if(id==="premium"&&!isPremium){setShowPremium(true);return;}
-    if(id==="mobiliser"&&!user){setScreen("bruker-login");return;}
+    const demo = demoNå();
+    if(id==="mobiliser"&&!user&&!demo){setScreen("bruker-login");return;}
     if(id==="ordliste") window.history.pushState({}, "", "/ordliste");
-    else if(id==="minside") window.history.pushState({}, "", "/min-side");
+    else if(id==="minside") {
+      const m = demo === "tom" || demo === "oppsett" ? demo : demo ? "side" : "";
+      window.history.pushState({}, "", m ? `/min-side?demo=${m}` : "/min-side");
+    }
+    else if(id==="forside"||id==="varsler"||id==="mobiliser"||id==="kampanjer") {
+      if(demo==="side"||demo==="forside") window.history.pushState({}, "", "/?demo=forside");
+      else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
+    }
     else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
     setView(id);
+    window.scrollTo({top:0});
+  }
+  function apneVarslingsvalg() {
+    const demo = demoNå();
+    const q = new URLSearchParams();
+    if (demo === "tom" || demo === "oppsett") q.set("demo", demo);
+    else if (demo) q.set("demo", "side");
+    q.set("endre", "1");
+    q.set("steg", "1");
+    window.history.pushState({}, "", `/min-side?${q.toString()}`);
+    setApneOppsett(true);
+    setView("minside");
     window.scrollTo({top:0});
   }
   function velgFag(id: string){
@@ -989,6 +1018,41 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     view==="profil"?"Min profil":
     view==="premium"?"Premium-verktøy":"";
   const fagAktiv = (id: string) => view==="varsler" && arkivKat===id;
+  const personlig = personligKilde({
+    userId: user?.id,
+    valg: {
+      fagfelt: user?.fagfelt ?? [],
+      geografisk: user?.geografisk ?? [],
+      organ: user?.organ ?? [],
+      komiteer: user?.komiteer ?? [],
+      varslerAktive: !!user?.varslerAktive,
+    },
+    saker: varsler,
+    fulgte,
+    sok: lagredeSok,
+    kampanjer,
+  });
+  const personligForslag = forslagTilDeg(
+    personlig.valg,
+    personlig.saker,
+    personlig.fulgte,
+    personlig.sok,
+    personlig.kampanjer,
+    personlig.nå ?? new Date(),
+    view === "forside" ? "forside" : "minside",
+  );
+  function personligStripe(her: SnarveiId) {
+    if (!personlig.vis || view === "forside" || view === "minside") return null;
+    return (
+      <PersonligFelt
+        forslag={personligForslag}
+        her={her}
+        kompakt
+        onGå={gå}
+        onVarsler={apneVarslingsvalg}
+      />
+    );
+  }
 
   return (
     <div className="avis">
@@ -1074,22 +1138,27 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         {view==="forside" && (
           <BrukerForside
             setView={gå}
-            varsler={aktiveVarsler}
-            kampanjer={kampanjer}
+            varsler={personlig.mock ? personlig.saker : aktiveVarsler}
+            kampanjer={personlig.mock ? personlig.kampanjer : kampanjer}
             setShowPremium={setShowPremium}
             isPremium={isPremium}
-            fulgte={fulgte}
+            fulgte={personlig.mock ? personlig.fulgte : fulgte}
             toggleFølg={toggleFølg}
             onLogin={()=>setScreen("bruker-login")}
             onKrevInnlogging={beOmInnlogging}
-            dataLastet={dataLastet}
+            dataLastet={personlig.mock ? true : dataLastet}
             user={user}
             minFylke={user?.fylkesnr}
             onVelgFylke={(fnr)=>{setUser(u=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}
             onVelgFag={velgFag}
+            forslag={personlig.vis ? personligForslag : null}
+            mock={personlig.mock}
+            onVarsler={apneVarslingsvalg}
           />
         )}
         {view==="varsler" && (
+          <>
+          {personligStripe("varsler")}
           <BrukerVarsler
             fulgte={fulgte}
             toggleFølg={toggleFølg}
@@ -1105,6 +1174,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             user={user}
             onKrevInnlogging={beOmInnlogging}
           />
+          </>
         )}
         {view==="kilder" && <KildeHelseSide onBack={()=>gå("forside")}/>}
         {view==="ordliste" && <OrdlisteSide />}
@@ -1123,14 +1193,31 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             onSlettSok={slettSokMinSide}
             onToggleFolg={toggleFølg}
             onLogin={()=>setScreen("bruker-login")}
+            onGå={gå}
+            onÅpne={(sak, fane)=>{ setMinSak(sak); setMinFane(fane); }}
+            kampanjer={personlig.kampanjer}
+            apneOppsett={apneOppsett}
+            onOppsettApnet={()=>setApneOppsett(false)}
+          />
+        )}
+        {view==="minside" && minSak && (
+          <SaksModal
+            sak={minSak}
+            startTab={minFane}
+            kampanjer={personlig.kampanjer}
+            user={user}
+            onKrevInnlogging={beOmInnlogging}
+            onClose={()=>setMinSak(null)}
+            onTilMinSide={()=>setMinSak(null)}
+            onVarsler={()=>{ setMinSak(null); setApneOppsett(true); }}
           />
         )}
         {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&(
           <div className="avis-wrap avis-annet">
             {annenTittel&&<h1>{annenTittel}</h1>}
             {view==="historikk" && <SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
-            {view==="kampanjer" && <BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user} onKrevInnlogging={beOmInnlogging}/>}
-            {view==="mobiliser" && <BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer} onKrevInnlogging={beOmInnlogging}/>}
+            {view==="kampanjer" && <>{personligStripe("innspill")}<BrukerKampanjer kampanjerData={kampanjer} varslerData={aktiveVarsler} user={user} onKrevInnlogging={beOmInnlogging}/></>}
+            {view==="mobiliser" && <>{personligStripe("mobiliser")}<BrukerMobiliser loggAktivitet={loggAktivitet} user={user} varslerData={aktiveVarsler} kampanjerData={kampanjer} onKrevInnlogging={beOmInnlogging}/></>}
             {view==="profil" && (
               <MinProfilSide
                 user={user}
@@ -1368,12 +1455,26 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
   );
 }
 
-function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true,minFylke=null,onVelgFylke=()=>{},user=null,onVelgFag=(_id: string)=>{},onKrevInnlogging=()=>{}}:{setView:any;setShowPremium:any;isPremium:any;fulgte?:any[];toggleFølg?:any;onLogin?:any;varsler?:any[];kampanjer?:any[];dataLastet?:boolean;minFylke?:any;onVelgFylke?:any;user?:any;onVelgFag?:(id:string)=>void;onKrevInnlogging?:(grunn:string)=>void}) {
+function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true,minFylke=null,onVelgFylke=()=>{},user=null,onVelgFag=(_id: string)=>{},onKrevInnlogging=()=>{},forslag=null,mock=false,onVarsler=()=>{}}:{setView:any;setShowPremium:any;isPremium:any;fulgte?:any[];toggleFølg?:any;onLogin?:any;varsler?:any[];kampanjer?:any[];dataLastet?:boolean;minFylke?:any;onVelgFylke?:any;user?:any;onVelgFag?:(id:string)=>void;onKrevInnlogging?:(grunn:string)=>void;forslag?:any;mock?:boolean;onVarsler?:()=>void}) {
   const [valgt,setValgt]=useState<any>(null);
   const [fane,setFane]=useState("info");
   void setShowPremium; void isPremium; void onLogin; void minFylke; void onVelgFylke;
   return (
     <>
+      {mock && <p className="minside-forslag avis-wrap">Forslag til godkjenning. Eksemplene er ikke ekte saker, og ingenting lagres.</p>}
+      {forslag && (
+        <PersonligFelt
+          forslag={forslag}
+          her="forside"
+          onGå={setView}
+          onVarsler={onVarsler}
+          onÅpne={(id, tab)=>{
+            const sak = varsler.find((s: {id: string|number}) => String(s.id) === String(id));
+            if (sak) { setFane(tab); setValgt(sak); }
+          }}
+          onFolg={toggleFølg}
+        />
+      )}
       <ForsideAvis
         saker={varsler}
         lastet={dataLastet}
@@ -1384,8 +1485,20 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
         onVelgFag={onVelgFag}
         kampanjeAntall={kampanjer.length}
         onKampanjer={()=>setView("kampanjer")}
+        foretrekk={forslag ? [...forslag.saker.map((s: {id: string|number}) => s.id), ...fulgte] : undefined}
       />
-      {valgt&&<SaksModal sak={valgt} startTab={fane} onClose={()=>setValgt(null)} kampanjer={kampanjer} user={user} onKrevInnlogging={onKrevInnlogging}/>}
+      {valgt&&(
+        <SaksModal
+          sak={valgt}
+          startTab={fane}
+          onClose={()=>setValgt(null)}
+          kampanjer={kampanjer}
+          user={user}
+          onKrevInnlogging={onKrevInnlogging}
+          onTilMinSide={()=>{ setValgt(null); setView("minside"); }}
+          onVarsler={()=>{ setValgt(null); onVarsler(); }}
+        />
+      )}
     </>
   );
 }
@@ -1455,7 +1568,7 @@ function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevIn
   );
 }
 
-function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInnlogging}: {sak:any; onClose:any; kampanjer?:any; startTab?:string; user?:any; onKrevInnlogging?:(grunn:string)=>void}) {
+function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInnlogging,onTilMinSide,onVarsler}: {sak:any; onClose:any; kampanjer?:any; startTab?:string; user?:any; onKrevInnlogging?:(grunn:string)=>void; onTilMinSide?:()=>void; onVarsler?:()=>void}) {
   const [tab,setTab]=useState(startTab||"info");
   useEffect(()=>{ setTab(startTab||"info"); },[sak?.id, startTab]);
   useEffect(()=>{
@@ -1512,6 +1625,12 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
         valgt={tab}
         onVelg={setTab}
       />
+      {(onTilMinSide || onVarsler) && (
+        <div className="kv-klynge">
+          {onTilMinSide && <Knapp variant="stille" onClick={onTilMinSide}>Tilbake til Min side</Knapp>}
+          {onVarsler && <Knapp variant="stille" onClick={onVarsler}>Varslingsvalg</Knapp>}
+        </div>
+      )}
       {tab==="info"&&(
         <div className="kv-stakk">
           <p className="kv-brod"><MerketTekst deler={merket[1]} /></p>

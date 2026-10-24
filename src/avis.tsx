@@ -339,10 +339,15 @@ function sammenlignForside(a: Sak, b: Sak, nå: Date) {
   return (b.opprettet || "").localeCompare(a.opprettet || "");
 }
 
-function velgHovedsak(saker: Sak[], nå: Date) {
+function velgHovedsak(saker: Sak[], nå: Date, foretrekk?: Array<string | number>) {
   const kan = saker.filter((s) => vurderSak(s, nå).handlingsrettet);
   const grunnlag = kan.length > 0 ? kan : saker;
   if (grunnlag.length === 0) return null;
+  if (foretrekk && foretrekk.length > 0) {
+    const sett = new Set(foretrekk.map(String));
+    const mine = grunnlag.filter((s) => sett.has(String(s.id)));
+    if (mine.length > 0) return [...mine].sort((a, b) => sammenlignForside(a, b, nå))[0];
+  }
   return [...grunnlag].sort((a, b) => sammenlignForside(a, b, nå))[0];
 }
 
@@ -401,6 +406,7 @@ export function ForsideAvis({
   onVelgFag,
   kampanjeAntall,
   onKampanjer,
+  foretrekk,
 }: {
   saker: Sak[];
   lastet: boolean;
@@ -411,9 +417,10 @@ export function ForsideAvis({
   onVelgFag?: (id: string) => void;
   kampanjeAntall: number;
   onKampanjer: () => void;
+  foretrekk?: Array<string | number>;
 }) {
   const nå = new Date();
-  const lead = velgHovedsak(saker, nå);
+  const lead = velgHovedsak(saker, nå, foretrekk);
   const side = ogsaaDenneUka(saker, lead, nå);
   const følger = lead ? fulgte.includes(lead.id) : false;
   const leadV = lead ? vurderSak(lead, nå) : null;

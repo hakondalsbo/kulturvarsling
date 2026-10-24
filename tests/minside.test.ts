@@ -5,7 +5,8 @@ import { sakTrefferAbonnement, sokTrefferSak, mottakereForSak } from "../src/pre
 import { KULTURPOLITIKK_VALGBART } from "../src/minside/kulturpolitikk.ts";
 import { kategorierForMeny } from "../src/minside/kategorier.ts";
 import { delMinSide, TOMT_VALG } from "../src/minside/filter.ts";
-import { DEMO_DAG, DEMO_FULGTE, DEMO_SAKER, DEMO_SOK, DEMO_VALG } from "../src/minside/demo.ts";
+import { DEMO_DAG, DEMO_FULGTE, DEMO_KAMPANJER, DEMO_SAKER, DEMO_SOK, DEMO_VALG } from "../src/minside/demo.ts";
+import { forslagTilDeg } from "../src/minside/forslag.ts";
 
 const oslo = {
   kategori: "musikk",
@@ -91,6 +92,25 @@ test("demo-feeden viser mobiliser, handling, frist, strøm og fulgt sak", () => 
   assert.equal(deler.alle.some((s) => s.id === "bergen-dans"), false);
   const tom = delMinSide(DEMO_SAKER, TOMT_VALG, [], [], DEMO_DAG);
   assert.equal(tom.alle.length, 0);
+});
+
+test("forslag til deg bruker sted, fag, fulgt sak og felles innspill", () => {
+  const f = forslagTilDeg(DEMO_VALG, DEMO_SAKER, DEMO_FULGTE, DEMO_SOK, DEMO_KAMPANJER, DEMO_DAG, "forside");
+  assert.ok(f.folger.includes("Oslo kommune"));
+  assert.ok(f.folger.includes("Musikk"));
+  assert.ok(f.folger.includes("Familie- og kulturkomiteen"));
+  assert.ok(f.folger.some((x) => x.includes("Kulturskole")));
+  assert.equal(f.folger.some((x) => /kulturpolitikk/i.test(x)), false);
+  assert.deepEqual(f.saker.map((s) => s.id), ["oslo-musikk", "famkult-horing"]);
+  assert.equal(f.saker[0].kampanjeTittel, DEMO_KAMPANJER[0].tittel);
+  assert.equal(f.saker[1].kampanjeTittel, null);
+  assert.equal(f.saker.some((s) => String(s.id).includes("bergen")), false);
+  assert.deepEqual(f.snarveier.map((s) => s.id), ["forside", "minside", "varsler", "mobiliser", "innspill"]);
+  const tom = forslagTilDeg(TOMT_VALG, DEMO_SAKER, [], [], [], DEMO_DAG, "minside");
+  assert.equal(tom.saker.length, 0);
+  assert.match(tom.setning, /Velg sted og fag/);
+  const tekst = readFileSync("src/minside/Personlig.tsx", "utf8") + readFileSync("src/minside/forslag.ts", "utf8");
+  assert.doesNotMatch(tekst, /premium|stripe|på vanlig norsk/i);
 });
 
 test("migrasjonen gir kolonne-grant, RLS og ingen anon-skriving", () => {

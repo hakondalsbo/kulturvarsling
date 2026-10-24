@@ -9,8 +9,11 @@ import {
   DEMO_SAKER,
   DEMO_SOK,
   DEMO_VALG,
+  erUtfyltDemo,
   lesDemo,
 } from "./demo.ts";
+import { forslagTilDeg, personligKilde, type Forslag, type KampanjeRef } from "./forslag.ts";
+import { PersonligFelt } from "./Personlig.tsx";
 import {
   apentAbonnement,
   delMinSide,
@@ -42,6 +45,11 @@ export type MinSideProps = {
   onSlettSok?: (id: string) => Promise<boolean> | boolean;
   onToggleFolg?: (id: string | number) => void;
   onLogin?: () => void;
+  onGå?: (id: "forside" | "minside" | "mobiliser" | "kampanjer") => void;
+  onÅpne?: (sak: MinSak, fane: "horingssvar" | "kampanje" | "mobiliser" | "info") => void;
+  kampanjer?: KampanjeRef[];
+  apneOppsett?: boolean;
+  onOppsettApnet?: () => void;
 };
 
 function valgFra(user: MinSideProps["user"]): MinValg {
@@ -111,21 +119,27 @@ export function MinSide({
   onSlettSok,
   onToggleFolg,
   onLogin,
+  onGå,
+  onÅpne,
+  kampanjer = [],
+  apneOppsett = false,
+  onOppsettApnet,
 }: MinSideProps) {
   const demo = lesDemo();
   const erDemo = demo.modus != null;
+  const utfylt = erUtfyltDemo(demo.modus);
   const kanLagre = !!user?.id && !erDemo;
   const [valg, setValg] = useState<MinValg>(() => {
-    if (demo.modus === "side") return DEMO_VALG;
+    if (utfylt) return DEMO_VALG;
     if (demo.modus === "tom" || demo.modus === "oppsett") return { ...TOMT_VALG };
     return valgFra(user);
   });
-  const [sokListe, setSokListe] = useState<LagretSok[]>(() => (demo.modus === "side" ? DEMO_SOK : []));
-  const [fulgt, setFulgt] = useState<string[]>(() => (demo.modus === "side" ? [...DEMO_FULGTE] : fulgte.map(String)));
+  const [sokListe, setSokListe] = useState<LagretSok[]>(() => (utfylt ? DEMO_SOK : []));
+  const [fulgt, setFulgt] = useState<string[]>(() => (utfylt ? [...DEMO_FULGTE] : fulgte.map(String)));
   const [steg, setSteg] = useState<1 | 2 | 3>(demo.steg);
   const [visOppsett, setVisOppsett] = useState(() => {
-    if (demo.modus === "oppsett") return true;
-    if (demo.modus === "side" || demo.modus === "tom") return false;
+    if (demo.endre || demo.modus === "oppsett") return true;
+    if (utfylt || demo.modus === "tom") return false;
     const start = valgFra(user);
     return !user?.minsideKlar && !harAvgrensning(start) && !user?.varslerAktive && fulgte.length === 0;
   });
@@ -148,6 +162,13 @@ export function MinSide({
   }, [erDemo, sokLastet, brukerId]);
 
   useEffect(() => {
+    if (!apneOppsett) return;
+    setSteg(1);
+    setVisOppsett(true);
+    onOppsettApnet?.();
+  }, [apneOppsett, onOppsettApnet]);
+
+  useEffect(() => {
     overskrift.current?.focus();
   }, [steg, visOppsett]);
 
@@ -159,6 +180,27 @@ export function MinSide({
   );
   const steder = useMemo(() => filtrerSteder(stedSok), [stedSok]);
   const fag = kategorierForMeny();
+  const kilde = personligKilde({
+    userId: erDemo ? "demo" : user?.id,
+    valg,
+    saker,
+    fulgte: fulgt,
+    sok: sokListe,
+    kampanjer,
+  }, erDemo ? demo.modus : null);
+  const forslag = useMemo(
+    () => forslagTilDeg(kilde.valg, kilde.saker, kilde.fulgte, kilde.sok, kilde.kampanjer, kilde.nå ?? nå, "minside"),
+    [kilde, nå],
+  );
+
+  function apneSak(sak: MinSak, fane: "horingssvar" | "kampanje" | "mobiliser" | "info") {
+    onÅpne?.(sak, fane);
+  }
+
+  function apneForslag(sakId: string | number, fane: "horingssvar" | "kampanje" | "mobiliser") {
+    const sak = kilde.saker.find((s) => String(s.id) === String(sakId));
+    if (sak) apneSak(sak, fane);
+  }
 
   async function lagre(neste: MinValg, ferdig: boolean) {
     setValg(neste);
@@ -281,6 +323,8 @@ export function MinSide({
             sokTekst={sokTekst}
             kanLagre={kanLagre}
             apent={apentAbonnement(valg)}
+            forslag={forslag}
+            kampanjeIds={kilde.kampanjer.map((k) => String(k.sakId))}
             onSokNavn={setSokNavn}
             onSokTekst={setSokTekst}
             onLagreSok={() => void lagreSok()}
@@ -291,6 +335,9 @@ export function MinSide({
             onFolg={folg}
             onEndre={() => { setSteg(1); setVisOppsett(true); }}
             onLogin={erDemo ? undefined : onLogin}
+            onGå={onGå}
+            onÅpne={apneSak}
+            onForslag={apneForslag}
           />
         )}
       </div>
@@ -443,6 +490,11 @@ function Dashboard({
   onFolg,
   onEndre,
   onLogin,
+  forslag,
+  kampanjeIds,
+  onGå,
+  onÅpne,
+  onForslag,
 }: {
   deler: ReturnType<typeof delMinSide>;
   sokListe: LagretSok[];
@@ -453,6 +505,8 @@ function Dashboard({
   sokTekst: string;
   kanLagre: boolean;
   apent: boolean;
+  forslag: Forslag;
+  kampanjeIds: string[];
   onSokNavn: (v: string) => void;
   onSokTekst: (v: string) => void;
   onLagreSok: () => void;
@@ -460,10 +514,20 @@ function Dashboard({
   onFolg: (id: string | number) => void;
   onEndre: () => void;
   onLogin?: () => void;
+  onGå?: (id: "forside" | "minside" | "mobiliser" | "kampanjer") => void;
+  onÅpne: (sak: MinSak, fane: "horingssvar" | "kampanje" | "mobiliser" | "info") => void;
+  onForslag: (sakId: string | number, fane: "horingssvar" | "kampanje" | "mobiliser") => void;
 }) {
   const tom = deler.alle.length === 0;
   return (
     <>
+      <PersonligFelt
+        forslag={forslag}
+        her="minside"
+        onGå={(id) => onGå?.(id)}
+        onVarsler={onEndre}
+        onÅpne={onForslag}
+      />
       <div className="minside-rad">
         <Knapp variant="linje" onClick={onEndre}>Endre valg</Knapp>
         {!kanLagre && onLogin ? <Knapp variant="stille" onClick={onLogin}>Logg inn for å lagre</Knapp> : null}
@@ -482,21 +546,27 @@ function Dashboard({
         </section>
       ) : (
         <>
-          <Seksjon id="mobiliser" tittel="Mobiliser nå" tom="Ingen saker å mobilisere på nå." saker={deler.mobiliser} nå={nå} fulgt={fulgt} onFolg={onFolg} />
-          <Seksjon id="handling" tittel="Du kan gjøre noe" tom="Ingen andre saker med handling mulig." saker={deler.handling} nå={nå} fulgt={fulgt} onFolg={onFolg} />
-          <Seksjon id="frister" tittel="Kommende frister" tom="Ingen flere frister i det du følger." saker={deler.frister} nå={nå} fulgt={fulgt} onFolg={onFolg} />
-          <Seksjon id="strom" tittel="Strømmen" tom="Strømmen er tom. Alt som haster, ligger over." saker={deler.strom} nå={nå} fulgt={fulgt} onFolg={onFolg} />
+          <Seksjon id="mobiliser" tittel="Mobiliser nå" tom="Ingen saker å mobilisere på nå." saker={deler.mobiliser} nå={nå} fulgt={fulgt} kampanjeIds={kampanjeIds} onFolg={onFolg} onÅpne={onÅpne} />
+          <Seksjon id="handling" tittel="Du kan gjøre noe" tom="Ingen andre saker med handling mulig." saker={deler.handling} nå={nå} fulgt={fulgt} kampanjeIds={kampanjeIds} onFolg={onFolg} onÅpne={onÅpne} />
+          <Seksjon id="frister" tittel="Kommende frister" tom="Ingen flere frister i det du følger." saker={deler.frister} nå={nå} fulgt={fulgt} kampanjeIds={kampanjeIds} onFolg={onFolg} onÅpne={onÅpne} />
+          <Seksjon id="strom" tittel="Strømmen" tom="Strømmen er tom. Alt som haster, ligger over." saker={deler.strom} nå={nå} fulgt={fulgt} kampanjeIds={kampanjeIds} onFolg={onFolg} onÅpne={onÅpne} />
           <section aria-labelledby="minside-fulgte">
             <h2 id="minside-fulgte">Saker du følger</h2>
             {deler.fulgte.length === 0 ? <p className="minside-tom">Du følger ingen enkeltsaker.</p> : (
               <ul className="minside-lagret">
                 {deler.fulgte.map((sak) => (
                   <li key={sak.id}>
-                    <span>
-                      <Rollemerke sak={tilSak(sak)} nå={nå} medDetalj={false} />
-                      {sak.tittel}
-                    </span>
-                    <span className="minside-status">{statusTekst(sak.status)} · {datoLang(sak.frist)}</span>
+                    <div className="minside-fulgt">
+                      <span>
+                        <Rollemerke sak={tilSak(sak)} nå={nå} medDetalj={false} />
+                        {sak.tittel}
+                      </span>
+                      <span className="minside-status">{statusTekst(sak.status)} · {datoLang(sak.frist)}</span>
+                      <div className="minside-rad">
+                        <Knapp variant="stille" onClick={() => onÅpne(sak, "horingssvar")}>Skriv innspill</Knapp>
+                        {kampanjeIds.includes(String(sak.id)) ? <Knapp variant="stille" onClick={() => onÅpne(sak, "kampanje")}>Støtt innspill</Knapp> : null}
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -535,7 +605,9 @@ function Seksjon({
   saker,
   nå,
   fulgt,
+  kampanjeIds,
   onFolg,
+  onÅpne,
 }: {
   id: string;
   tittel: string;
@@ -543,13 +615,23 @@ function Seksjon({
   saker: MinSak[];
   nå: Date;
   fulgt: string[];
+  kampanjeIds: string[];
   onFolg: (id: string | number) => void;
+  onÅpne: (sak: MinSak, fane: "horingssvar" | "kampanje" | "mobiliser" | "info") => void;
 }) {
   return (
     <section aria-labelledby={`minside-${id}`}>
       <h2 id={`minside-${id}`}>{tittel}</h2>
       {saker.length === 0 ? <p className="minside-tom">{tom}</p> : saker.map((sak) => (
-        <SakKort key={sak.id} sak={sak} nå={nå} folger={fulgt.includes(String(sak.id))} onFolg={onFolg} />
+        <SakKort
+          key={sak.id}
+          sak={sak}
+          nå={nå}
+          folger={fulgt.includes(String(sak.id))}
+          harInnspill={kampanjeIds.includes(String(sak.id))}
+          onFolg={onFolg}
+          onÅpne={onÅpne}
+        />
       ))}
     </section>
   );
@@ -559,12 +641,16 @@ function SakKort({
   sak,
   nå,
   folger,
+  harInnspill,
   onFolg,
+  onÅpne,
 }: {
   sak: MinSak;
   nå: Date;
   folger: boolean;
+  harInnspill: boolean;
   onFolg: (id: string | number) => void;
+  onÅpne: (sak: MinSak, fane: "horingssvar" | "kampanje" | "mobiliser" | "info") => void;
 }) {
   const handling = sak.handling === "handling_mulig";
   const kilde = typeof sak.kilde === "string" && sak.kilde.startsWith("http") ? sak.kilde : null;
@@ -579,6 +665,9 @@ function SakKort({
         <span className={sak.frist ? "frist" : undefined}>{datoLang(sak.frist)}</span>
       </p>
       <div className="minside-rad">
+        <Knapp onClick={() => onÅpne(sak, "horingssvar")}>Skriv innspill</Knapp>
+        {harInnspill ? <Knapp variant="linje" onClick={() => onÅpne(sak, "kampanje")}>Støtt innspill</Knapp> : null}
+        {handling ? <Knapp variant="stille" onClick={() => onÅpne(sak, "mobiliser")}>Mobiliser</Knapp> : null}
         <Knapp variant={folger ? "linje" : "stille"} aria-pressed={folger} onClick={() => onFolg(sak.id)}>
           {folger ? "Følger" : "Følg saken"}
         </Knapp>

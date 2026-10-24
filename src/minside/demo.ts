@@ -135,14 +135,46 @@ export const DEMO_SAKER: MinSak[] = [
   },
 ];
 
-export type DemoModus = "oppsett" | "side" | "tom";
+export type DemoKampanje = {
+  id: string;
+  tittel: string;
+  beskrivelse: string;
+  kategori: string;
+  sakId: string;
+  sig: number;
+  mal: number;
+  dager: number;
+  tags: string[];
+};
 
-export function lesDemo(): { modus: DemoModus | null; steg: 1 | 2 | 3 } {
-  if (typeof window === "undefined") return { modus: null, steg: 1 };
+/** Felles innspill som treffer demosaken i Oslo. Ikke en ekte kampanje. */
+export const DEMO_KAMPANJER: DemoKampanje[] = [
+  {
+    id: "kamp-oslo",
+    tittel: "Behold tilskuddet til frie grupper i Oslo",
+    beskrivelse: "Felles innspill før bystyret behandler kulturbudsjettet.",
+    kategori: "musikk",
+    sakId: "oslo-musikk",
+    sig: 128,
+    mal: 500,
+    dager: 4,
+    tags: ["Oslo", "musikk"],
+  },
+];
+
+export type DemoModus = "oppsett" | "side" | "tom" | "forside";
+
+export function lesDemo(): { modus: DemoModus | null; steg: 1 | 2 | 3; endre: boolean } {
+  if (typeof window === "undefined") return { modus: null, steg: 1, endre: false };
   const q = new URLSearchParams(window.location.search);
   const demo = q.get("demo");
-  const modus = demo === "oppsett" || demo === "side" || demo === "tom" ? demo : null;
+  const modus = demo === "oppsett" || demo === "side" || demo === "tom" || demo === "forside" ? demo : null;
   const n = Number(q.get("steg"));
   const steg = n === 2 || n === 3 ? n : 1;
-  return { modus, steg };
+  return { modus, steg, endre: q.get("endre") === "1" };
+}
+
+/** side og forside er samme innloggede eksempel, bare ulike startsteder. */
+export function erUtfyltDemo(modus: DemoModus | null): boolean {
+  return modus === "side" || modus === "forside";
 }

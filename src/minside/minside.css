@@ -144,6 +144,11 @@
   overflow-wrap: anywhere;
 }
 
+.minside-fulgt {
+  min-width: 0;
+  flex: 1;
+}
+
 .minside-status {
   display: flex;
   flex-wrap: wrap;
@@ -154,9 +159,83 @@
   font: 500 14px/1.4 var(--sans);
 }
 
+.personlig {
+  padding: 28px 0 8px;
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+.personlig-ark {
+  max-width: 720px;
+}
+
+.personlig h2 {
+  font: 500 32px/1.2 var(--serif);
+  margin: 0 0 10px;
+  color: var(--tekst);
+}
+
+.personlig-setning,
+.personlig-meta {
+  font: 400 18px/1.5 var(--serif);
+  color: var(--brod);
+  max-width: 62ch;
+  margin: 0 0 16px;
+}
+
+.personlig-meta {
+  font: 500 14px/1.45 var(--sans);
+  color: var(--dempet);
+  margin: 0 0 8px;
+}
+
+.personlig-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.personlig-chips li {
+  font: 500 14px/1.3 var(--sans);
+  color: var(--granitt);
+  background: var(--granitt-lys);
+  padding: 6px 10px;
+}
+
+.personlig-snarveier {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0 0 8px;
+}
+
+.personlig-saker {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.personlig-sak {
+  padding: 16px 0 8px;
+  border-top: 1px solid var(--linje);
+  min-width: 0;
+}
+
+.personlig-sak h3 {
+  font: 500 22px/1.3 var(--serif);
+  margin: 0 0 6px;
+  color: var(--tekst);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 720px) {
   .minside h1 { font-size: 34px; }
   .minside h2 { font-size: 24px; }
+  .personlig h2 { font-size: 28px; }
   .minside-rad .kv-knapp:not(.stille) { width: 100%; }
   .minside-sok .kv-knapp { width: 100%; }
+  .personlig-sak .kv-knapp:not(.stille) { width: 100%; }
 }
