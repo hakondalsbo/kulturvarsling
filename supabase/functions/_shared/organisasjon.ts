@@ -5,6 +5,7 @@ export const behandlingsansvarlig = "KULTURVARSLING AS";
 
 export const orgnr = "936 282 881";
 export const poststed = "Oslo";
+export const PERSONVERN_URL = "https://kulturvarsling.no/personvern";
 
 export const STANDARD_AVSENDER_EPOST = "nyhetsbrev@kulturvarsling.no";
 

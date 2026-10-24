@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import {
+  BEKREFTELSE_PAUSE_MS,
+  FORHANDSVISNING_TOKEN,
+  HISTORISK_VERSJON,
   KILDE_GAMMEL_LISTE,
+  MAKS_BEKREFTELSER_PER_KALL,
   PERSONVERN_VERSJON,
   SAMTYKKE_VERSJON,
   bekreftelsesutfall,
@@ -11,11 +15,16 @@ import {
   erOneClick,
   erUuid,
   dryRunLogg,
+  feltVedBekreftelse,
   filtrerMottakere,
+  fyllLanseringsmal,
   hemmeligheterStemmer,
   lagEpost,
+  lesBekreftelsesOppdrag,
   lesToken,
   loggNarResendMangler,
+  malErUtkast,
+  parseLanseringsmal,
   MELDING_VENTENDE_BEKREFTELSE,
   listUnsubscribeHeaders,
   opphavTillatt,
@@ -25,13 +34,16 @@ import {
   svarAlleredeRegistrert,
   svarEtterLagretPamelding,
   svarEtterSkriving,
+  velgLanseringsmottakere,
   velgVentendeBekreftelser,
   utsendingErAktiv,
+  utsendelsesBeslutning,
   utsendelsesModus,
   validerPamelding,
 } from "./samtykke.ts";
 import { join } from "node:path";
-import { avsender, behandlingsansvarlig, bunntekst, lesAvsender, orgnr, poststed } from "./organisasjon.ts";
+import { PERSONVERN_URL, avsender, behandlingsansvarlig, bunntekst, lesAvsender, orgnr, poststed } from "./organisasjon.ts";
+import { LANSERING_MAL } from "../send-bekreftelser/lansering.mal.ts";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 const LEVERT = "delivered@resend.dev";
@@ -511,6 +523,234 @@ test("manuell bekreftelse tar bare ventende nye rader og er ikke en tidsplan", (
   assert.match(sql, /'ikke_konfigurert'/);
   assert.doesNotMatch(sql, /cron\.schedule/);
   assert.doesNotMatch(sql, /bekreftelse_sendt_at\s*=\s*now\(\)/i);
+  assert.doesNotMatch(sql, /update\s+(public\.)?pamelding/i);
+});
+
+test("lanseringsmail er tørrkjør til bryteren er på, og tom liste er aldri alle", () => {
+  assert.equal(lesBekreftelsesOppdrag(null).type, "avvist");
+  assert.equal(lesBekreftelsesOppdrag({}).type, "avvist");
+  assert.equal(lesBekreftelsesOppdrag({ bekreft: "send" }).type, "avvist");
+  assert.equal(lesBekreftelsesOppdrag({ maal: "lansering", til: "" }).type, "avvist");
+  assert.equal(lesBekreftelsesOppdrag({ maal: "lansering", til: [] }).type, "avvist");
+  assert.equal(lesBekreftelsesOppdrag({ maal: "lansering", mottakere: [] }).type, "avvist");
+  assert.equal(lesBekreftelsesOppdrag({ maal: "nye", mottakere: [LEVERT] }).type, "avvist");
+  assert.equal(lesBekreftelsesOppdrag({ maal: "lansering" }).type, "torrkjor");
+  assert.deepEqual(lesBekreftelsesOppdrag({ maal: "lansering", til: "  Delivered@Resend.DEV ", bekreft: "send" }), {
+    type: "test",
+    maal: "lansering",
+    til: LEVERT,
+  });
+  assert.deepEqual(lesBekreftelsesOppdrag({ maal: "nye", bekreft: "send" }), { type: "alle", maal: "nye" });
+
+  const av = utsendelsesBeslutning({
+    oppdrag: { type: "alle", maal: "lansering" },
+    aktiv: false,
+    utkast: true,
+    antall: 110,
+  });
+  assert.equal(av.send, false);
+  assert.match(av.grunn, /UTSENDING_AKTIV er av/);
+  const utkastStopp = utsendelsesBeslutning({
+    oppdrag: { type: "alle", maal: "lansering" },
+    aktiv: true,
+    utkast: true,
+    antall: 110,
+  });
+  assert.equal(utkastStopp.send, false);
+  assert.match(utkastStopp.grunn, /UTKAST/);
+  const en = utsendelsesBeslutning({
+    oppdrag: { type: "test", maal: "lansering", til: LEVERT },
+    aktiv: true,
+    utkast: true,
+    antall: 0,
+  });
+  assert.equal(en.send, true);
+  assert.equal(en.sandkasse, true);
+  const enEkte = utsendelsesBeslutning({
+    oppdrag: { type: "test", maal: "lansering", til: LEVERT },
+    aktiv: true,
+    utkast: false,
+    antall: 1,
+  });
+  assert.equal(enEkte.send, true);
+  assert.equal(enEkte.sandkasse, false);
+  assert.equal(utsendelsesBeslutning({
+    oppdrag: { type: "alle", maal: "lansering" },
+    aktiv: true,
+    utkast: false,
+    antall: MAKS_BEKREFTELSER_PER_KALL + 1,
+  }).send, false);
+
+  const avToken = "22222222-2222-4222-8222-222222222222";
+  const valgt = velgLanseringsmottakere([
+    {
+      id: 2,
+      epost: "Delivered@Resend.dev",
+      avmeldings_token: null,
+      bekreftelses_token: null,
+      samtykke_tekst_versjon: HISTORISK_VERSJON,
+      bekreftet_at: null,
+      avmeldt_at: null,
+      bekreftelse_sendt_at: null,
+    },
+    {
+      id: 1,
+      epost: ` ${LEVERT} `,
+      avmeldings_token: avToken,
+      bekreftelses_token: TOKEN,
+      samtykke_tekst_versjon: HISTORISK_VERSJON,
+      bekreftet_at: null,
+      avmeldt_at: null,
+      bekreftelse_sendt_at: null,
+    },
+    {
+      id: 3,
+      epost: "ny@example.no",
+      avmeldings_token: avToken,
+      bekreftelses_token: TOKEN,
+      samtykke_tekst_versjon: SAMTYKKE_VERSJON,
+      bekreftet_at: null,
+      avmeldt_at: null,
+      bekreftelse_sendt_at: null,
+    },
+    {
+      id: 4,
+      epost: "av@example.no",
+      avmeldings_token: avToken,
+      bekreftelses_token: null,
+      samtykke_tekst_versjon: HISTORISK_VERSJON,
+      bekreftet_at: null,
+      avmeldt_at: "t",
+      bekreftelse_sendt_at: null,
+    },
+    {
+      id: 5,
+      epost: "ferdig@example.no",
+      avmeldings_token: avToken,
+      bekreftelses_token: TOKEN,
+      samtykke_tekst_versjon: HISTORISK_VERSJON,
+      bekreftet_at: "t",
+      avmeldt_at: null,
+      bekreftelse_sendt_at: null,
+    },
+  ], { eposter: [] });
+  assert.deepEqual(valgt.map((rad) => rad.epost), [LEVERT]);
+  assert.equal(valgt[0].id, 1);
+  assert.deepEqual(valgt[0].ovrigeIder, [2]);
+  assert.equal(velgLanseringsmottakere(valgt.map((rad) => ({
+    id: rad.id,
+    epost: rad.epost,
+    avmeldings_token: rad.avmeldings_token,
+    bekreftelses_token: rad.bekreftelses_token,
+    samtykke_tekst_versjon: HISTORISK_VERSJON,
+    bekreftet_at: null,
+    avmeldt_at: null,
+    bekreftelse_sendt_at: null,
+  })), { eposter: new Set([LEVERT]) }).length, 0);
+
+  const gammel = {
+    id: 8,
+    epost: "gammel-liste@example.no",
+    avmeldings_token: avToken,
+    samtykke_gitt_at: null,
+    bekreftet_at: null,
+    avmeldt_at: null,
+  };
+  assert.equal(planleggUtsendelse([gammel]).mottakere.length, 0);
+  assert.equal(planleggUtsendelse([{ ...gammel, bekreftet_at: "t" }]).mottakere.length, 0);
+  assert.deepEqual(planleggUtsendelse([{
+    ...gammel,
+    id: 9,
+    epost: LEVERT,
+    samtykke_gitt_at: "t",
+    bekreftet_at: "t",
+  }]).mottakere.map((rad) => rad.epost), [LEVERT]);
+
+  const naa = "2026-10-20T16:00:00.000Z";
+  assert.deepEqual(feltVedBekreftelse({ samtykke_gitt_at: null }, naa), {
+    bekreftet_at: naa,
+    avmeldt_at: null,
+    samtykke_gitt_at: naa,
+  });
+  assert.equal(feltVedBekreftelse({ samtykke_gitt_at: "2026-03-15T00:00:00.000Z" }, naa).samtykke_gitt_at, "2026-03-15T00:00:00.000Z");
+  assert.match(readFileSync("supabase/functions/meld-pa/index.ts", "utf8"), /feltVedBekreftelse\(/);
+
+  assert.equal(malErUtkast(LANSERING_MAL), true);
+  assert.match(LANSERING_MAL, /UTKAST – fjernes først når Håkon har godkjent teksten og testmailen/);
+  const mal = parseLanseringsmal(LANSERING_MAL);
+  assert.equal("feil" in mal, false);
+  if ("feil" in mal) return;
+  assert.equal(mal.emne, "Kulturvarsling er åpnet");
+  assert.equal(mal.forhandsvisning, "Du meldte deg på ventelisten vår. Nå er vi i gang.");
+  for (const setning of [
+    "Hei!",
+    "Du får denne e-posten fordi du meldte deg på ventelisten til Kulturvarsling en gang mellom 15. mars og 19. oktober 2026. Du ba om å få beskjed når tjenesten åpnet, og nå er den i gang på kulturvarsling.no.",
+    "Kulturvarsling følger med på Stortinget, regjeringen, kommunene og Sametinget og plukker ut sakene som angår kulturlivet. Det kan være høringer, budsjett, tilskudd og vedtak.",
+    "Trykk på «Bekreft påmelding» hvis du vil ha et ukesbrev med de viktigste sakene og varsler når en frist nærmer seg.",
+    "Hvis du ikke bekrefter, skjer det ingenting. Du får ingen flere e-poster fra oss, og adressen din blir ikke brukt til noe annet.",
+    "Hilsen\nHåkon Dalsbø\nKulturvarsling",
+  ]) {
+    assert.equal(mal.tekst.includes(setning), true, setning.slice(0, 24));
+  }
+  const side = "https://www.kulturvarsling.no/avmelding?t=" + TOKEN;
+  const funksjon = "https://example.test/functions/v1/avmeld?t=" + TOKEN;
+  const bekreftLenke = "https://www.kulturvarsling.no/bekreft?t=" + FORHANDSVISNING_TOKEN;
+  const fylt = fyllLanseringsmal(mal, {
+    bekreftelseslenke: bekreftLenke,
+    avmeldingslenke: side,
+    behandlingsansvarlig,
+    orgnr,
+    personvern: PERSONVERN_URL,
+    avsender: avsender(behandlingsansvarlig),
+  });
+  const brev = lagEpost({
+    fra: avsender(behandlingsansvarlig),
+    til: LEVERT,
+    emne: fylt.emne,
+    html: fylt.html,
+    tekst: fylt.tekst,
+    side,
+    funksjon,
+  });
+  assert.equal(brev.to, LEVERT);
+  assert.equal(brev.subject, "Kulturvarsling er åpnet");
+  assert.match(brev.html, /Bekreft påmelding/);
+  assert.match(brev.html, new RegExp(FORHANDSVISNING_TOKEN));
+  assert.match(brev.html, new RegExp(TOKEN));
+  assert.match(brev.html, /KULTURVARSLING AS/);
+  assert.match(brev.html, /936 282 881/);
+  assert.match(brev.html, /https:\/\/kulturvarsling\.no\/personvern/);
+  assert.match(brev.html, /Håkon Dalsbø/);
+  assert.doesNotMatch(brev.html, /fjernes først/);
+  assert.doesNotMatch(brev.text, /fjernes først/);
+  assert.doesNotMatch(brev.html, /Hver sak får en kort forklaring/);
+  assert.doesNotMatch(brev.text, /Hver sak får en kort forklaring/);
+  assert.match(brev.text, /Bekreft påmelding:/);
+  assert.match(brev.text, /Meld meg av:/);
+  assert.equal(brev.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
+  assert.match(brev.headers["List-Unsubscribe"], /List-Unsubscribe=One-Click|avmeld/);
+  assert.equal(utsendelsesBeslutning({
+    oppdrag: { type: "alle", maal: "lansering" },
+    aktiv: true,
+    utkast: malErUtkast(LANSERING_MAL),
+    antall: 110,
+  }).send, false);
+  assert.equal(malErUtkast("Emne: Bekreft\n\n{{bekreftelseslenke}}\n{{avmeldingslenke}}"), false);
+
+  const kilde = readFileSync("supabase/functions/send-bekreftelser/index.ts", "utf8");
+  const sql = readFileSync("supabase/migrations/20261020223000_lansering_dedup.sql", "utf8");
+  const aktiv = kilde.indexOf("utsendingErAktiv");
+  const resend = kilde.indexOf("https://api.resend.com/emails");
+  assert.ok(aktiv > 0 && resend > aktiv);
+  assert.match(kilde, /BEKREFTELSE_PAUSE_MS/);
+  assert.equal(BEKREFTELSE_PAUSE_MS >= 500, true);
+  assert.match(kilde, /velgLanseringsmottakere/);
+  assert.match(kilde, /lansering_reservert/);
+  assert.match(kilde, /Aldri cron/);
+  assert.doesNotMatch(kilde, /cron\.schedule/);
+  assert.match(sql, /lansering_sendt/);
+  assert.match(sql, /bekreftelse_utsendelser_lansering_epost_unik/);
+  assert.doesNotMatch(sql, /cron\.schedule/);
   assert.doesNotMatch(sql, /update\s+(public\.)?pamelding/i);
 });
 
