@@ -89,7 +89,7 @@ export function KommuneInnspillSkjema({
   return (
     <section className="kv-kort" aria-labelledby="kommune-innspill">
       <h2 id="kommune-innspill" className="kv-undertittel">Innspill til kommunen</h2>
-      <p className="kv-brod">Innspillet lagres på høringen. Du kan ikke endre eller slette det etterpå.</p>
+      <p className="kv-brod">Innspillet lagres på kontoen din. Du kan ikke endre eller slette det etterpå.</p>
       {henter && <p className="kv-meta">Henter høringer</p>}
       {!henter && liste.length === 0 && <p className="kv-tom">Ingen kommunale høringer er publisert ennå.</p>}
       {liste.length > 0 && (
