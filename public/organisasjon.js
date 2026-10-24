@@ -1,7 +1,8 @@
-// Behandlingsansvarlig, verifisert i Enhetsregisteret.
+// Behandlingsansvarlig, verifisert i Enhetsregisteret (org.nr. 936 282 881).
+// Skrivemåten er bekreftet som «Kulturvarsling AS». Registeret viser navnet i versaler.
 // Samme tre verdier som supabase/functions/_shared/organisasjon.ts.
 // Testen i samtykke.test.ts holder dem like. Endre begge steder.
-export const behandlingsansvarlig = "KULTURVARSLING AS";
+export const behandlingsansvarlig = "Kulturvarsling AS";
 
 export const orgnr = "936 282 881";
 export const poststed = "Oslo";

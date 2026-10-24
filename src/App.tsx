@@ -1138,7 +1138,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
 
       <footer className="avis-fot">
         <div className="avis-wrap avis-fot-rad">
-          <div>© {new Date().getFullYear()} Åndsverkstedet AS</div>
+          <div>© {new Date().getFullYear()} Kulturvarsling AS (org.nr. 936 282 881)</div>
           <div>
             <a href="/personvern">Personvern</a>
             <button type="button" onClick={()=>setShowFeedback(true)}>Gi tilbakemelding</button>

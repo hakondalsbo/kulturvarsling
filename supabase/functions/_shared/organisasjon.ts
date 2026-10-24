@@ -1,7 +1,8 @@
 // Samme tre verdier som public/organisasjon.js.
 // Testen «organisasjon er lik i funksjoner og nettleser» holder dem like.
 // Funksjonene importerer ikke filer utenfor supabase/functions.
-export const behandlingsansvarlig = "KULTURVARSLING AS";
+// Skrivemåten «Kulturvarsling AS» er bekreftet. Enhetsregisteret viser navnet i versaler.
+export const behandlingsansvarlig = "Kulturvarsling AS";
 
 export const orgnr = "936 282 881";
 export const poststed = "Oslo";
