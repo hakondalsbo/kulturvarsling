@@ -14,6 +14,11 @@ import {
 const API = "https://api.einnsyn.no";
 const BRREG_API = "https://data.brreg.no/enhetsregisteret/api";
 
+// Dagens søk. Uendret når EINNSYN_V2_AKTIV ikke er nøyaktig "true".
+export const EINNSYN_V1_SOK =
+  `${API}/search?query=kultur&entity=Moetesak&sortBy=publisertDato&sortOrder=desc&limit=50`;
+export const EINNSYN_V1_MAKS_GEO = 25;
+
 export type EInnsynMoetesak = {
   id?: string;
   offentligTittel?: string;
@@ -282,9 +287,9 @@ export function mapEInnsynItem(
 // Slår opp geografi for ett organ: eInnsyn-enhet → orgnummer + enhetstype,
 // deretter Brønnøysund → sektor, organisasjonsform og adresse. Best effort —
 // ved nettverksfeil beholdes navn/nivå fra eInnsyn, og saken lagres uansett.
-async function lesBrreg(orgnr: string): Promise<BrregEnhet | null> {
+async function lesBrreg(orgnr: string, hent: typeof fetch = fetch): Promise<BrregEnhet | null> {
   for (const sti of ["enheter", "underenheter"]) {
-    const res = await fetch(`${BRREG_API}/${sti}/${orgnr}`, {
+    const res = await hent(`${BRREG_API}/${sti}/${orgnr}`, {
       headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" },
     });
     if (res.ok) return await res.json() as BrregEnhet;
@@ -293,9 +298,9 @@ async function lesBrreg(orgnr: string): Promise<BrregEnhet | null> {
   return null;
 }
 
-async function slåOppGeo(enhetId: string): Promise<OrganGeo> {
+export async function slåOppGeo(enhetId: string, hent: typeof fetch = fetch): Promise<OrganGeo> {
   try {
-    const eRes = await fetch(`${API}/enhet/${enhetId}`, {
+    const eRes = await hent(`${API}/enhet/${enhetId}`, {
       headers: { Accept: "application/json" },
     });
     if (!eRes.ok) return {};
@@ -306,9 +311,9 @@ async function slåOppGeo(enhetId: string): Promise<OrganGeo> {
     let overordnet: BrregEnhet | null = null;
     if (orgnr.length === 9) {
       try {
-        brreg = await lesBrreg(orgnr);
+        brreg = await lesBrreg(orgnr, hent);
         const parent = String(brreg?.overordnetEnhet ?? "").replace(/\D/g, "");
-        if (parent.length === 9) overordnet = await lesBrreg(parent);
+        if (parent.length === 9) overordnet = await lesBrreg(parent, hent);
       } catch (_) {
         // Brønnøysund utilgjengelig — behold navn/nivå fra eInnsyn
       }
@@ -333,12 +338,17 @@ async function slåOppGeo(enhetId: string): Promise<OrganGeo> {
 
 // Henter kultursaker fra politiske møter i hele landet (alle organ i eInnsyn).
 // Geo-oppslag er best effort og feiler aldri selve søket.
-export async function hentEInnsynKultursaker(): Promise<AdapterUtfall> {
+// Kallvolumet her er uendret. v2 ligger i einnsyn-v2.ts og kjører bare når
+// EINNSYN_V2_AKTIV er nøyaktig "true".
+export async function hentEInnsynKultursaker(opts?: {
+  hent?: typeof fetch;
+}): Promise<AdapterUtfall> {
+  const hent = opts?.hent ?? fetch;
   // Nyeste først. Uten sort kan de 50 treffene være eldre møter, og
   // datogrensen i hent-saker siler dem bort uten at nyere saker er med.
-  const url = `${API}/search?query=kultur&entity=Moetesak&sortBy=publisertDato&sortOrder=desc&limit=50`;
+  const url = EINNSYN_V1_SOK;
   try {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await hent(url, { headers: { Accept: "application/json" } });
     const lest = await lesTekstRespons(res, url);
     if ("feil" in lest) {
       console.error(`eInnsyn search: ${lest.feil.melding}`, url);
@@ -363,9 +373,9 @@ export async function hentEInnsynKultursaker(): Promise<AdapterUtfall> {
     // Slå opp geografi per unik journalenhet (navn + kommunenr), maks 25 oppslag.
     const geoMap = new Map<string, OrganGeo>();
     const unike = [...new Set(rå.map((i) => i.journalenhet).filter(Boolean))]
-      .slice(0, 25) as string[];
+      .slice(0, EINNSYN_V1_MAKS_GEO) as string[];
     for (const enhetId of unike) {
-      geoMap.set(enhetId, await slåOppGeo(enhetId));
+      geoMap.set(enhetId, await slåOppGeo(enhetId, hent));
     }
 
     for (const item of rå) {

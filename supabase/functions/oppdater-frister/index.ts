@@ -29,6 +29,7 @@ import {
   type HenteFeil,
   type KjoertAv,
 } from "../hent-saker/kildehelse.ts";
+import { hentBergenAgendapunkter } from "../hent-saker/bergen.ts";
 import { finnHøringsfrist, kalenderdag } from "../hent-saker/logikk.ts";
 import {
   addIsoDager,
@@ -177,23 +178,20 @@ async function hentEinnsynMotedato(sakId: string): Promise<{ dato: string | null
 
 async function hentBergenDatoer(): Promise<{ datoer: Map<string, string>; utfall: KallUtfall }> {
   const ut = new Map<string, string>();
-  const år = new Date().getFullYear();
-  const lest = await hentTekst(
-    `https://www.bergen.kommune.no/politikere-utvalg/api/agendapunkter?tittel=kultur&year=${år}&rows=150`,
-  );
-  if ("feil" in lest) return { datoer: ut, utfall: somUtfall(lest) };
-  try {
-    const data = JSON.parse(lest.tekst);
-    const liste = Array.isArray(data) ? data : (data.items ?? data.agendapunkter ?? []);
-    if (!Array.isArray(liste)) return { datoer: ut, utfall: utfallFeil("parse", lest.httpStatus) };
-    for (const punkt of liste) {
-      const iso = isoDato(punkt?.moteDato);
-      if (punkt?.moteId && punkt?.kildeId && iso) ut.set(`${punkt.moteId}/${punkt.kildeId}`, iso);
-    }
-    return { datoer: ut, utfall: utfallOk(lest.httpStatus) };
-  } catch {
-    return { datoer: ut, utfall: utfallFeil("parse", lest.httpStatus) };
+  const hentet = await hentBergenAgendapunkter({
+    hent: async (url) => {
+      const lest = await hentTekst(url);
+      if ("feil" in lest) return { feil: lest.feil };
+      return { tekst: lest.tekst, status: lest.httpStatus };
+    },
+  });
+  for (const punkt of hentet.punkter) {
+    const iso = isoDato(punkt?.moteDato);
+    if (punkt?.moteId && punkt?.kildeId && iso) ut.set(`${punkt.moteId}/${punkt.kildeId}`, iso);
   }
+  const feil = hentet.feil[0];
+  if (feil) return { datoer: ut, utfall: utfallFeil(feil.type, feil.httpStatus) };
+  return { datoer: ut, utfall: utfallOk(hentet.httpStatus ?? 200) };
 }
 
 /** Frist vinner over møtedato. Uten begge blir status normal, aldri kritisk. Redaktørstatus blir stående. */

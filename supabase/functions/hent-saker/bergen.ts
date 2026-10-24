@@ -8,12 +8,42 @@ import {
   feilFraUnntak,
   feilUtfall,
   lesTekstRespons,
-  okUtfall,
   uventetFormat,
   type AdapterUtfall,
 } from "./kildehelse.ts";
 
 const API = "https://www.bergen.kommune.no/politikere-utvalg/api";
+
+// Verifisert 24.10.2026: start er offset, rows=150 er siden vi allerede bruker.
+// rows=200 ga også treff, men vi holder oss til 150. year=2026 hadde numTotal=197,
+// så start=150 gir de siste 47. robots.txt sperrer bare /api/fil, /api/sakskart og /api/kalender.
+export const BERGEN_SIDE = 150;
+export const BERGEN_PAUSE_MS = 400;
+export const BERGEN_MAKS_SIDER = 20;
+
+export function bergenSideUrl(år: number, start: number, rows = BERGEN_SIDE): string {
+  const side = Math.min(Math.max(1, rows), BERGEN_SIDE);
+  return `${API}/agendapunkter?tittel=kultur&year=${år}&rows=${side}&start=${Math.max(0, start)}`;
+}
+
+/**
+ * Neste offset, eller null når siden er siste.
+ * Kort side, manglende numTotal eller ingen nye rader stopper. Vi looper ikke.
+ */
+export function nesteBergenStart(input: {
+  start: number;
+  mottatt: number;
+  rows: number;
+  numTotal: number | null;
+  nye: number;
+}): number | null {
+  if (input.mottatt <= 0 || input.nye <= 0) return null;
+  if (input.numTotal == null) return null;
+  const neste = input.start + input.mottatt;
+  if (neste >= input.numTotal) return null;
+  if (input.mottatt < input.rows) return null;
+  return neste;
+}
 
 export type BergenAgendapunkt = {
   tittel?: string;
@@ -74,47 +104,152 @@ export function mapBergenAgendapunkt(punkt: BergenAgendapunkt): {
   };
 }
 
-// Henter kultursaker fra alle politiske utvalg i Bergen for inneværende år.
-// Paginering utover rows=150 er ikke implementert. numTotal logges så et kutt
-// (numTotal > items.length) er synlig; oppfølging, ikke denne endringen.
-export async function hentBergenSaker(): Promise<AdapterUtfall> {
-  const år = new Date().getFullYear();
-  const url = `${API}/agendapunkter?tittel=kultur&year=${år}&rows=150`;
-  try {
-    const res = await fetch(url, {
-      headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" },
-    });
-    const lest = await lesTekstRespons(res, url);
+type BergenHent = (
+  url: string,
+) => Promise<{ tekst: string; status: number } | { feil: AdapterUtfall["feil"][number] }>;
+
+async function standardBergenHent(url: string): Promise<{ tekst: string; status: number } | { feil: AdapterUtfall["feil"][number] }> {
+  const res = await fetch(url, {
+    headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" },
+  });
+  const lest = await lesTekstRespons(res, url);
+  if ("feil" in lest) return { feil: lest.feil };
+  return { tekst: lest.tekst, status: res.status };
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export type BergenInnhenting = {
+  punkter: BergenAgendapunkt[];
+  numTotal: number | null;
+  feil: AdapterUtfall["feil"];
+  forsok: number;
+  vellykket: number;
+  httpStatus: number | null;
+};
+
+/**
+ * Alle agendapunkter for året. Side på 150, pause mellom sider.
+ * Feil på første side gir ingen punkter. Feil senere stopper og beholder
+ * sidene som kom. Samme første id to ganger stopper, så en ignorert start
+ * ikke blir en løkke.
+ */
+export async function hentBergenAgendapunkter(opts?: {
+  år?: number;
+  hent?: BergenHent;
+  pause?: (ms: number) => Promise<void>;
+  pauseMs?: number;
+}): Promise<BergenInnhenting> {
+  const år = opts?.år ?? new Date().getFullYear();
+  const hent = opts?.hent ?? standardBergenHent;
+  const vent = opts?.pause ?? pause;
+  const pauseMs = opts?.pauseMs ?? BERGEN_PAUSE_MS;
+  const sett = new Set<string>();
+  const punkter: BergenAgendapunkt[] = [];
+  const feil: AdapterUtfall["feil"] = [];
+  let start = 0;
+  let numTotal: number | null = null;
+  let forsok = 0;
+  let vellykket = 0;
+  let httpStatus: number | null = null;
+
+  for (let side = 0; side < BERGEN_MAKS_SIDER; side++) {
+    if (side > 0 && pauseMs > 0) await vent(pauseMs);
+    const url = bergenSideUrl(år, start);
+    forsok++;
+    let lest: { tekst: string; status: number } | { feil: AdapterUtfall["feil"][number] };
+    try {
+      lest = await hent(url);
+    } catch (e) {
+      const f = feilFraUnntak(e, url);
+      console.error(`Bergen agendapunkter ${url}:`, e);
+      feil.push(f);
+      break;
+    }
     if ("feil" in lest) {
       console.error(`Bergen agendapunkter ${url}: ${lest.feil.melding}`);
-      return feilUtfall(lest.feil);
+      feil.push(lest.feil);
+      break;
     }
     let data: any;
     try {
       data = JSON.parse(lest.tekst);
     } catch (e) {
-      const feil = feilFraUnntak(e, url);
+      const f = feilFraUnntak(e, url);
       console.error(`Bergen parse ${url}:`, e);
-      return feilUtfall(feil);
+      feil.push(f);
+      break;
     }
     if (!Array.isArray(data?.items)) {
-      const feil = uventetFormat(url, "mangler items");
-      console.error(`Bergen ${url}: ${feil.melding}`);
-      return feilUtfall(feil);
+      const f = uventetFormat(url, "mangler items");
+      console.error(`Bergen ${url}: ${f.melding}`);
+      feil.push(f);
+      break;
     }
+    vellykket++;
+    httpStatus = lest.status;
+    if (typeof data.numTotal === "number") numTotal = data.numTotal;
     const rå: BergenAgendapunkt[] = data.items;
-    const items: any[] = [];
+    let nye = 0;
     for (const punkt of rå) {
+      const nokkel = `${punkt?.kildeId ?? ""}:${punkt?.moteId ?? ""}:${punkt?.tittel ?? ""}`;
+      if (sett.has(nokkel)) continue;
+      sett.add(nokkel);
+      punkter.push(punkt);
+      nye++;
+    }
+    const neste = nesteBergenStart({
+      start,
+      mottatt: rå.length,
+      rows: BERGEN_SIDE,
+      numTotal,
+      nye,
+    });
+    if (neste == null) break;
+    if (side === BERGEN_MAKS_SIDER - 1) {
+      feil.push(uventetFormat(url, "sidegrense"));
+      break;
+    }
+    start = neste;
+  }
+
+  return { punkter, numTotal, feil, forsok, vellykket, httpStatus };
+}
+
+// Henter kultursaker fra alle politiske utvalg i Bergen for inneværende år.
+export async function hentBergenSaker(opts?: {
+  år?: number;
+  hent?: BergenHent;
+  pause?: (ms: number) => Promise<void>;
+  pauseMs?: number;
+}): Promise<AdapterUtfall> {
+  const år = opts?.år ?? new Date().getFullYear();
+  try {
+    const hentet = await hentBergenAgendapunkter(opts);
+    if (hentet.vellykket === 0) {
+      return feilUtfall(hentet.feil[0] ?? feilFraUnntak(new Error("Ingen kall ble forsøkt")), hentet.forsok || 1);
+    }
+    const items: any[] = [];
+    for (const punkt of hentet.punkter) {
       const mappet = mapBergenAgendapunkt(punkt);
       if (mappet) items.push(mappet);
     }
-    const numTotal = typeof data.numTotal === "number" ? data.numTotal : null;
     console.log(
-      `Bergen: numTotal=${numTotal ?? "mangler"}, rå=${rå.length}, etter rutinesak-filter=${items.length} (${år})`,
+      `Bergen: sider=${hentet.vellykket}, numTotal=${hentet.numTotal ?? "mangler"}, rå=${hentet.punkter.length}, etter rutinesak-filter=${items.length} (${år})`,
     );
-    return okUtfall(items, rå.length, items.length, res.status);
+    return {
+      items,
+      raattAntall: hentet.punkter.length,
+      antallEtterFilter: items.length,
+      feil: hentet.feil,
+      forsok: hentet.forsok,
+      vellykket: hentet.vellykket,
+      httpStatus: hentet.feil[0]?.httpStatus ?? hentet.httpStatus,
+    };
   } catch (e) {
     console.error("Bergen feil:", e);
-    return feilUtfall(feilFraUnntak(e, url));
+    return feilUtfall(feilFraUnntak(e));
   }
 }

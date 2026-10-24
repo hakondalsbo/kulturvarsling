@@ -39,6 +39,7 @@ import {
   type Kjoeringstype,
 } from "./datofilter.ts";
 import { geografiSomLagres, hentEInnsynKultursaker } from "./einnsyn.ts";
+import { einnsynV2Aktiv, hentEInnsynV2 } from "./einnsyn-v2.ts";
 import { hentBergenSaker } from "./bergen.ts";
 import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
 import { hentSametingetSaker } from "./sametinget.ts";
@@ -584,7 +585,9 @@ Deno.serve(async (req: Request) => {
       kjørAdapter("stortinget-saker", () => hentStortingetSaker(eksKilder)),
       kjørAdapter("regjeringen-rss", () => hentRegjeringenRSS()),
       kjørAdapter("stortinget-ventede", () => hentVentedeSaker()),
-      kjørAdapter("einnsyn", () => hentEInnsynKultursaker()),
+      // v2 øker kallvolumet. Bare når EINNSYN_V2_AKTIV er nøyaktig "true".
+      // Av er standard: samme funksjon og samme kall som før.
+      kjørAdapter("einnsyn", () => einnsynV2Aktiv() ? hentEInnsynV2() : hentEInnsynKultursaker()),
       kjørAdapter("bergen", () => hentBergenSaker()),
       kjørAdapter("kulturdirektoratet", () => hentKulturdirektoratetTildelinger()),
       kjørAdapter("sametinget", () => hentSametingetSaker()),
