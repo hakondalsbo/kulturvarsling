@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 const tabell = readFileSync("supabase/migrations/20261024220000_stortinget_horinger.sql", "utf8");
 const folg = readFileSync("supabase/migrations/20261024221000_fulgte_komiteer.sql", "utf8");
@@ -49,4 +49,14 @@ test("følg komité er av, og anon kan ikke skrive", () => {
   assert.equal(folg.includes("p.epost"), false);
   assert.equal(folg.includes("nyhetsbrev"), false);
   assert.equal(folg.includes("alter default privileges"), false);
+  assert.equal(folg.includes("pg_catalog.coalesce"), false);
+  assert.equal((folg.match(/select coalesce\(/g) ?? []).length, 2);
+});
+
+test("migrasjoner bruker coalesce som syntaks", () => {
+  const filer = readdirSync("supabase/migrations").filter((fil) => fil.endsWith(".sql"));
+  for (const fil of filer) {
+    const sql = readFileSync(`supabase/migrations/${fil}`, "utf8");
+    assert.equal(sql.toLowerCase().includes("pg_catalog.coalesce"), false, fil);
+  }
 });

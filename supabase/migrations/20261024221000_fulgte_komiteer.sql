@@ -28,7 +28,7 @@ stable
 security invoker
 set search_path = ''
 as $$
-  select pg_catalog.coalesce(
+  select coalesce(
     (select f.aktiv from public.funksjonsflagg f where f.nokkel = 'folg_komite'),
     false
   );
@@ -47,7 +47,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select pg_catalog.coalesce(
+  select coalesce(
     (select f.aktiv from public.funksjonsflagg f where f.nokkel = 'folg_komite'),
     false
   );
