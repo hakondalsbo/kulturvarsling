@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const migrasjon = readFileSync("supabase/migrations/20261024183000_minside_valg.sql", "utf8");
+const migrasjon = readFileSync("supabase/migrations/20261024200000_minside_valg.sql", "utf8");
 
 const oppsett = `
 create schema if not exists auth;

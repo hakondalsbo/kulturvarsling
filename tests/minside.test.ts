@@ -5,7 +5,7 @@ import { sakTrefferAbonnement, sokTrefferSak, mottakereForSak } from "../src/pre
 import { KULTURPOLITIKK_VALGBART } from "../src/minside/kulturpolitikk.ts";
 import { kategorierForMeny } from "../src/minside/kategorier.ts";
 import { delMinSide, TOMT_VALG } from "../src/minside/filter.ts";
-import { DEMO_DAG, DEMO_FULGTE, DEMO_SAKER, DEMO_SOK, DEMO_VALG } from "../src/minside/demo.ts";
+import { DEMO_DAG, DEMO_FULGTE, DEMO_SAKER, DEMO_SOK, DEMO_VALG, demoTillatt, tolkDemo } from "../src/minside/demo.ts";
 import { boksForForside } from "../src/minside/forslag.ts";
 
 const oslo = {
@@ -18,11 +18,26 @@ const oslo = {
   kilde: "https://www.oslo.kommune.no/sak",
 };
 
+test("?demo= er av i production og på i preview", () => {
+  assert.equal(demoTillatt("production"), false);
+  assert.equal(demoTillatt("preview"), true);
+  assert.equal(demoTillatt("development"), true);
+  assert.equal(demoTillatt(""), true);
+  assert.equal(demoTillatt(undefined), true);
+  const sok = "?demo=forside&steg=2&endre=1";
+  assert.equal(tolkDemo(sok, "production").modus, null);
+  assert.equal(tolkDemo(sok, "production").endre, false);
+  assert.equal(tolkDemo(sok, "preview").modus, "forside");
+  assert.equal(tolkDemo(sok, "preview").steg, 2);
+  assert.equal(tolkDemo(sok, "preview").endre, true);
+  assert.equal(tolkDemo("?demo=oppsett", undefined).modus, "oppsett");
+});
+
 test("kulturpolitikk er av, og menyen tar den ikke med", () => {
   assert.equal(KULTURPOLITIKK_VALGBART, false);
   assert.equal(kategorierForMeny().some((k) => k.id === "kulturpolitikk"), false);
   assert.equal(kategorierForMeny(true).some((k) => k.id === "kulturpolitikk"), true);
-  const sql = readFileSync("supabase/migrations/20261024183000_minside_valg.sql", "utf8");
+  const sql = readFileSync("supabase/migrations/20261024200000_minside_valg.sql", "utf8");
   assert.match(sql, /create or replace function public\.kulturpolitikk_valgbart\(\)[\s\S]*select false/);
 });
 
@@ -111,9 +126,9 @@ test("forsideboksen er kort og hopper over avisens hovedsak", () => {
 
 test("migrasjonen gir kolonne-grant, RLS og ingen anon-skriving", () => {
   const filer = readdirSync("supabase/migrations").filter((f) => f.includes("minside"));
-  assert.deepEqual(filer, ["20261024183000_minside_valg.sql"]);
-  assert.ok(filer[0] > "20261024163600");
-  const sql = readFileSync("supabase/migrations/20261024183000_minside_valg.sql", "utf8");
+  assert.deepEqual(filer, ["20261024200000_minside_valg.sql"]);
+  assert.ok(filer[0] > "20261024190000");
+  const sql = readFileSync("supabase/migrations/20261024200000_minside_valg.sql", "utf8");
   assert.match(sql, /grant update \(organ, komiteer, minside_klar\) on table public\.profiler to authenticated/);
   assert.match(sql, /revoke update \(organ, komiteer, minside_klar\) on table public\.profiler from anon/);
   assert.match(sql, /enable row level security/);

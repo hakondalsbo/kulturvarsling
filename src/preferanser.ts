@@ -1,7 +1,7 @@
 /**
  * Varselpreferanser. Samme treffregler som sak_treffer_abonnement og
  * mottakere_for_sak. Geografi og fag kom i 20261020155426. Organ, komité,
- * fylkeskommune og lagrede søk kom i 20261024183000_minside_valg.sql.
+ * fylkeskommune og lagrede søk kom i 20261024200000_minside_valg.sql.
  * Ingen utsending — bare hva som skal lagres, og hvem en senere motor skal lese.
  */
 

@@ -1,7 +1,7 @@
 /**
  * Lett flagg. Håkon har ikke bekreftet «kulturpolitikk» som eget fagområde.
  * Samme verdi må stå i public.kulturpolitikk_valgbart() i migrasjonen
- * 20261024183000_minside_valg.sql.
+ * 20261024200000_minside_valg.sql.
  *
  * false: verdien vises ikke i KATEGORIER, og sak_treffer_abonnement
  * ignorerer den i fagfelt. En sak merket kulturpolitikk treffer fortsatt

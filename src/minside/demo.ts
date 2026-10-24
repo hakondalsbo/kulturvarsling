@@ -164,14 +164,41 @@ export const DEMO_KAMPANJER: DemoKampanje[] = [
 
 export type DemoModus = "oppsett" | "side" | "tom" | "forside";
 
-export function lesDemo(): { modus: DemoModus | null; steg: 1 | 2 | 3; endre: boolean } {
-  if (typeof window === "undefined") return { modus: null, steg: 1, endre: false };
-  const q = new URLSearchParams(window.location.search);
+const TOM_DEMO = { modus: null, steg: 1 as const, endre: false };
+
+/** Vercel setter VERCEL_ENV. Vite eksponerer den som VITE_VERCEL_ENV. */
+function lesVercelEnv(): string | undefined {
+  if (typeof import.meta.env === "undefined") return undefined;
+  return import.meta.env.VITE_VERCEL_ENV;
+}
+
+/** ?demo= virker i preview og lokalt. Prod-bygg ignorerer parameteren. */
+export function demoTillatt(miljo: string | undefined = lesVercelEnv()): boolean {
+  return miljo !== "production";
+}
+
+export function tolkDemo(
+  search: string,
+  miljo?: string,
+): { modus: DemoModus | null; steg: 1 | 2 | 3; endre: boolean } {
+  if (!demoTillatt(miljo)) return TOM_DEMO;
+  const q = new URLSearchParams(search);
   const demo = q.get("demo");
   const modus = demo === "oppsett" || demo === "side" || demo === "tom" || demo === "forside" ? demo : null;
   const n = Number(q.get("steg"));
   const steg = n === 2 || n === 3 ? n : 1;
   return { modus, steg, endre: q.get("endre") === "1" };
+}
+
+export function lesDemo(): { modus: DemoModus | null; steg: 1 | 2 | 3; endre: boolean } {
+  if (typeof window === "undefined") return TOM_DEMO;
+  return tolkDemo(window.location.search);
+}
+
+/** Rå ?demo=-verdi, eller null når demo er slått av. */
+export function demoParameter(): string | null {
+  if (!demoTillatt() || typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("demo");
 }
 
 /** side og forside er samme innloggede eksempel, bare ulike startsteder. */

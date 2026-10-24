@@ -20,6 +20,7 @@ import { kategorierForMeny } from "./minside/kategorier.ts";
 import type { LagretSok, MinValg } from "./minside/filter.ts";
 import { FolgeBoks } from "./minside/Personlig.tsx";
 import { boksForForside, personligKilde } from "./minside/forslag.ts";
+import { demoParameter } from "./minside/demo.ts";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase, Settings, API
@@ -57,12 +58,12 @@ async function lastKampanjer() {
   }));
 }
 
-async function hentProfil(userId) {
+async function hentProfil(userId: any) {
   const { data } = await sb.from("profiler").select("*").eq("id", userId).single();
   return data;
 }
 
-function profilfelt(oppdateringer) {
+function profilfelt(oppdateringer: any) {
   const felt = { ...oppdateringer };
   // id ligger i WHERE. plan og stripe_customer_id settes bare av service_role.
   delete felt.id;
@@ -71,7 +72,7 @@ function profilfelt(oppdateringer) {
   return felt;
 }
 
-async function lagreProfil(userId, oppdateringer) {
+async function lagreProfil(userId: any, oppdateringer: any) {
   const { error } = await sb.from("profiler")
     .update({ ...profilfelt(oppdateringer), oppdatert: new Date().toISOString() })
     .eq("id", userId);
@@ -79,11 +80,11 @@ async function lagreProfil(userId, oppdateringer) {
 }
 
 // handle_new_user oppretter raden ved registrering. Klienten oppdaterer den.
-async function upsertProfil(userId, data) {
+async function upsertProfil(userId: any, data: any) {
   return lagreProfil(userId, data);
 }
 
-async function toggleFølgSak(brukerId, sakId, følger) {
+async function toggleFølgSak(brukerId: any, sakId: any, følger: any) {
   if (følger) {
     const { error } = await sb.from("fulgte_saker").delete()
       .eq("bruker_id", brukerId).eq("sak_id", sakId);
@@ -96,7 +97,7 @@ async function toggleFølgSak(brukerId, sakId, følger) {
   return !error;
 }
 
-async function hentFulgte(brukerId) {
+async function hentFulgte(brukerId: any) {
   const { data, error } = await sb.from("fulgte_saker")
     .select("sak_id").eq("bruker_id", brukerId);
   if (error) return { ids: [], feil: true };
@@ -156,13 +157,13 @@ async function lastKilder() {
 // Klartekst («hva betyr dette for meg?») er forståelse av en offentlig sak =
 // GRATIS for alle innloggede. Innlogging kreves kun for å hindre anonymt
 // misbruk av et betalt-per-kall AI-endepunkt — selve registreringen er gratis.
-export function kanBrukeKlartekst(user){
+export function kanBrukeKlartekst(user: any){
   return !!user?.id;
 }
 // Beholdt for bakoverkompatibilitet med E2-koden; klartekst har ingen kvote nå.
-export function registrerKlartekstBruk(_user){ /* gratis — ingen teller */ }
+export function registrerKlartekstBruk(_user: any){ /* gratis — ingen teller */ }
 
-async function loggAktivitetDB(brukerId, entry) {
+async function loggAktivitetDB(brukerId: any, entry: any) {
   await sb.from("aktivitet").insert({
     bruker_id: brukerId,
     type: entry.type,
@@ -172,7 +173,7 @@ async function loggAktivitetDB(brukerId, entry) {
   });
 }
 
-async function hentAktivitet(brukerId) {
+async function hentAktivitet(brukerId: any) {
   const { data } = await sb.from("aktivitet")
     .select("*").eq("bruker_id", brukerId)
     .order("opprettet", { ascending: false }).limit(50);
@@ -183,7 +184,7 @@ const SIGNATUR_INNLOGGING = "Logg inn for å signere kampanjen. Signaturen lagre
 
 // return=minimal: anon og authenticated har ikke SELECT på tabellen.
 // return=representation (RETURNING) ville feilet, og raden ble ikke lagret.
-async function signKampanje(kampanjeId, brukerId, navn, epost) {
+async function signKampanje(kampanjeId: any, brukerId: any, navn: any, epost: any) {
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token ?? null;
   const innlogget = data?.session?.user?.id ?? null;
@@ -215,7 +216,7 @@ async function signKampanje(kampanjeId, brukerId, navn, epost) {
   return true;
 }
 
-async function sendFeedbackDB(brukerId, type, tekst, sakTittel) {
+async function sendFeedbackDB(brukerId: any, type: any, tekst: any, sakTittel: any) {
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token ?? null;
   const innlogget = data?.session?.user?.id ?? null;
@@ -267,12 +268,12 @@ const FYLKER = [
   {nr:"40",navn:"Telemark"},{nr:"42",navn:"Agder"},{nr:"46",navn:"Vestland"},
   {nr:"50",navn:"Trøndelag"},{nr:"55",navn:"Troms"},{nr:"56",navn:"Finnmark"},
 ];
-const fylkesnavn = (nr) => FYLKER.find(f=>f.nr===String(nr))?.navn ?? null;
+const fylkesnavn = (nr: any) => FYLKER.find(f=>f.nr===String(nr))?.navn ?? null;
 
-const VARSLER = [];
-const KAMPANJER = [];
+const VARSLER: any[] = [];
+const KAMPANJER: any[] = [];
 const SAK_HISTORIKK: any[] = [];
-const AKTIVITET_INIT = [];
+const AKTIVITET_INIT: any[] = [];
 const KOM_HØRINGER_INIT: any[] = [];
 const KOM_SVAR_MOCK: any[] = [];
 
@@ -371,13 +372,13 @@ function ToastContainer() {
   );
 }
 
-function KildeTillitsstrip({onÅpne}) {
+function KildeTillitsstrip({onÅpne}: any) {
   const [kilder,setKilder]=useState<any[]|null>(null);
   useEffect(()=>{ lastKilder().then(setKilder).catch(()=>setKilder([])); },[]);
   return <KildeSetning kilder={kilder} onÅpne={onÅpne}/>;
 }
 
-function KildeHelseSide({onBack}) {
+function KildeHelseSide({onBack}: any) {
   const [kilder,setKilder]=useState<any[]>([]);
   const [lastet,setLastet]=useState(false);
   useEffect(()=>{ lastKilder().then(k=>{setKilder(k);setLastet(true);}).catch(()=>{setKilder([]);setLastet(true);}); },[]);
@@ -389,7 +390,7 @@ function KildeHelseSide({onBack}) {
   );
 }
 
-function Landing({setScreen,varsler=[],kampanjer=[]}) {
+export function Landing({setScreen,varsler=[],kampanjer=[]}: any) {
   const [valgt,setValgt]=useState<any>(null);
   const [fane,setFane]=useState("info");
   const [lokaleFulgte,setLokaleFulgte]=useState<any[]>([]);
@@ -433,7 +434,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
   );
 }
 
-function OnboardingWizard({user,setUser,onDone}) {
+function OnboardingWizard({user,setUser,onDone}: any) {
   const [steg,setSteg]=useState(0);
   const [org,setOrg]=useState(user?.org||"");
   const [orgType,setOrgType]=useState(user?.orgType||"");
@@ -460,7 +461,7 @@ function OnboardingWizard({user,setUser,onDone}) {
       varslerAktive: true, varselKat: valgtKat, varselNivå: valgtNivå,
       varselFrekvens: frekvens, varselEpost: user?.epost||"", onboardingDone: true,
     };
-    setUser(u=>({...u,...neste}));
+    setUser((u: any)=>({...u,...neste}));
     if(user?.id) {
       setLagrer(true);
       const ok = await upsertProfil(user.id, {
@@ -549,7 +550,7 @@ function OnboardingWizard({user,setUser,onDone}) {
   );
 }
 
-function FeedbackModal({onClose, kontekst=null as any}) {
+function FeedbackModal({onClose, kontekst=null as any}: any) {
   const [type,setType]=useState(kontekst?.type||"feil");
   const [tekst,setTekst]=useState("");
   const [sendt,setSendt]=useState(false);
@@ -616,7 +617,7 @@ function FeedbackModal({onClose, kontekst=null as any}) {
   );
 }
 
-function BrukerLogin({setScreen,setUser,grunn=""}) {
+function BrukerLogin({setScreen,setUser,grunn=""}: any) {
   const [epost,setEpost]=useState("");
   const [pw,setPw]=useState("");
   const [navn,setNavn]=useState("");
@@ -774,7 +775,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [dataLastet,setDataLastet]=useState(false);
 
   const idagISO = new Date().toISOString().split("T")[0];
-  const erHistorisk = (v)=>
+  const erHistorisk = (v: any)=>
     (v.frist && v.frist < idagISO) ||
     (!v.frist && v.opprettet && (Date.now()-new Date(v.opprettet).getTime()) > 90*86400000);
   const aktiveVarsler = useMemo(()=>varsler.filter(v=>!erHistorisk(v)),[varsler]);
@@ -832,15 +833,15 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     return ()=>{ aktiv = false; };
   },[user?.id]);
 
-  async function loggAktivitet(entry) {
+  async function loggAktivitet(entry: any) {
     const ny = {...entry, id:Date.now(), dato:new Date().toLocaleDateString("no-NO")};
     setAktivitet(a=>[ny,...a]);
     if(user?.id) await loggAktivitetDB(user.id, entry);
   }
 
-  async function toggleFølg(sakId) {
+  async function toggleFølg(sakId: any) {
     if(!user?.id) {
-      if (new URLSearchParams(window.location.search).get("demo")) return;
+      if (demoParameter()) return;
       beOmInnlogging("Logg inn for å følge saken. Valget lagres på kontoen din.");
       return;
     }
@@ -878,14 +879,14 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
       varselKat: utvalg.fagfelt,
       varselNivå: nivaaFraGeografisk(utvalg.geografisk),
     };
-    setUser(u=>({...u,...neste}));
+    setUser((u: any)=>({...u,...neste}));
     const ok = await lagreProfil(user.id, {
       varsler_aktive: neste.varslerAktive,
       fagfelt: neste.fagfelt,
       geografisk: neste.geografisk,
     });
     if(!ok) {
-      setUser(u=>({...u,...forrige}));
+      setUser((u: any)=>({...u,...forrige}));
       showToast("Kunne ikke lagre varslene. Prøv igjen.","feil");
     }
   }
@@ -906,7 +907,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   }, []);
 
   function demoNå() {
-    return new URLSearchParams(window.location.search).get("demo");
+    return demoParameter();
   }
   function gå(id: string){
     setMenyÅpen(false);
@@ -1123,7 +1124,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             dataLastet={personlig.mock ? true : dataLastet}
             user={user}
             minFylke={user?.fylkesnr}
-            onVelgFylke={(fnr)=>{setUser(u=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}
+            onVelgFylke={(fnr: any)=>{setUser((u: any)=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}
             onVelgFag={velgFag}
             linjer={personlig.vis ? folgeLinjer : null}
             mock={personlig.mock}
@@ -1265,7 +1266,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
   const [fylkeVal,setFylkeVal]=useState(user?.fylkesnr||"");
   async function lagreOrg(){
     const oppd={org:orgVal,orgType:orgTypeVal,fylkesnr:fylkeVal||null};
-    setUser(u=>({...u,...oppd}));
+    setUser((u: any)=>({...u,...oppd}));
     setRedigerOrg(false);
     if(user?.id) await lagreProfil(user.id,{org:orgVal,org_type:orgTypeVal,fylkesnr:fylkeVal||null});
   }
@@ -1377,7 +1378,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
               {user?.varslerAktive&&(
                 <Knapp variant="linje" onClick={async()=>{
                   const forrige=user;
-                  setUser(u=>({...u,varslerAktive:false,varselEpost:""}));
+                  setUser((u: any)=>({...u,varslerAktive:false,varselEpost:""}));
                   const ok=user?.id ? await lagreProfil(user.id,{varsler_aktive:false}) : false;
                   if(!ok){ setUser(forrige); showToast("Kunne ikke lagre varslene. Prøv igjen.","feil"); }
                 }}>Skru av varsler</Knapp>
@@ -1502,7 +1503,7 @@ function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevIn
     if(!navn||!epost) return;
     setLaster(true);
     const ok = await signKampanje(k.id, user.id, navn, epost);
-    if(ok) { setSig(s=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
+    if(ok) { setSig((s: any)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
     else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
     setLaster(false);
   }
@@ -1549,7 +1550,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
   const [nyKampTittel,setNyKampTittel]=useState(`Stopp: ${sak.tittel}`);
   const [nyKampBeskr,setNyKampBeskr]=useState("");
   const [nyKampOpprettet,setNyKampOpprettet]=useState(false);
-  const relKampanjer=kampanjer.filter(k=>k.kategori===sak.kategori||k.sakId===sak.id);
+  const relKampanjer=kampanjer.filter((k: any)=>k.kategori===sak.kategori||k.sakId===sak.id);
   const merket = useMemo(
     () => delOppDokument([sak?.tittel || "", sak?.sammendrag || "", sak?.instans || ""]),
     [sak?.id, sak?.tittel, sak?.sammendrag, sak?.instans],
@@ -1655,7 +1656,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
             <div>
               <h3 className="kv-undertittel">Kampanjer på denne saken</h3>
               <ul className="kv-liste">
-                {relKampanjer.map(k=>(
+                {relKampanjer.map((k: any)=>(
                   <li key={k.id} className="kv-rad">
                     <h3 className="kv-undertittel">{k.tittel}</h3>
                     <p className="kv-brod">{k.beskrivelse}</p>
@@ -1798,7 +1799,7 @@ function KampanjeSignerMini({k,user=null,onKrevInnlogging}:{k:any;user?:any;onKr
   return <Knapp onClick={beOmSignatur}>Signer denne kampanjen</Knapp>;
 }
 
-function DelMini({sak}) {
+function DelMini({sak}: any) {
   const [kopiert,setKopiert]=useState(false);
   const [epostSendt,setEpostSendt]=useState(false);
   const url="https://kulturvarsling.no/sak/"+sak.id;
@@ -1983,7 +1984,7 @@ const MAL_TEMPLATES: Record<string, Mal[]> = {
 };
 
 function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}:{type:string;kontekst:any;onClose:()=>void;onSend?:(entry:any)=>void;user?:any}) {
-  function applyUserFill(txt) {
+  function applyUserFill(txt: any) {
     if(!user) return txt;
     const org = user.org||user.navn||"";
     const navn = user.navn||"";
@@ -2017,7 +2018,7 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}:{type:stri
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  function velgMal(id) {
+  function velgMal(id: any) {
     setValgtMal(id);
     const mal = maler.find(m=>m.id===id);
     if(!mal) return;
@@ -2284,9 +2285,9 @@ function PremiumVerktøy({varslerData=[],user=null}:{varslerData?:any[];user?:an
               <section>
                 <h2 className="kv-undertittel">{resultat.kommune}: kulturøkonomi</h2>
                 <ul className="kv-liste">
-                  {resultat.nøkkeltall.map(n=>{
-                    const siste=n.serie.filter(v=>v!=null).slice(-1)[0];
-                    const forrige=n.serie.filter(v=>v!=null).slice(-2)[0];
+                  {resultat.nøkkeltall.map((n: any)=>{
+                    const siste=n.serie.filter((v: any)=>v!=null).slice(-1)[0];
+                    const forrige=n.serie.filter((v: any)=>v!=null).slice(-2)[0];
                     const opp=siste!=null&&forrige!=null?siste-forrige:null;
                     const vsSnitt=siste!=null&&n.landssnitt!=null?siste-n.landssnitt:null;
                     return (
@@ -2377,7 +2378,7 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
     const geografisk = geografiskFraNivaa(valgtNivå, user?.geografisk||[]);
     const forrige = user;
     setFeil("");
-    setUser(u=>({
+    setUser((u: any)=>({
       ...u, varselEpost:epost, varselKat:valgtKat, varselNivå:valgtNivå, varselFrekvens:frekvens,
       fagfelt:valgtKat, geografisk, varslerAktive:true,
     }));
@@ -2527,7 +2528,7 @@ function PremiumModal({user,onClose,onLogin}:{user:any;onClose:()=>void;onLogin?
   );
 }
 
-function KommuneLogin({setScreen,setKommune}) {
+function KommuneLogin({setScreen,setKommune}: any) {
   const [epost,setEpost]=useState("");
   const [pw,setPw]=useState("");
   const [kom,setKom]=useState("Oslo");
@@ -2552,7 +2553,7 @@ function KommuneLogin({setScreen,setKommune}) {
   );
 }
 
-function KommuneApp({kommune,setScreen}) {
+function KommuneApp({kommune,setScreen}: any) {
   const [view,setView]=useState("oversikt");
   const [høringer,setHøringer]=useState<any[]>(KOM_HØRINGER_INIT);
   const [visPubliser,setVisPubliser]=useState(false);
@@ -2568,7 +2569,7 @@ function KommuneApp({kommune,setScreen}) {
 
   return (
     <div className="kv-skjerm">
-      {visPubliser&&<PubliserModal onClose={()=>setVisPubliser(false)} onPubliser={h=>{setHøringer(p=>[{...h,id:p.length+1,publisert:new Date().toISOString().split("T")[0],status:"aktiv",svar:0,varslet:Math.floor(Math.random()*200)+50},...p]);setVisPubliser(false);setView("høringer");}}/>}
+      {visPubliser&&<PubliserModal onClose={()=>setVisPubliser(false)} onPubliser={(h: any)=>{setHøringer(p=>[{...h,id:p.length+1,publisert:new Date().toISOString().split("T")[0],status:"aktiv",svar:0,varslet:Math.floor(Math.random()*200)+50},...p]);setVisPubliser(false);setView("høringer");}}/>}
       <header className="avis-mast">
         <button type="button" className="avis-tittel" onClick={()=>setScreen("bruker-app")}>Kultur<span>varsling</span></button>
         <p className="avis-under">{kommune?.kommune}</p>
@@ -2593,10 +2594,10 @@ function KommuneApp({kommune,setScreen}) {
   );
 }
 
-function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPubliser}) {
-  const aktive=høringer.filter(h=>h.status==="aktiv").length;
+function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPubliser}: any) {
+  const aktive=høringer.filter((h: any)=>h.status==="aktiv").length;
   const respons = `${Math.round(totalSvar/Math.max(1,totalVarslet)*100)} prosent`;
-  const aktiveHøringer = høringer.filter(h=>h.status==="aktiv");
+  const aktiveHøringer = høringer.filter((h: any)=>h.status==="aktiv");
   return (
     <div className="kv-stakk">
       <ul className="kv-liste">
@@ -2614,7 +2615,7 @@ function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPublise
         <section>
           <h2 className="kv-undertittel">Aktive høringer</h2>
           {aktiveHøringer.length===0&&<p className="kv-tom">Ingen aktive høringer.</p>}
-          {aktiveHøringer.map(h=><HøringRad key={h.id} h={h}/>)}
+          {aktiveHøringer.map((h: any)=><HøringRad key={h.id} h={h}/>)}
         </section>
         <section>
           <h2 className="kv-undertittel">Siste innspill</h2>
@@ -2634,7 +2635,7 @@ function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPublise
   );
 }
 
-function HøringRad({h}) {
+function HøringRad({h}: any) {
   return (
     <article className="kv-rad">
       <h3 className="kv-undertittel">{h.tittel}</h3>
@@ -2643,13 +2644,13 @@ function HøringRad({h}) {
   );
 }
 
-function KommuneHøringer({høringer,setVisPubliser}) {
+function KommuneHøringer({høringer,setVisPubliser}: any) {
   return (
     <div className="kv-stakk">
       <Knapp onClick={()=>setVisPubliser(true)}>Publiser høring</Knapp>
       {høringer.length===0&&<p className="kv-tom">Ingen høringer er publisert.</p>}
       <ul className="kv-liste">
-        {høringer.map(h=>(
+        {høringer.map((h: any)=>(
           <li key={h.id} className="kv-rad">
             <h3 className="kv-undertittel">{h.tittel}</h3>
             <p className="kv-meta">{metaLinje([katNavn(h.kategori), h.status==="aktiv"?"Aktiv":"Avsluttet", `Publisert ${h.publisert}`, `Frist ${h.frist}`])}</p>
@@ -2671,13 +2672,13 @@ function KommuneSvar() {
   const [tags,setTags]=useState<any>({});
   const filtered=valgtHøring==="alle"?svar:svar.filter(s=>s.høringId===parseInt(valgtHøring));
 
-  function merkLest(id){ setSvar(s=>s.map(x=>x.id===id?{...x,status:"lest"}:x)); }
-  function sendSvar(id){
-    setSendt(p=>({...p,[id]:true}));
+  function merkLest(id: any){ setSvar(s=>s.map(x=>x.id===id?{...x,status:"lest"}:x)); }
+  function sendSvar(id: any){
+    setSendt((p: any)=>({...p,[id]:true}));
     setÅpenSvar(null);
     merkLest(id);
   }
-  function toggleTag(svId,t){ setTags(p=>({...p,[svId]:p[svId]?.includes(t)?p[svId].filter(x=>x!==t):[...(p[svId]||[]),t]})); }
+  function toggleTag(svId: any,t: any){ setTags((p: any)=>({...p,[svId]:p[svId]?.includes(t)?p[svId].filter((x: any)=>x!==t):[...(p[svId]||[]),t]})); }
 
   function eksporter(){
     const csv=["Org,Dato,Høring,Status,Tags,Tekst",...filtered.map(s=>`"${s.org}","${s.dato}","Høring #${s.høringId}","${s.status}","${(tags[s.id]||[]).join("|")}","${s.tekst.replace(/"/g,"'")}"`)].join("\n");
@@ -2707,7 +2708,7 @@ function KommuneSvar() {
             </div>
             {åpenSvar===s.id?(
               <div>
-                <Tekstfelt id={`svar-${s.id}`} label="Svar" rows={3} value={svarTekst[s.id]||""} onChange={e=>setSvarTekst(p=>({...p,[s.id]:e.target.value}))} placeholder={"Svar til "+s.org} />
+                <Tekstfelt id={`svar-${s.id}`} label="Svar" rows={3} value={svarTekst[s.id]||""} onChange={e=>setSvarTekst((p: any)=>({...p,[s.id]:e.target.value}))} placeholder={"Svar til "+s.org} />
                 <div className="kv-klynge">
                   <Knapp onClick={()=>sendSvar(s.id)}>Send svar</Knapp>
                   <Knapp variant="linje" onClick={()=>setÅpenSvar(null)}>Avbryt</Knapp>
@@ -2728,7 +2729,7 @@ function KommuneSvar() {
   );
 }
 
-function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
+function KommuneStatistikk({høringer,totalVarslet,totalSvar}: any) {
   const respons = Math.round(totalSvar/Math.max(1,totalVarslet)*100);
   return (
     <div className="kv-stakk">
@@ -2736,7 +2737,7 @@ function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
       <h2 className="kv-undertittel">Per høring</h2>
       {høringer.length===0&&<p className="kv-tom">Ingen høringer å vise.</p>}
       <ul className="kv-liste">
-        {høringer.map(h=>(
+        {høringer.map((h: any)=>(
           <li key={h.id} className="kv-rad">
             <p>{h.tittel}</p>
             <p className="kv-meta">{h.svar} innspill. {h.varslet} varslet.</p>
@@ -2747,7 +2748,7 @@ function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
   );
 }
 
-function PubliserModal({onClose,onPubliser}) {
+function PubliserModal({onClose,onPubliser}: any) {
   const [tittel,setTittel]=useState("");
   const [beskrivelse,setBeskrivelse]=useState("");
   const [frist,setFrist]=useState("");
@@ -2836,7 +2837,7 @@ export default function App() {
         const profil=await hentProfil(session.user.id);
         if(profil?.plan==="premium"){
           clearInterval(intervall);
-          setUser(u=>u?{...u,plan:"premium"}:u);
+          setUser((u: any)=>u?{...u,plan:"premium"}:u);
           showToast("Premium er aktivert.","ok");
           return;
         }
