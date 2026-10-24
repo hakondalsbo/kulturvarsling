@@ -621,7 +621,7 @@ button.avis-tittel {
   background: var(--flate);
   padding: 0 18px;
   min-height: 44px;
-  border-radius: 22px;
+  border-radius: 2px;
   cursor: pointer;
 }
 
@@ -641,10 +641,8 @@ button.avis-tittel {
   left: 0;
   width: min(420px, 80vw);
   background: var(--flate);
-  border: 1px solid var(--linje);
-  box-shadow: 0 18px 40px -18px rgba(31, 29, 26, 0.25);
+  border: 1px solid var(--linje-mork);
   padding: 28px 28px 20px;
-  border-radius: 4px;
 }
 
 .avis-geo-panel h3 {
@@ -721,7 +719,7 @@ button.avis-tittel {
   border: 0;
   padding: 8px 14px;
   min-height: 40px;
-  border-radius: 18px;
+  border-radius: 2px;
   font: 500 14px var(--sans);
   color: var(--dempet);
   cursor: pointer;
@@ -2243,12 +2241,123 @@ textarea.kv-input,
   color: var(--granitt);
 }
 
+.avis-sb {
+  border-bottom: 1px solid var(--linje-mork);
+}
+
+.avis-sb-rad {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.85fr);
+  gap: 48px;
+  align-items: end;
+  padding-top: 36px;
+  padding-bottom: 32px;
+}
+
+.avis-sb h2 {
+  margin: 0 0 12px;
+  font: 500 40px/1.15 var(--serif);
+  letter-spacing: -0.02em;
+}
+
+.avis-sb h2 a {
+  color: var(--tekst);
+  text-underline-offset: 0.12em;
+}
+
+.avis-sb-rad > div > p {
+  margin: 0;
+  max-width: 42em;
+  font: 400 19px/1.55 var(--serif);
+  color: var(--brod);
+}
+
+.avis-sb-frist {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--linje-mork);
+  border-bottom: 1px solid var(--linje);
+}
+
+.avis-sb-dato {
+  margin: 0;
+  font: 500 56px/0.85 var(--serif);
+  color: var(--tekst);
+  letter-spacing: -0.03em;
+  text-align: center;
+}
+
+.avis-sb-dato small {
+  display: block;
+  margin-top: 6px;
+  font: 600 12px/1 var(--sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.avis-sb-status {
+  margin: 0 0 6px;
+  font: 600 13px/1.2 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tekst);
+}
+
+.avis-sb-frist time {
+  font: 400 16px/1.4 var(--sans);
+  color: var(--brod);
+}
+
+.avis-sb-frist .avis-btn {
+  margin-top: 12px;
+}
+
+.avis-sb-frist.er-passert .avis-sb-dato,
+.avis-sb-frist.er-passert .avis-sb-status {
+  color: var(--dempet);
+}
+
+.kv-galleri {
+  padding-bottom: 64px;
+}
+
+.kv-galleri section {
+  padding-top: 28px;
+  border-top: 1px solid var(--linje);
+  margin-top: 28px;
+}
+
+.kv-galleri h2 {
+  margin: 0 0 8px;
+}
+
+.kv-galleri .kv-toast {
+  position: static;
+  transform: none;
+  left: auto;
+  bottom: auto;
+}
+
+@media (max-width: 860px) {
+  .avis-sb-rad { grid-template-columns: 1fr; gap: 24px; }
+  .avis-sb h2 { font-size: 32px; }
+}
+
 .kv-knapp:hover:not(:disabled) { filter: none; }
 .kv-knapp:active:not(:disabled) { transform: none; }
 .kv-knapp.prim:hover:not(:disabled),
-.kv-knapp:hover:not(:disabled):not(.linje):not(.stille):not(.fare) { background: #7f2219; }
-.kv-knapp.linje:hover:not(:disabled) { border-color: var(--tekst); }
-.kv-knapp.fare:hover:not(:disabled) { background: var(--tegl); color: #fff; }
+.kv-knapp:hover:not(:disabled):not(.linje):not(.stille):not(.fare),
+.kv-knapp.vis-hover:not(.linje):not(.stille):not(.fare) { background: #7f2219; }
+.kv-knapp.linje:hover:not(:disabled),
+.kv-knapp.linje.vis-hover { border-color: var(--tekst); }
+.kv-knapp.fare:hover:not(:disabled),
+.kv-knapp.fare.vis-hover { background: var(--tegl); color: #fff; }
+.kv-knapp:active:not(:disabled):not(.linje):not(.stille):not(.fare),
+.kv-knapp.vis-aktiv:not(.linje):not(.stille):not(.fare) { background: #641910; }
+.kv-knapp.vis-fokus { outline: 2px solid var(--tekst); outline-offset: 3px; }
 .kv-knapp:disabled,
 .kv-knapp.er-inaktiv { opacity: 0.45; cursor: not-allowed; }
 .kv-knapp.laster { cursor: progress; }

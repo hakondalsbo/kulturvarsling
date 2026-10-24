@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta, Rollemerke } from "./avis.tsx";
 import { vurderSak } from "./handling.ts";
+import { DesignSide } from "./design.tsx";
 import { MerketTekst, OrdlisteSide } from "./ord.tsx";
 import { delOppDokument } from "./innhold/treff.ts";
 import { UNDERTEKST } from "./tekster.ts";
@@ -690,9 +691,33 @@ function BrukerLogin({setScreen,setUser,grunn=""}) {
   );
 }
 
+/** Bare i vite dev, til skjermbilder. Brukeren har ingen id, så ingenting lagres. */
+function forhandsvisning(): string | null {
+  if (!import.meta.env.DEV) return null;
+  return new URLSearchParams(window.location.search).get("vis");
+}
+
+const FORHANDSBRUKER = {
+  navn: "Eksempel",
+  org: "Eksempelorganisasjon",
+  epost: "eksempel@kulturvarsling.no",
+  orgType: "organisasjon",
+  fylkesnr: "03",
+  onboardingDone: true,
+  varslerAktive: true,
+  fagfelt: ["musikk", "scenekunst"],
+  geografisk: ["nasjonalt", "fylke"],
+  varselFrekvens: "ukentlig",
+  varselEpost: "eksempel@kulturvarsling.no",
+};
+
 function visningFraSti(): string {
   const p = window.location.pathname.replace(/\/$/, "");
   if (p === "/ordliste" || p === "/app/ordliste") return "ordliste";
+  if (p === "/design" || p === "/app/design") return "design";
+  const vis = forhandsvisning();
+  if (vis === "profil" || vis === "varsler") return "profil";
+  if (vis === "mobiliser") return "mobiliser";
   return "forside";
 }
 
@@ -700,7 +725,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [view,setView]=useState(visningFraSti);
   const [arkivKat,setArkivKat]=useState("alle");
   const [showPremium,setShowPremium]=useState(false);
-  const [showVarselReg,setShowVarselReg]=useState(false);
+  const [showVarselReg,setShowVarselReg]=useState(forhandsvisning()==="varsler");
   const [showOnboarding,setShowOnboarding]=useState(user&&!user.onboardingDone);
   const [showFeedback,setShowFeedback]=useState(false);
   const [fulgte,setFullgte]=useState<any[]>([]);
@@ -971,7 +996,8 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         )}
         {view==="kilder" && <KildeHelseSide onBack={()=>gå("forside")}/>}
         {view==="ordliste" && <OrdlisteSide />}
-        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&(
+        {view==="design" && <DesignSide />}
+        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&(
           <div className="avis-wrap avis-annet">
             {annenTittel&&<h1>{annenTittel}</h1>}
             {view==="historikk" && <SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
@@ -1004,6 +1030,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
           </div>
           <div>
             <a href="/ordliste">Ordliste</a>
+            <a href="/design">Komponenter</a>
             <a href="/personvern">Personvern</a>
             <button type="button" onClick={()=>setShowFeedback(true)}>Gi tilbakemelding</button>
             <span>personvern@kulturvarsling.no</span>
@@ -2525,8 +2552,9 @@ function PubliserModal({onClose,onPubliser}) {
 }
 
 export default function App() {
+  const vis = forhandsvisning();
   const [screen,setScreen]=useState("bruker-app");
-  const [user,setUser]=useState<any>(null);
+  const [user,setUser]=useState<any>(vis && vis !== "innlogging" ? FORHANDSBRUKER : null);
   const [kommune,setKommune]=useState<any>(null);
   const [sessionSjekket,setSessionSjekket]=useState(false);
   const [loginGrunn,setLoginGrunn]=useState("");
@@ -2536,6 +2564,10 @@ export default function App() {
   }
 
   useEffect(()=>{
+    if (forhandsvisning()) {
+      setSessionSjekket(true);
+      return;
+    }
     sb.auth.getSession().then(async ({data:{session}})=>{
       if(session?.user) {
         const profil = await hentProfil(session.user.id);
