@@ -15,7 +15,11 @@ test("komponentoversikten ligger på /design", () => {
   const design = readFileSync("src/design.tsx", "utf8");
   const vercel = readFileSync("vercel.json", "utf8");
   assert.match(app, /\/design/);
+  assert.doesNotMatch(app, /href="\/design"/);
   assert.match(vercel, /"src": "\/design"/);
+  assert.match(vercel, /\/404\.html/);
+  assert.equal(existsSync("public/404.html"), true);
+  assert.doesNotMatch(readFileSync("public/404.html", "utf8"), /varslingssystem/);
   for (const tekst of ["Inaktiv", "Hover", "Fokus", "Aktiv", "Laster", "Faner og filtre", "Merker", "Skjema"]) {
     assert.match(design, new RegExp(tekst));
   }

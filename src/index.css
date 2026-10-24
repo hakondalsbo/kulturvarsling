@@ -1108,22 +1108,25 @@ button.avis-tittel {
   color: var(--dempet);
 }
 
+.avis-fot-rad > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 24px;
+  row-gap: 4px;
+}
+
 .avis-fot-rad button,
 .avis-fot-rad a {
   background: none;
   border: 0;
   padding: 8px 0;
-  margin-left: 24px;
+  margin: 0;
   min-height: 44px;
   color: var(--dempet);
   font: inherit;
   cursor: pointer;
   text-decoration: none;
-}
-
-.avis-fot-rad button:first-child,
-.avis-fot-rad a:first-child {
-  margin-left: 0;
 }
 
 .avis-bunn {
@@ -1642,8 +1645,7 @@ button.avis-tittel {
 
   .avis-fot-rad button,
   .avis-fot-rad a {
-    margin-left: 0;
-    margin-right: 18px;
+    margin: 0;
   }
 }
 
@@ -2348,13 +2350,61 @@ textarea.kv-input,
 
 .kv-knapp:hover:not(:disabled) { filter: none; }
 .kv-knapp:active:not(:disabled) { transform: none; }
+
+/* .avis button setter color: inherit og slår ellers ut hvit tekst på tegl. */
+.avis .kv-knapp:not(.linje):not(.stille):not(.fare),
+.avis .kv-knapp:not(.linje):not(.stille):not(.fare):hover:not(:disabled),
+.avis .kv-knapp:not(.linje):not(.stille):not(.fare):focus-visible,
+.avis .kv-knapp:not(.linje):not(.stille):not(.fare):active:not(:disabled),
+.avis .kv-knapp.vis-hover:not(.linje):not(.stille):not(.fare),
+.avis .kv-knapp.vis-fokus:not(.linje):not(.stille):not(.fare),
+.avis .kv-knapp.vis-aktiv:not(.linje):not(.stille):not(.fare),
+.avis .avis-btn,
+.avis .avis-btn:hover,
+.avis .avis-btn:focus-visible,
+.avis .avis-btn:active {
+  color: var(--papir);
+}
+
+.avis .kv-knapp.linje,
+.avis .kv-knapp.linje:hover:not(:disabled),
+.avis .kv-knapp.linje:focus-visible,
+.avis .kv-knapp.linje:active:not(:disabled) {
+  color: var(--tekst);
+  background: transparent;
+}
+
+.avis .kv-knapp.stille,
+.avis .kv-knapp.stille:hover:not(:disabled),
+.avis .kv-knapp.stille:focus-visible,
+.avis .kv-knapp.stille:active:not(:disabled) {
+  color: var(--granitt);
+  background: transparent;
+}
+
+.avis .kv-knapp.fare,
+.avis .kv-knapp.fare:focus-visible {
+  color: var(--tegl);
+  background: transparent;
+}
+
+.avis .kv-knapp.fare:hover:not(:disabled),
+.avis .kv-knapp.fare:active:not(:disabled) {
+  background: var(--tegl);
+  color: var(--papir);
+}
+
 .kv-knapp.prim:hover:not(:disabled),
 .kv-knapp:hover:not(:disabled):not(.linje):not(.stille):not(.fare),
-.kv-knapp.vis-hover:not(.linje):not(.stille):not(.fare) { background: #7f2219; }
+.kv-knapp.vis-hover:not(.linje):not(.stille):not(.fare),
+.avis .avis-btn:hover,
+.avis .avis-btn:active {
+  background: #7f2219;
+}
 .kv-knapp.linje:hover:not(:disabled),
+.kv-knapp.linje:focus-visible,
+.kv-knapp.linje:active:not(:disabled),
 .kv-knapp.linje.vis-hover { border-color: var(--tekst); }
-.kv-knapp.fare:hover:not(:disabled),
-.kv-knapp.fare.vis-hover { background: var(--tegl); color: #fff; }
 .kv-knapp:active:not(:disabled):not(.linje):not(.stille):not(.fare),
 .kv-knapp.vis-aktiv:not(.linje):not(.stille):not(.fare) { background: #641910; }
 .kv-knapp.vis-fokus { outline: 2px solid var(--tekst); outline-offset: 3px; }
@@ -2384,6 +2434,10 @@ textarea.kv-input,
   .avis-fagnav .avis-wrap { padding-left: 24px; padding-right: 24px; }
   .avis-handlingrad { flex-wrap: nowrap; overflow-x: auto; }
   .avis-handlingrad button { flex: none; }
+  .avis-deling.side-om-side.liste {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
 }
 
 .kv-toast {

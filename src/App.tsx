@@ -234,12 +234,6 @@ const FYLKER = [
 ];
 const fylkesnavn = (nr) => FYLKER.find(f=>f.nr===String(nr))?.navn ?? null;
 
-const POLITIKERE = [
-  {id:1,navn:"Anette Hansen",parti:"Ap",rolle:"Kulturbyråd",nivå:"kommune",sted:"Oslo",kategori:["scenekunst","musikk"],kontakt:"anette.hansen@oslo.kommune.no"},
-  {id:2,navn:"Per Kristian Dahl",parti:"H",rolle:"Familie- og kulturkomiteen",nivå:"nasjonalt",sted:"Nasjonalt",kategori:["scenekunst","film"],kontakt:"pkdahl@stortinget.no"},
-  {id:3,navn:"Silje Moe",parti:"SV",rolle:"Kulturpolitisk talsmann",nivå:"nasjonalt",sted:"Nasjonalt",kategori:["musikk","dans"],kontakt:"silje.moe@sv.no"},
-];
-
 const VARSLER = [];
 const KAMPANJER = [];
 const SAK_HISTORIKK: any[] = [];
@@ -1030,7 +1024,6 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
           </div>
           <div>
             <a href="/ordliste">Ordliste</a>
-            <a href="/design">Komponenter</a>
             <a href="/personvern">Personvern</a>
             <button type="button" onClick={()=>setShowFeedback(true)}>Gi tilbakemelding</button>
             <span>personvern@kulturvarsling.no</span>
@@ -1337,7 +1330,6 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
   const [nyKampTittel,setNyKampTittel]=useState(`Stopp: ${sak.tittel}`);
   const [nyKampBeskr,setNyKampBeskr]=useState("");
   const [nyKampOpprettet,setNyKampOpprettet]=useState(false);
-  const relPol=POLITIKERE.filter(p=>p.kategori.includes(sak.kategori)||p.nivå===sak.nivå);
   const relKampanjer=kampanjer.filter(k=>k.kategori===sak.kategori||k.sakId===sak.id);
   const merket = useMemo(
     () => delOppDokument([sak?.tittel || "", sak?.sammendrag || "", sak?.instans || ""]),
@@ -1423,20 +1415,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info"}: {sak:any; onClose
       {tab==="mobiliser"&&(
         <div className="kv-stakk">
           <p className="kv-brod">Åpne brev viser en mal. E-post åpner e-postprogrammet.</p>
-          {relPol.length===0&&<p className="kv-tom">Ingen direkte treff. Gå til Mobiliser for å søke opp politikere.</p>}
-          <ul className="kv-liste">
-            {relPol.map(p=>(
-              <li key={p.id} className="kv-rad">
-                <p>{p.navn} <span className="kv-meta">{p.parti}</span></p>
-                <p className="kv-meta">{p.rolle}. {p.sted}.</p>
-                <p className="kv-meta">{p.kontakt}</p>
-                <div className="kv-klynge">
-                  <Knapp variant="linje" onClick={()=>setMalModal({type:"politiker",kontekst:{...p,sakTittel:sak.tittel}})}>Åpne brev</Knapp>
-                  <Knapp variant="stille" onClick={()=>window.open(`mailto:${p.kontakt}`)}>E-post</Knapp>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <p className="kv-brod">Liste over politikere kommer.</p>
           <div className="kv-rad">
             <p className="kv-feltnavn">Anbefalt komité</p>
             <h3 className="kv-undertittel">Familie- og kulturkomiteen</h3>
@@ -1829,9 +1808,7 @@ const KOMITEER_DATA = [
 
 function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanjerData=[]}:{loggAktivitet?:(entry:any)=>void;user?:any;varslerData?:any[];kampanjerData?:any[]}) {
   const [tab,setTab]=useState("oversikt");
-  const [sokPol,setSokPol]=useState("");
   const [malModal,setMalModal]=useState<any>(null);
-  const filtPol=POLITIKERE.filter(p=>`${p.navn} ${p.parti} ${p.rolle}`.toLowerCase().includes(sokPol.toLowerCase()));
   const handlinger=[
     {tittel:"Kontakt stortingskomité",tekst:"Familie- og kulturkomiteen behandler de fleste kultursaker. Åpner en brevmal.",type:"komite"},
     {tittel:"Skriv til en politiker",tekst:"Henvendelse med mal til en politiker.",type:"politiker_oversikt"},
@@ -1876,7 +1853,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
                     <p className="kv-meta">{v.instans} · {v.dager} dager igjen</p>
                     <div className="kv-klynge">
                       <Knapp variant="linje" onClick={()=>setMalModal({type:"horing",kontekst:v})}>Skriv innspill</Knapp>
-                      <Knapp variant="linje" onClick={()=>setMalModal({type:"politiker",kontekst:{...POLITIKERE[0],sakTittel:v.tittel}})}>Kontakt politiker</Knapp>
+                      <Knapp variant="linje" onClick={()=>setTab("politikere")}>Kontakt politiker</Knapp>
                     </div>
                   </li>
                 ))}
@@ -1921,21 +1898,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
       )}
 
       {tab==="politikere"&&(
-        <div className="kv-stakk">
-          <p className="kv-brod">Velg en politiker og åpne en brevmal.</p>
-          <Felt id="sok-pol" label="Søk" value={sokPol} onChange={e=>setSokPol(e.target.value)} placeholder="Navn, parti eller rolle" />
-          <ul className="kv-liste">
-            {filtPol.map(p=>(
-              <li key={p.id} className="kv-rad">
-                <p>{p.navn} <span className="kv-meta">{p.parti}</span></p>
-                <p className="kv-meta">{p.rolle}. {p.sted}.</p>
-                <p className="kv-meta">{p.kontakt}</p>
-                <p className="kv-meta">{p.kategori.map(id=>katNavn(id)).filter(Boolean).join(", ")}</p>
-                <Knapp variant="linje" onClick={()=>setMalModal({type:"politiker",kontekst:p})}>Åpne brev</Knapp>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <p className="kv-brod">Liste over politikere kommer.</p>
       )}
 
       {tab==="horinger"&&(
@@ -2105,18 +2068,7 @@ function PremiumVerktøy({varslerData=[],user=null}:{varslerData?:any[];user?:an
       )}
 
       {tool==="politikeraktivitet"&&(
-        <div>
-          <p className="kv-brod">Navn, parti, rolle og kontakt. Listen har ikke aktivitetstall.</p>
-          <ul className="kv-liste">
-            {POLITIKERE.map(p=>(
-              <li key={p.id} className="kv-rad">
-                <p>{p.navn} <span className="kv-meta">{p.parti}</span></p>
-                <p className="kv-meta">{p.rolle}. {p.sted}.</p>
-                <p className="kv-meta">{p.kontakt}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <p className="kv-brod">Liste over politikere kommer.</p>
       )}
     </div>
   );
