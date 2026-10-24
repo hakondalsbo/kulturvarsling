@@ -620,8 +620,9 @@ export function erKulturSak(sak: {
 }
 
 // ─── Høringsfrist fra sak-detalj (eksport/sak) ────────────────────────────────
-// Eneste fungerende maskinlesbare kilde til komiteenes høringsfrister
-// (eksport/horingsoversikt = 404, eksport/horinger = 500, verifisert).
+// HOERFRIST på saken. Komitéhøringenes to frister (frist for å søke om å delta
+// og frist for skriftlig innspill) hentes av stortinget-horinger fra
+// eksport/horinger, som svarer 200. eksport/horingsoversikt finnes ikke (404).
 // Ved flere HOERFRIST-hendelser velges den SISTE (skriftlig innspillsfrist).
 export function finnHøringsfrist(sakDetalj: {
   saksgang?: {
@@ -781,6 +782,7 @@ export function adapterFraKildeUrl(raw: string | null | undefined): string | nul
   if (s.includes("stortinget.no") && (s.includes("ventede-saker") || s.includes("#sak-"))) {
     return "stortinget-ventede";
   }
+  if (s.includes("stortinget.no") && s.includes("/horing/")) return "stortinget-horinger";
   if (s.includes("stortinget.no")) return "stortinget-saker";
   if (s.includes("regjeringen.no")) return "regjeringen-rss";
   if (s.includes("einnsyn.no")) return "einnsyn";
@@ -900,6 +902,8 @@ export function normaliserInnholdTekst(raw: string | null | undefined): string |
 export function stabilSakId(kilde: string | null | undefined): string {
   if (!kilde) return "";
   if (/stortinget\.no/i.test(kilde) && !/ventede-saker/i.test(kilde)) {
+    const horing = kilde.match(/[?&]h=(\d+)/i);
+    if (horing) return `h=${horing[1]}`;
     const sak = kilde.match(/[?&]p=(\d+)/i);
     if (sak) return `p=${sak[1]}`;
   }

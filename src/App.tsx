@@ -25,6 +25,8 @@ import { MobiliserInngang } from "./mobiliser/MobiliserInngang.tsx";
 import { MobiliserPanel } from "./mobiliser/MobiliserPanel.tsx";
 import { signaturKanSigneres } from "./mobiliser/miljo.ts";
 import { stotteFraSvar, type StottetInnspill as StotteRad } from "./mobiliser/stotte.ts";
+import { DEMO_SKRIFTLIG, erStortingetHoring, folgKomiteAktiv, komiteIdFraInstans, lagreFulgteKomite } from "./horing.ts";
+import { FolgKomiteStyring, HoringFristBlokker, HoringOmSak, KomiteSide, MineKomiteer } from "./horing.tsx";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase, Settings, API
@@ -52,6 +54,23 @@ sb.auth.onAuthStateChange((event) => {
   if (event === "PASSWORD_RECOVERY") settPassordGjenoppretting(true);
 });
 
+async function lastFulgteKomiteer(brukerId: string): Promise<string[]> {
+  if (!folgKomiteAktiv()) return [];
+  const { data, error } = await sb.from("fulgte_komiteer").select("komite_id").eq("bruker_id", brukerId);
+  if (error || !data) return [];
+  return data.map((rad: { komite_id: string }) => rad.komite_id);
+}
+
+function skrivFulgteKomite(brukerId: string, komiteId: string, skalFolge: boolean): Promise<boolean> {
+  return lagreFulgteKomite(sb, brukerId, komiteId, skalFolge);
+}
+
+function komiteFraSti(): string | null {
+  if (!folgKomiteAktiv()) return null;
+  const p = window.location.pathname.replace(/\/$/, "");
+  const m = p.match(/^\/komite\/([A-Za-zÆØÅæøå0-9]{2,16})$/);
+  return m ? m[1].toUpperCase() : null;
+}
 const PERSONVERN_VERSJON = "personvern-2026-10";
 
 // ─── Hjelpefunksjoner ─────────────────────────────────────────────────────
@@ -457,7 +476,7 @@ export function Landing({setScreen,varsler=[],kampanjer=[]}: any) {
           </span>
         </div>
       </footer>
-      {valgt&&<SaksModal sak={valgt} startTab={fane} onClose={()=>setValgt(null)} kampanjer={kampanjer} onKrevInnlogging={()=>setScreen("bruker-login")}/>}
+      {valgt&&<SaksModal sak={valgt} startTab={fane} onClose={()=>setValgt(null)} kampanjer={kampanjer} onKrevInnlogging={()=>setScreen("bruker-login")} saker={varsler}/>}
     </div>
   );
 }
@@ -774,6 +793,7 @@ function visningFraSti(): string {
   if (p === "/ordliste" || p === "/app/ordliste") return "ordliste";
   if (p === "/design" || p === "/app/design") return "design";
   if (p === "/min-side" || p === "/app/min-side") return "minside";
+  if (komiteFraSti()) return "komite";
   const vis = forhandsvisning();
   if (vis === "profil" || vis === "varsler") return "profil";
   if (vis === "mobiliser") return "mobiliser";
@@ -1223,9 +1243,19 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             onClose={()=>setMinSak(null)}
             onTilMinSide={()=>setMinSak(null)}
             onVarsler={()=>{ setMinSak(null); setApneOppsett(true); }}
+            saker={varsler}
           />
         )}
-        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&(
+        {view==="komite" && (
+          <KomiteSide
+            komiteId={komiteFraSti() ?? ""}
+            saker={aktiveVarsler}
+            brukerId={user?.id ?? null}
+            les={lastFulgteKomiteer}
+            skriv={skrivFulgteKomite}
+          />
+        )}
+        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&view!=="komite"&&(
           <div className="avis-wrap avis-annet">
             {annenTittel&&<h1>{annenTittel}</h1>}
             {view==="historikk" && <SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
@@ -1375,7 +1405,11 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
       )}
 
       {tab==="fulgte"&&(
-        fulgte.length===0?(
+        <>
+        {folgKomiteAktiv() && (
+          <MineKomiteer saker={varslerData} brukerId={user?.id ?? null} les={lastFulgteKomiteer} />
+        )}
+        {fulgte.length===0?(
           <p className="kv-tom">Ingen saker er fulgt. Bruk «Følg saken» i arkivet for å samle dem her.</p>
         ):(
           <ul className="kv-liste">
@@ -1391,7 +1425,8 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
               </li>
             ))}
           </ul>
-        )
+        )}
+        </>
       )}
 
       {tab==="aktivitet"&&(
@@ -1472,7 +1507,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
 }
 
 function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true,minFylke=null,onVelgFylke=()=>{},user=null,onVelgFag=(_id: string)=>{},onKrevInnlogging=()=>{},linjer=null,mock=false}:{setView:any;setShowPremium:any;isPremium:any;fulgte?:any[];toggleFølg?:any;onLogin?:any;varsler?:any[];kampanjer?:any[];dataLastet?:boolean;minFylke?:any;onVelgFylke?:any;user?:any;onVelgFag?:(id:string)=>void;onKrevInnlogging?:(grunn:string)=>void;linjer?:any[]|null;mock?:boolean}) {
-  const [valgt,setValgt]=useState<any>(null);
+  const [valgt,setValgt]=useState<any>(forhandsvisning()==="komitehoring" ? DEMO_SKRIFTLIG : null);
   const [fane,setFane]=useState("info");
   void setShowPremium; void isPremium; void onLogin; void minFylke; void onVelgFylke;
   return (
@@ -1510,6 +1545,7 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
           user={user}
           onKrevInnlogging={onKrevInnlogging}
           onTilMinSide={()=>{ setValgt(null); setView("minside"); }}
+          saker={forhandsvisning()==="komitehoring" ? [DEMO_SKRIFTLIG, ...varsler] : varsler}
         />
       )}
     </>
@@ -1583,7 +1619,7 @@ function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevIn
   );
 }
 
-function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInnlogging,onTilMinSide,onVarsler}: {sak:any; onClose:any; kampanjer?:any; startTab?:string; user?:any; onKrevInnlogging?:(grunn:string)=>void; onTilMinSide?:()=>void; onVarsler?:()=>void}) {
+function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInnlogging,onTilMinSide,onVarsler,saker=[]}: {sak:any; onClose:any; kampanjer?:any; startTab?:string; user?:any; onKrevInnlogging?:(grunn:string)=>void; onTilMinSide?:()=>void; onVarsler?:()=>void; saker?:any[]}) {
   const [tab,setTab]=useState(startTab||"info");
   useEffect(()=>{ setTab(startTab||"info"); },[sak?.id, startTab]);
   useEffect(()=>{
@@ -1649,7 +1685,16 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
       {tab==="info"&&(
         <div className="kv-stakk">
           <MobiliserPanel sak={sak} />
-          <p className="kv-brod"><MerketTekst deler={merket[1]} /></p>
+          {erStortingetHoring(sak) ? <HoringFristBlokker sak={sak} /> : <p className="kv-brod"><MerketTekst deler={merket[1]} /></p>}
+          <HoringOmSak sakId={sak.id} saker={saker} />
+          {folgKomiteAktiv() && erStortingetHoring(sak) && komiteIdFraInstans(sak.instans) && user?.id && (
+            <FolgKomiteStyring
+              komiteId={komiteIdFraInstans(sak.instans) ?? ""}
+              brukerId={user.id}
+              les={lastFulgteKomiteer}
+              skriv={skrivFulgteKomite}
+            />
+          )}
           {klartekstStatus!=="ok"&&klartekstStatus!=="ikke-innlogget"&&(
             <Knapp onClick={hentKlartekst} disabled={klartekstStatus==="laster"}>
               {klartekstStatus==="laster"?"Henter forklaring":"Forklar saken"}
@@ -1896,7 +1941,7 @@ function BrukerVarsler({fulgte=[],toggleFølg=()=>{},varslerData=VARSLER,kampanj
         katStyrt={katStyrt}
         onKat={onKat}
       />
-      {valgt&&<SaksModal sak={valgt} startTab={fane} onClose={()=>setValgt(null)} kampanjer={kampanjerData} user={user} onKrevInnlogging={onKrevInnlogging}/>}
+      {valgt&&<SaksModal sak={valgt} startTab={fane} onClose={()=>setValgt(null)} kampanjer={kampanjerData} user={user} onKrevInnlogging={onKrevInnlogging} saker={varslerData}/>}
     </>
   );
 }
@@ -1998,7 +2043,7 @@ function BrukerKampanjer({kampanjerData=KAMPANJER,varslerData=VARSLER,user=null,
         })}
       </div>
       {sorted.length===0&&<p className="kv-tom">Ingen åpne kampanjer.</p>}
-      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjerData} user={user} onKrevInnlogging={onKrevInnlogging}/>}
+      {valgt&&<SaksModal sak={valgt} onClose={()=>setValgt(null)} kampanjer={kampanjerData} user={user} onKrevInnlogging={onKrevInnlogging} saker={varslerData}/>}
     </div>
   );
 }

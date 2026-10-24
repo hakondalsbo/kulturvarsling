@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Rollemerke } from "./avis.tsx";
+import { DEMO_MUNTLIG, DEMO_SAK, DEMO_SKRIFTLIG } from "./horing.ts";
+import { HoringFristBlokker, HoringOmSak } from "./horing.tsx";
 import { Felt, Knapp, Tekstfelt, Velger } from "./ui.tsx";
 
 const NÅ = new Date("2026-10-24T12:00:00+02:00");
@@ -105,6 +107,19 @@ export function DesignSide() {
             >{label}</button>
           ))}
         </div>
+      </section>
+
+      <section aria-labelledby="galleri-horing">
+        <h2 id="galleri-horing" className="kv-undertittel">Komitéhøring</h2>
+        <div className="kv-stakk">
+          <Rollemerke sak={DEMO_SKRIFTLIG} nå={NÅ} />
+          <HoringFristBlokker sak={DEMO_SKRIFTLIG} />
+        </div>
+        <div className="kv-stakk">
+          <Rollemerke sak={DEMO_MUNTLIG} nå={NÅ} />
+          <HoringFristBlokker sak={DEMO_MUNTLIG} />
+        </div>
+        <HoringOmSak sakId={DEMO_SAK.id} saker={[DEMO_SAK, DEMO_SKRIFTLIG]} />
       </section>
 
       <section aria-labelledby="galleri-widget">

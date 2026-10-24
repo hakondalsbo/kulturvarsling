@@ -116,3 +116,32 @@ test("utvalg og tokens", () => {
   assert.equal(utvalgErDekket(false, [], ["land"], "alle", { type: "alle" }), false);
   assert.equal(utvalgErDekket(true, ["dans"], ["land"], "musikk", { type: "alle" }), false);
 });
+
+test("fulgt komité gir grunn komite bare når flagget er på, og sak vinner", () => {
+  const profiler = [
+    { id: "a", epost: "a@example.com", varsel_frekvens: "daglig", varsler_aktive: true, fagfelt: ["musikk"], geografisk: ["land"] },
+    { id: "b", epost: "b@example.com", varsel_frekvens: "daglig", varsler_aktive: true, fagfelt: ["musikk"], geografisk: ["land"] },
+    { id: "c", epost: "c@example.com", varsel_frekvens: "ukentlig", varsler_aktive: false, fagfelt: [], geografisk: [] },
+  ];
+  const komiteer = [
+    { brukerId: "a", komiteId: "FAMKULT" },
+    { brukerId: "c", komiteId: "FAMKULT" },
+  ];
+  const uten = mottakereForSak(sak, profiler, [], [], { folgKomite: false, fulgteKomiteer: komiteer, komiteId: "FAMKULT" });
+  assert.deepEqual(uten.map((m) => [m.brukerId, m.grunn]), [
+    ["a", "abonnement"],
+    ["b", "abonnement"],
+  ]);
+  const med = mottakereForSak(
+    sak,
+    profiler,
+    [{ brukerId: "b", sakId: "sak-1" }],
+    [],
+    { folgKomite: true, fulgteKomiteer: komiteer, komiteId: "FAMKULT" },
+  );
+  assert.deepEqual(med.map((m) => [m.brukerId, m.grunn]), [
+    ["a", "komite"],
+    ["b", "sak"],
+    ["c", "komite"],
+  ]);
+});

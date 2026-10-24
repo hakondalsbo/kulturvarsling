@@ -936,6 +936,14 @@ test("adapterFraKildeUrl mapper kjente vertsnavn og lar ukjente være", () => {
     "stortinget-saker",
   );
   assert.equal(
+    adapterFraKildeUrl("https://www.stortinget.no/no/Hva-skjer-pa-Stortinget/Horing/horing/?h=10005961"),
+    "stortinget-horinger",
+  );
+  assert.equal(
+    adapterFraKildeUrl("https://www.stortinget.no/no/Hva-skjer-pa-Stortinget/Horing/skriv-skriftlig-innspill/?h=10005956"),
+    "stortinget-horinger",
+  );
+  assert.equal(
     adapterFraKildeUrl("https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/ventede-saker/#sak-110"),
     "stortinget-ventede",
   );
@@ -1117,4 +1125,39 @@ test("kategori satt av adapteren vinner over modellen", () => {
   assert.equal(kategoriFraAdapter("  ", "visuell"), "visuell");
   assert.equal(kategoriFraAdapter(undefined, "kulturarv"), "kulturarv");
   assert.equal(kategoriFraAdapter(null, "musikk"), "musikk");
+});
+
+test("to høringer i samme sak får hver sin innholdsnøkkel, og p=200 er ikke p=2004", () => {
+  const instans = "Familie- og kulturkomiteen, Stortinget";
+  const tittel = "Høring: Statsbudsjettet 2027";
+  const a = innholdDedupNokkel({
+    instans,
+    tittel,
+    frist: "2026-10-28",
+    kilde: "https://www.stortinget.no/no/Hva-skjer-pa-Stortinget/Horing/horing/?h=10005956",
+  });
+  const b = innholdDedupNokkel({
+    instans,
+    tittel,
+    frist: "2026-10-28",
+    kilde: "https://www.stortinget.no/no/Hva-skjer-pa-Stortinget/Horing/horing/?h=10005961",
+  });
+  assert.notEqual(a, b);
+  assert.match(a ?? "", /h=10005956$/);
+  assert.match(b ?? "", /h=10005961$/);
+  const sak200 = innholdDedupNokkel({
+    instans: "Stortinget",
+    tittel: "Sak 200",
+    frist: "2026-10-28",
+    kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200",
+  });
+  const sak2004 = innholdDedupNokkel({
+    instans: "Stortinget",
+    tittel: "Sak 200",
+    frist: "2026-10-28",
+    kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=2004",
+  });
+  assert.match(sak200 ?? "", /p=200$/);
+  assert.match(sak2004 ?? "", /p=2004$/);
+  assert.notEqual(sak200, sak2004);
 });

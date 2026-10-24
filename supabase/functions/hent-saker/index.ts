@@ -41,6 +41,12 @@ import {
 import { geografiSomLagres, hentEInnsynKultursaker } from "./einnsyn.ts";
 import { einnsynV2Aktiv, hentEInnsynV2 } from "./einnsyn-v2.ts";
 import { hentBergenSaker } from "./bergen.ts";
+import {
+  hovedsakForHoring,
+  hentStortingetHoringer,
+  planleggHoringLagring,
+  stortingSakIdFraUrl,
+} from "./stortinget-horinger.ts";
 import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
 import { hentSametingetSaker } from "./sametinget.ts";
 import { hentRegjeringenRSS, parseOgBerik } from "./regjeringen.ts";
@@ -64,12 +70,12 @@ import {
 } from "./kildehelse.ts";
 
 // ─── Stortinget: kultursaker med høringsfrister ───────────────────────────────
-// KILDEKART-funn (verifisert juli 2026): det gamle endepunktet
-// eksport/horingsoversikt finnes ikke (404), og eksport/horinger er nede (500).
-// Strategi nå: hent ALLE saker for sesjonen (serverens komité-filter ignoreres
-// uansett), filtrer klientside med erKulturSak, og slå opp eksport/sak per NY
-// kultursak for å finne HOERFRIST (høringsfrist). Detaljoppslag gjøres kun for
-// saker vi ikke har fra før, så antall kall er lite etter første kjøring.
+// Komitéhøringer hentes i eget løp, stortinget-horinger, fra eksport/horinger
+// (HTTP 200, verifisert 24.10.2026). eksport/horingsoversikt finnes ikke (404).
+// Strategi for saker: hent ALLE saker for sesjonen (serverens komité-filter
+// ignoreres uansett), filtrer klientside med erKulturSak, og slå opp
+// eksport/sak per NY kultursak for å finne HOERFRIST. Detaljoppslag gjøres kun
+// for saker vi ikke har fra før, så antall kall er lite etter første kjøring.
 //
 // Begge sesjonene (gjeldende + forrige, Europe/Oslo) blir ETT utfall.
 // Feiler én, fortsetter den andre, og kjøringen klassifiseres som delvis.
@@ -455,6 +461,36 @@ function jsonSvar(body: unknown, status = 200): Response {
 
 // ON CONFLICT (kilde_nokkel) DO NOTHING. kilde_nokkel er generert og skal
 // ikke sendes med. Duplikat i samme kjøring er allerede fjernet før innsetting.
+async function lagreHoringOppfolging(
+  supabase: { from: (t: string) => any },
+  plan: ReturnType<typeof planleggHoringLagring>,
+  driftFeil: string[],
+): Promise<void> {
+  for (const op of plan.varselOppdateringer) {
+    const { error } = await supabase
+      .from("varsler")
+      .update(op.felt)
+      .eq("id", op.id)
+      .eq("manuelt_redigert", false);
+    if (error) {
+      console.error("høring varsel:", error.message);
+      driftFeil.push(`Høring ${op.id}: ${error.message}`);
+    }
+  }
+  for (const rad of plan.siderader) {
+    const { error } = await supabase.from("stortinget_horinger").upsert(rad, { onConflict: "horing_id" });
+    if (error) {
+      console.error("stortinget_horinger:", error.message);
+      driftFeil.push(`Høring ${rad.horing_id}: ${error.message}`);
+    }
+  }
+  for (const a of plan.avlystTilRedaktor) {
+    const melding = `Høring ${a.horing_id} er avlyst. Den er ikke avpublisert. Varselredaktøren må se på den.`;
+    console.error(melding);
+    driftFeil.push(melding);
+  }
+}
+
 async function lagreVarsel(
   supabase: { from: (t: string) => any },
   rad: Record<string, unknown>,
@@ -583,6 +619,7 @@ Deno.serve(async (req: Request) => {
     // Hent fra alle kilder parallelt. Én adapter som kaster, stopper ikke de andre.
     const kjøringer = await Promise.all([
       kjørAdapter("stortinget-saker", () => hentStortingetSaker(eksKilder)),
+      kjørAdapter("stortinget-horinger", () => hentStortingetHoringer()),
       kjørAdapter("regjeringen-rss", () => hentRegjeringenRSS()),
       kjørAdapter("stortinget-ventede", () => hentVentedeSaker()),
       // v2 øker kallvolumet. Bare når EINNSYN_V2_AKTIV er nøyaktig "true".
@@ -635,10 +672,14 @@ Deno.serve(async (req: Request) => {
     const etterUrl = dedupEtterKilde(datoFilter.behold, eksKilder);
     const etterInnhold = dedupEtterInnhold(etterUrl, eksInnhold);
     const emnePlan = planleggEmneDedup(etterInnhold, eks ?? []);
-    const nye = emnePlan.behold;
+    const horingFraEmne = emnePlan.koblinger
+      .filter((k) => k.item.adapter === "stortinget-horinger")
+      .map((k) => k.item);
+    const emneKoblinger = emnePlan.koblinger.filter((k) => k.item.adapter !== "stortinget-horinger");
+    const nye = [...emnePlan.behold, ...horingFraEmne];
 
     console.log(
-      `Totalt hentet: ${alle.length}, nye og relevante: ${nye.length}, samme sak: ${emnePlan.koblinger.length}`,
+      `Totalt hentet: ${alle.length}, nye og relevante: ${nye.length}, samme sak: ${emneKoblinger.length}`,
     );
 
     let antallLagret = 0;
@@ -652,6 +693,12 @@ Deno.serve(async (req: Request) => {
       varsletManglendeKilde.add(adapter);
       driftFeil.push(`${adapter}: ingen kilde_id i kilderegisteret`);
     };
+
+    const stortingSakVarsel = new Map<string, string>();
+    for (const rad of eks ?? []) {
+      const pid = stortingSakIdFraUrl(rad.kilde);
+      if (pid && rad.id) stortingSakVarsel.set(pid, rad.id);
+    }
 
     const datoPlan = planleggKildePublisertBackfill(alle, eks ?? []);
     for (const op of datoPlan) {
@@ -735,11 +782,22 @@ Deno.serve(async (req: Request) => {
             continue;
           }
           merkManglendeKilde(item.adapter, avvistRad.kilde_id);
+          if (item.adapter === "stortinget-horinger") {
+            avvistRad.sakstype = "horing";
+            if (item.handling === "handling_mulig" || item.handling === "bare_orientering") {
+              avvistRad.handling = item.handling;
+            }
+          }
           const avvist = await lagreVarsel(supabase, avvistRad);
           if (!avvist.error) {
             antallAvvist++;
             const nokkel = kildeNokkel(item.kilde);
-            if (nokkel) eksKilder.add(nokkel);
+            if (nokkel) {
+              eksKilder.add(nokkel);
+              if (item.adapter === "stortinget-horinger" && avvist.id) {
+                idEtterKilde.set(nokkel, avvist.id);
+              }
+            }
             const innhold = innholdDedupNokkel(item);
             if (innhold) eksInnhold.add(innhold);
           }
@@ -770,6 +828,10 @@ Deno.serve(async (req: Request) => {
       // Ordningskoden setter kategorien. Modellen får ikke overstyre den.
       kategori = kategoriFraAdapter(item.kategori, kategori);
 
+      if (item.adapter === "stortinget-horinger" && typeof item.sammendrag_raa === "string") {
+        sammendrag = item.sammendrag_raa.slice(0, 2000);
+      }
+
       // Tall og årstall som ikke står i kilden logges. Raden lagres likevel,
       // men upublisert, så en redaktør ser den før den blir synlig.
       // Eksisterende rader, også manuelt_redigert, skrives ikke om (ignoreDuplicates).
@@ -794,6 +856,14 @@ Deno.serve(async (req: Request) => {
         driftFeil.push(`${item.tittel.slice(0, 60)}: mangler kilde-URL`);
         continue;
       }
+      if (item.adapter === "stortinget-horinger") {
+        rad.sakstype = "horing";
+        if (item.handling === "handling_mulig" || item.handling === "bare_orientering") {
+          rad.handling = item.handling;
+        }
+        const hoved = hovedsakForHoring(item.sakIder, stortingSakVarsel);
+        if (hoved) rad.hovedsak_id = hoved;
+      }
       merkManglendeKilde(item.adapter, rad.kilde_id);
       const lagret = await lagreVarsel(supabase, rad);
 
@@ -808,7 +878,11 @@ Deno.serve(async (req: Request) => {
         const nokkel = kildeNokkel(item.kilde);
         if (nokkel) {
           eksKilder.add(nokkel);
-          if (lagret.id) idEtterKilde.set(nokkel, lagret.id);
+          if (lagret.id) {
+            idEtterKilde.set(nokkel, lagret.id);
+            const pid = stortingSakIdFraUrl(item.kilde);
+            if (pid && item.adapter === "stortinget-saker") stortingSakVarsel.set(pid, lagret.id);
+          }
         }
         const innhold = innholdDedupNokkel(item);
         if (innhold) eksInnhold.add(innhold);
@@ -845,7 +919,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    for (const kobling of emnePlan.koblinger) {
+    for (const kobling of emneKoblinger) {
       const item = kobling.item;
       const hovedNokkel = kildeNokkel(kobling.hovedKilde);
       const hovedsakId = kobling.hovedsakId ?? (hovedNokkel ? idEtterKilde.get(hovedNokkel) ?? null : null);
@@ -877,6 +951,21 @@ Deno.serve(async (req: Request) => {
         if (innhold) eksInnhold.add(innhold);
       }
     }
+
+    const horingUtfall = kjøringer.find((k) => k.navn === "stortinget-horinger")?.utfall;
+    const sakEtterNytt = new Map(stortingSakVarsel);
+    for (const [nokkel, id] of idEtterKilde) {
+      const pid = stortingSakIdFraUrl(nokkel);
+      if (pid && !sakEtterNytt.has(pid)) sakEtterNytt.set(pid, id);
+    }
+    const horingPlan = planleggHoringLagring({
+      items: alle.filter((i) => i.adapter === "stortinget-horinger"),
+      avlyste: horingUtfall?.avlysteHoringer,
+      eksisterende: eks ?? [],
+      nyeIder: [...idEtterKilde.entries()].map(([kilde, id]) => ({ kilde, id })),
+      saker: [...sakEtterNytt.entries()].map(([stortingSakId, varselId]) => ({ stortingSakId, varselId })),
+    });
+    await lagreHoringOppfolging(supabase, horingPlan, driftFeil);
 
     // Kjøringslogg per kilde. antall_funnet = råtreff før filter/dedup.
     // «tom» bare når en kilde som kan være tom svarte OK med 0 råtreff.

@@ -220,7 +220,8 @@ test("handling er nullable uten default, og triggeren sperrer den ikke", () => {
   assert.match(trigger, /new\.status is distinct from old\.status/);
   const hent = readFileSync("supabase/functions/hent-saker/index.ts", "utf8");
   const frist = readFileSync("supabase/functions/oppdater-frister/index.ts", "utf8");
-  assert.doesNotMatch(hent, /handling/);
+  assert.match(hent, /stortinget-horinger/);
+  assert.match(hent, /rad\.handling = item\.handling/);
   assert.doesNotMatch(frist, /handling/);
 });
 

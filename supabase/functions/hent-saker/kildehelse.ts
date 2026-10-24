@@ -43,6 +43,11 @@ export type AdapterUtfall = {
   httpStatus: number | null;
   /** Innholds-id → frist fra høringslisten, når den lot seg hente. */
   horingsfrister?: ReadonlyMap<string, string>;
+  /**
+   * Avlyste komitéhøringer. Bare stortinget-horinger setter feltet.
+   * De blir ikke nye varsler og avpubliseres ikke.
+   */
+  avlysteHoringer?: ReadonlyArray<{ kilde: string; horing: Record<string, unknown> }>;
 };
 
 export type KjoertAv = "supabase_cron" | "vercel_cron" | "manuell";

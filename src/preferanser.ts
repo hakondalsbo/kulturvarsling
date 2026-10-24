@@ -33,7 +33,7 @@ export type GeoValg =
   | { type: "fylke"; nr?: string | null; navn?: string }
   | { type: "kommune"; sted?: string | null; fylkesnr?: string | null };
 
-export type MottakerGrunn = "sak" | "abonnement" | "sok";
+export type MottakerGrunn = "sak" | "komite" | "abonnement" | "sok";
 
 export type Mottaker = {
   brukerId: string;
@@ -246,30 +246,45 @@ function leveringsEpost(profil: ProfilPreferanse): string | null {
 }
 
 /**
- * Samme utvalg som mottakere_for_sak: følgere alltid, abonnement bare når
- * varsler er aktive og saken treffer. Frekvens filtreres ikke.
+ * Samme utvalg som mottakere_for_sak: fulgt sak, deretter fulgt komité når
+ * folgKomite er sann, deretter abonnement, deretter lagret søk.
+ * Uten flagget er komité-grenen tom. Frekvens filtreres ikke.
  */
 export function mottakereForSak(
   sak: SakTreff & { id: string },
   profiler: ProfilPreferanse[],
   fulgte: Array<{ brukerId: string; sakId: string }>,
   sok: LagretSokTreff[] = [],
+  ekstra?: {
+    folgKomite?: boolean;
+    fulgteKomiteer?: Array<{ brukerId: string; komiteId: string }>;
+    komiteId?: string | null;
+  },
 ): Mottaker[] {
   const folgere = new Set(fulgte.filter((f) => f.sakId === sak.id).map((f) => f.brukerId));
+  const komitePå = ekstra?.folgKomite === true && !!ekstra.komiteId;
+  const komiteFølgere = new Set(
+    komitePå
+      ? (ekstra?.fulgteKomiteer ?? [])
+        .filter((f) => f.komiteId === ekstra?.komiteId)
+        .map((f) => f.brukerId)
+      : [],
+  );
   const ut: Mottaker[] = [];
   for (const profil of profiler) {
     const folger = folgere.has(profil.id);
+    const komite = komiteFølgere.has(profil.id);
     const abonn = !!profil.varsler_aktive && sakTrefferAbonnement(sak, profil.fagfelt, profil.geografisk, {
       organ: profil.organ,
       komiteer: profil.komiteer,
     });
     const treffSok = sok.some((s) => s.brukerId === profil.id && sokTrefferSak(sak, s.sporretekst));
-    if (!folger && !abonn && !treffSok) continue;
+    if (!folger && !komite && !abonn && !treffSok) continue;
     ut.push({
       brukerId: profil.id,
       epost: leveringsEpost(profil),
       varselFrekvens: profil.varsel_frekvens ?? null,
-      grunn: folger ? "sak" : abonn ? "abonnement" : "sok",
+      grunn: folger ? "sak" : komite ? "komite" : abonn ? "abonnement" : "sok",
     });
   }
   ut.sort((a, b) => a.brukerId.localeCompare(b.brukerId));
