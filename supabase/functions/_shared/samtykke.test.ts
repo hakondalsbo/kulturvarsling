@@ -151,7 +151,7 @@ test("migrasjonen er additiv og backfyller ikke listen", () => {
 });
 
 test("ventesiden har ekte samtykkeboks og ingen anon-nøkkel", () => {
-  const html = readFileSync("public/vente.html", "utf8");
+  const html = readFileSync("public/vente.html", "utf8") + "\n" + readFileSync("public/vente.js", "utf8");
   const boks = html.match(/<input[^>]*id="samtykke"[^>]*>/)?.[0] ?? "";
   assert.match(boks, /type="checkbox"/);
   assert.match(boks, /required/);
@@ -353,7 +353,7 @@ test("alle utgående e-poster har avmeldingslenke og List-Unsubscribe", () => {
 
 test("avmelding og bekreftelse viser ikke suksess før svaret er ok", () => {
   for (const fil of ["public/avmelding.html", "public/bekreft.html"]) {
-    const html = readFileSync(fil, "utf8");
+    const html = readFileSync(fil, "utf8") + "\n" + readFileSync(fil.replace(/\.html$/, ".js"), "utf8");
     assert.match(html, /data\.ok === true/);
     assert.doesNotMatch(html, /Du er meldt av/);
     assert.match(html, /Ingenting er endret/);

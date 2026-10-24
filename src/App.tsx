@@ -28,6 +28,26 @@ const SUPABASE_URL  = "https://zyyijlvmgoanjdzngmon.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI";
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+function hashErPassordGjenoppretting() {
+  if (typeof window === "undefined") return false;
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return hash.get("type") === "recovery";
+}
+
+let passordGjenoppretting = hashErPassordGjenoppretting();
+const passordLyttere = new Set<(aktiv: boolean) => void>();
+
+function settPassordGjenoppretting(aktiv: boolean) {
+  passordGjenoppretting = aktiv;
+  for (const lytt of passordLyttere) lytt(aktiv);
+}
+
+// Må stå ved createClient. Supabase leser hash-en før React-effekten rekker å lytte.
+sb.auth.onAuthStateChange((event) => {
+  if (event === "PASSWORD_RECOVERY") settPassordGjenoppretting(true);
+});
+
 const PERSONVERN_VERSJON = "personvern-2026-10";
 
 // ─── Hjelpefunksjoner ─────────────────────────────────────────────────────
@@ -69,6 +89,7 @@ function profilfelt(oppdateringer: any) {
   delete felt.id;
   delete felt.plan;
   delete felt.stripe_customer_id;
+  delete felt.epost;
   return felt;
 }
 
@@ -115,12 +136,14 @@ async function hentLagredeSok(brukerId: string): Promise<LagretSok[]> {
 
 function brukerFraSesjon(authUser: any, profil: any) {
   const pref = preferanserFraProfil(profil);
-  const epost = authUser?.email || profil?.epost || "";
-  if (pref.varslerAktive && !pref.varselEpost) pref.varselEpost = epost;
+  const bekreftet = !!(authUser?.email_confirmed_at && String(authUser.email ?? "").trim());
+  const epost = bekreftet ? String(authUser.email).trim() : "";
+  pref.varselEpost = epost;
   return {
     id: authUser.id,
-    navn: profil?.navn || epost.split("@")[0] || "",
+    navn: profil?.navn || (epost ? epost.split("@")[0] : "") || "",
     epost,
+    epostBekreftet: bekreftet,
     org: profil?.org || "",
     orgType: profil?.org_type || "",
     plan: profil?.plan || "gratis",
@@ -188,7 +211,7 @@ async function signKampanje(kampanjeId: any, brukerId: any, navn: any, epost: an
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token ?? null;
   const innlogget = data?.session?.user?.id ?? null;
-  if (!token || !innlogget || !brukerId || brukerId !== innlogget) return false;
+  if (!token || !innlogget || !brukerId || brukerId !== innlogget) return "feil";
   let res;
   try {
     res = await fetch(`${SUPABASE_URL}/rest/v1/kampanje_signaturer`, {
@@ -207,13 +230,14 @@ async function signKampanje(kampanjeId: any, brukerId: any, navn: any, epost: an
       }),
     });
   } catch {
-    return false;
+    return "feil";
   }
+  if (res.status === 409) return "allerede";
   if (!res.ok) {
     console.error("Signatur-feil:", res.status);
-    return false;
+    return "feil";
   }
-  return true;
+  return "ok";
 }
 
 async function sendFeedbackDB(brukerId: any, type: any, tekst: any, sakTittel: any) {
@@ -1502,8 +1526,9 @@ function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevIn
     if(!user?.id) { onKrevInnlogging?.(SIGNATUR_INNLOGGING); return; }
     if(!navn||!epost) return;
     setLaster(true);
-    const ok = await signKampanje(k.id, user.id, navn, epost);
-    if(ok) { setSig((s: any)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
+    const utfall = await signKampanje(k.id, user.id, navn, epost);
+    if(utfall==="ok") { setSig((s: any)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
+    else if(utfall==="allerede") { setSignert(true); setVis(false); showToast("Du har allerede signert"); }
     else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
     setLaster(false);
   }
@@ -1780,8 +1805,9 @@ function KampanjeSignerMini({k,user=null,onKrevInnlogging}:{k:any;user?:any;onKr
     if(!user?.id) { onKrevInnlogging?.(SIGNATUR_INNLOGGING); return; }
     if(!navn||!epost) return;
     setLaster(true);
-    const ok = await signKampanje(k.id, user.id, navn, epost);
-    if(ok) { setSig((s:number)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
+    const utfall = await signKampanje(k.id, user.id, navn, epost);
+    if(utfall==="ok") { setSig((s:number)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
+    else if(utfall==="allerede") { setSignert(true); setVis(false); showToast("Du har allerede signert"); }
     else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
     setLaster(false);
   }
@@ -2362,7 +2388,7 @@ function PremiumVerktøy({varslerData=[],user=null}:{varslerData?:any[];user?:an
 }
 
 function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
-  const [epost,setEpost]=useState(user?.varselEpost||user?.epost||"");
+  const epost = user?.epostBekreftet ? (user?.epost || "") : "";
   const [valgtKat,setValgtKat]=useState<string[]>(user?.fagfelt||user?.varselKat||[]);
   const [valgtNivå,setValgtNivå]=useState<string[]>(user?.varselNivå||["nasjonalt","fylke","kommune"]);
   const [frekvens,setFrekvens]=useState(user?.varselFrekvens||"daglig");
@@ -2384,7 +2410,7 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
     }));
     setLagrer(true);
     const ok = await lagreProfil(user.id, {
-      epost, fagfelt: valgtKat, geografisk, varsel_frekvens: frekvens, varsler_aktive: true,
+      fagfelt: valgtKat, geografisk, varsel_frekvens: frekvens, varsler_aktive: true,
     });
     setLagrer(false);
     if(!ok) {
@@ -2399,7 +2425,7 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
     <Dialog tittel={lagret?"Varsler lagret":"E-postvarsler"} onClose={onClose} smal>
       {lagret?(
         <div className="kv-stakk">
-          <p className="kv-brod">Valgene er lagret på {epost}. Ingenting sendes ut ennå.</p>
+          <p className="kv-brod">{epost ? `Valgene er lagret. Varslene sendes til ${epost}.` : "Valgene er lagret. Varsler sendes ikke før kontoens e-post er bekreftet."} Ingenting sendes ut ennå.</p>
           <p className="kv-meta">Du kan endre innstillingene under Min profil.</p>
           <Knapp onClick={onClose}>Lukk</Knapp>
         </div>
@@ -2419,10 +2445,12 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
             <p className="kv-feltnavn">Frekvens</p>
             <Enkeltvalg valg={FREKVENS_VALG} valgt={frekvens} onVelg={setFrekvens} />
           </div>
-          <Felt id="varsel-epost" label="E-postadresse for varsler" type="email" value={epost} onChange={e=>setEpost(e.target.value)} />
+          <p className="kv-feltnavn">E-postadresse for varsler</p>
+          <p className="kv-brod">{epost || "Kontoen har ingen bekreftet e-post ennå."}</p>
+          <p className="kv-meta">Varslene sendes til den bekreftede adressen på kontoen.</p>
           {feil&&<p className="kv-feil" role="alert">{feil}</p>}
           <div className="kv-klynge">
-            <Knapp className="vokse" onClick={lagre} disabled={!epost||lagrer}>{lagrer?"Lagrer":"Lagre varsler"}</Knapp>
+            <Knapp className="vokse" onClick={lagre} disabled={lagrer}>{lagrer?"Lagrer":"Lagre varsler"}</Knapp>
             <Knapp variant="linje" onClick={onClose}>Senere</Knapp>
           </div>
         </div>
@@ -2790,17 +2818,66 @@ function PubliserModal({onClose,onPubliser}: any) {
   );
 }
 
+function NyttPassord({ setUser, onFerdig }: { setUser: (u: any) => void; onFerdig: () => void }) {
+  const [pw, setPw] = useState("");
+  const [feil, setFeil] = useState("");
+  const [laster, setLaster] = useState(false);
+
+  async function lagre() {
+    if (pw.length < 6) {
+      setFeil("Passordet må ha minst 6 tegn.");
+      return;
+    }
+    setLaster(true);
+    setFeil("");
+    const { error } = await sb.auth.updateUser({ password: pw });
+    if (error) {
+      setFeil("Kunne ikke lagre det nye passordet.");
+      setLaster(false);
+      return;
+    }
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+      const profil = await hentProfil(session.user.id);
+      setUser(brukerFraSesjon(session.user, profil));
+    }
+    if (window.location.hash) {
+      window.history.replaceState({}, "", window.location.pathname + window.location.search);
+    }
+    setLaster(false);
+    onFerdig();
+  }
+
+  return (
+    <div className="kv-skjerm">
+      <div className="kv-ark smal">
+        <h1 className="kv-tittel">Velg nytt passord</h1>
+        <p className="kv-brod">Lenken er bekreftet. Velg et nytt passord for kontoen.</p>
+        <Felt id="nytt-passord" label="Nytt passord" type="password" value={pw} onChange={e => setPw(e.target.value)} autoComplete="new-password" placeholder="Minst 6 tegn" />
+        {feil && <p className="kv-feil" role="alert">{feil}</p>}
+        <Knapp onClick={lagre} disabled={laster}>{laster ? "Lagrer" : "Lagre passord"}</Knapp>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const vis = forhandsvisning();
   const [screen,setScreen]=useState("bruker-app");
   const [user,setUser]=useState<any>(vis && vis !== "innlogging" ? FORHANDSBRUKER : null);
   const [kommune,setKommune]=useState<any>(null);
   const [sessionSjekket,setSessionSjekket]=useState(false);
+  const [nyttPassord,setNyttPassord]=useState(passordGjenoppretting);
   const [loginGrunn,setLoginGrunn]=useState("");
   function beOmInnlogging(grunn: any) {
     setLoginGrunn(grunn);
     setScreen("bruker-login");
   }
+
+  useEffect(() => {
+    passordLyttere.add(setNyttPassord);
+    return () => { passordLyttere.delete(setNyttPassord); };
+  }, []);
 
   useEffect(()=>{
     if (forhandsvisning()) {
@@ -2849,6 +2926,8 @@ export default function App() {
     },2000);
     return ()=>clearInterval(intervall);
   },[]);
+
+  if(nyttPassord && !forhandsvisning()) return <><ToastContainer/><NyttPassord setUser={setUser} onFerdig={()=>{ settPassordGjenoppretting(false); setNyttPassord(false); setScreen("bruker-app"); }}/></>;
 
   if(!sessionSjekket) return (
     <div className="kv-skjerm">

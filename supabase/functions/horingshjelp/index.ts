@@ -19,17 +19,12 @@ import {
   type OffisiellKilde,
   type SakRad,
 } from "./logikk.ts";
+import { corsHeadere } from "../_shared/cors.ts";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-function svar(body: unknown, status = 200): Response {
+function svar(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json" },
+    headers: { ...corsHeadere(req), "Content-Type": "application/json" },
   });
 }
 
@@ -76,12 +71,12 @@ async function lesOffisiellKilde(sak: SakRad): Promise<OffisiellKilde> {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-  if (req.method !== "POST") return svar({ feil: "Bruk POST" }, 405);
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeadere(req) });
+  if (req.method !== "POST") return svar(req, { feil: "Bruk POST" }, 405);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) return svar({ feil: "Tjenesten er ikke konfigurert" }, 503);
+  if (!supabaseUrl || !serviceRoleKey) return svar(req, { feil: "Tjenesten er ikke konfigurert" }, 503);
 
   const db = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -91,7 +86,7 @@ Deno.serve(async (req: Request) => {
   try {
     body = await req.json();
   } catch {
-    return svar({ feil: "Ugyldig JSON" }, 400);
+    return svar(req, { feil: "Ugyldig JSON" }, 400);
   }
 
   const resultat = await kjorHoringshjelp(
@@ -149,5 +144,5 @@ Deno.serve(async (req: Request) => {
     },
   );
 
-  return svar(resultat.body, resultat.status);
+  return svar(req, resultat.body, resultat.status);
 });

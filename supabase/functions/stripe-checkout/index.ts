@@ -13,19 +13,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
-
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
-
-const TILLATTE_ORIGINS = [
-  "https://www.kulturvarsling.no",
-  "https://kulturvarsling.no",
-  "http://localhost:5173",
-  "http://localhost:4173",
-];
+import { corsHeadere, erTillattOpprinnelse } from "../_shared/cors.ts";
 
 // Beløp i øre — må matche prisene brukeren oppretter i Stripe-dashbordet.
 const PRISER = {
@@ -84,12 +72,13 @@ async function finnPris(
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  if (req.method !== "POST") return new Response("Bruk POST", { status: 405, headers: CORS });
+  const cors = corsHeadere(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "POST") return new Response("Bruk POST", { status: 405, headers: cors });
   const svar = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
       status,
-      headers: { ...CORS, "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json" },
     });
 
   try {
@@ -146,8 +135,9 @@ Deno.serve(async (req: Request) => {
 
     const prisId = await finnPris(stripeNøkkel, valg);
 
-    const origin = TILLATTE_ORIGINS.includes(req.headers.get("origin") ?? "")
-      ? req.headers.get("origin")!
+    const oppgitt = req.headers.get("origin");
+    const origin = erTillattOpprinnelse(oppgitt)
+      ? oppgitt!
       : "https://www.kulturvarsling.no";
 
     const session = await stripeKall(

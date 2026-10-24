@@ -3,6 +3,7 @@
 // som er svelget og telt som tom liste.
 
 import { erKulturRelevant, parseRssItems, type RssItem } from "./logikk.ts";
+import { hemmeligheterStemmer } from "../_shared/samtykke.ts";
 
 export const KILDE_STATUSER = [
   "ok_nye",
@@ -248,7 +249,7 @@ export function tidligAvslag(
   if (!secret) {
     return { kind: "json", status: 503, body: { feil: "Tjenesten er ikke konfigurert" } };
   }
-  if (header !== secret) {
+  if (!hemmeligheterStemmer(header, secret)) {
     return { kind: "json", status: 401, body: { feil: "Uautorisert" } };
   }
   if (method === "GET") {

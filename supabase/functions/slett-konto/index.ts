@@ -7,30 +7,25 @@
 // ellers blir teksten liggende uten eier.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { SLETT_FØR_BRUKER, normaliserEpost } from "../_shared/samtykke.ts";
+import { corsHeadere } from "../_shared/cors.ts";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-function svar(body: unknown, status = 200): Response {
+function svar(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json" },
+    headers: { ...corsHeadere(req), "Content-Type": "application/json" },
   });
 }
 
 const IKKE_SLETTET = "Kontoen ble ikke slettet. Prøv igjen, eller skriv til personvern@kulturvarsling.no.";
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  if (req.method !== "POST") return svar({ ok: false, feil: IKKE_SLETTET }, 405);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeadere(req) });
+  if (req.method !== "POST") return svar(req, { ok: false, feil: IKKE_SLETTET }, 405);
 
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!jwt) return svar({ ok: false, feil: "Du må være innlogget." }, 401);
+  if (!jwt) return svar(req, { ok: false, feil: "Du må være innlogget." }, 401);
 
   const somBruker = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -38,7 +33,7 @@ Deno.serve(async (req: Request) => {
     { global: { headers: { Authorization: `Bearer ${jwt}` } } },
   );
   const { data: { user }, error: brukerFeil } = await somBruker.auth.getUser();
-  if (brukerFeil || !user?.id) return svar({ ok: false, feil: "Du må være innlogget." }, 401);
+  if (brukerFeil || !user?.id) return svar(req, { ok: false, feil: "Du må være innlogget." }, 401);
 
   const db = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -49,7 +44,7 @@ Deno.serve(async (req: Request) => {
     const { error } = await db.from(tabell).delete().eq("bruker_id", user.id);
     if (error) {
       console.error("slett", tabell, error.message);
-      return svar({ ok: false, feil: IKKE_SLETTET }, 500);
+      return svar(req, { ok: false, feil: IKKE_SLETTET }, 500);
     }
   }
 
@@ -59,14 +54,14 @@ Deno.serve(async (req: Request) => {
       .eq("epost_normalisert", normaliserEpost(user.email));
     if (lesFeil) {
       console.error("slett pamelding les", lesFeil.message);
-      return svar({ ok: false, feil: IKKE_SLETTET }, 500);
+      return svar(req, { ok: false, feil: IKKE_SLETTET }, 500);
     }
     const ids = (rader ?? []).map((rad) => rad.id);
     if (ids.length) {
       const { error } = await db.from("pamelding").delete().in("id", ids);
       if (error) {
         console.error("slett pamelding", error.message);
-        return svar({ ok: false, feil: IKKE_SLETTET }, 500);
+        return svar(req, { ok: false, feil: IKKE_SLETTET }, 500);
       }
     }
   }
@@ -80,8 +75,8 @@ Deno.serve(async (req: Request) => {
   const { error: slettFeil } = await db.auth.admin.deleteUser(user.id);
   if (slettFeil) {
     console.error("deleteUser", slettFeil.message);
-    return svar({ ok: false, feil: IKKE_SLETTET }, 500);
+    return svar(req, { ok: false, feil: IKKE_SLETTET }, 500);
   }
 
-  return svar({ ok: true, melding: "Kontoen og de tilknyttede dataene er slettet." });
+  return svar(req, { ok: true, melding: "Kontoen og de tilknyttede dataene er slettet." });
 });

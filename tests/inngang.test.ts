@@ -20,6 +20,14 @@ test("komponentoversikten ligger på /design", () => {
   assert.match(vercel, /\{ "src": "\/statsbudsjett", "dest": "\/index.html" \}/);
   assert.match(vercel, /\{ "src": "\/statsbudsjett\/", "dest": "\/index.html" \}/);
   assert.match(vercel, /\/404\.html/);
+  assert.match(vercel, /Content-Security-Policy/);
+  assert.match(vercel, /frame-ancestors 'none'/);
+  assert.match(vercel, /X-Frame-Options/);
+  assert.match(vercel, /strict-origin-when-cross-origin/);
+  assert.match(vercel, /nosniff/);
+  assert.match(vercel, /Permissions-Policy/);
+  assert.match(vercel, /includeSubDomains/);
+  assert.match(vercel, /zyyijlvmgoanjdzngmon/);
   assert.equal(existsSync("public/404.html"), true);
   assert.doesNotMatch(readFileSync("public/404.html", "utf8"), /varslingssystem/);
   for (const tekst of ["Inaktiv", "Hover", "Fokus", "Aktiv", "Laster", "Faner og filtre", "Merker", "Skjema"]) {

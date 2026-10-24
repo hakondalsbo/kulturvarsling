@@ -46,6 +46,8 @@ export type ProfilPreferanse = {
   id: string;
   epost?: string | null;
   authEpost?: string | null;
+  /** false når auth-adressen finnes, men email_confirmed_at mangler. */
+  epostBekreftet?: boolean | null;
   varsel_frekvens?: string | null;
   varsler_aktive?: boolean | null;
   fagfelt?: string[] | null;
@@ -239,10 +241,8 @@ export function sokTrefferSak(sak: SakTreff, sporretekst: string | null | undefi
 }
 
 function leveringsEpost(profil: ProfilPreferanse): string | null {
-  const egen = tekst(profil.epost);
-  if (egen) return egen;
-  const auth = tekst(profil.authEpost);
-  return auth || null;
+  if (profil.epostBekreftet === false) return null;
+  return tekst(profil.authEpost) || null;
 }
 
 /**
@@ -293,6 +293,6 @@ export function preferanserFraProfil(profil: {
     varselFrekvens: profil?.varsel_frekvens || "daglig",
     varselKat: fagfelt,
     varselNivå: nivaaFraGeografisk(geografisk),
-    varselEpost: varslerAktive ? tekst(profil?.epost) : "",
+    varselEpost: "",
   };
 }
