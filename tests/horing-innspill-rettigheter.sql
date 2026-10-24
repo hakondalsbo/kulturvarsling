@@ -124,6 +124,43 @@ insert into public.varsler (id, tittel) values
 insert into public.kommune_innspill (org, tekst) values
   ('Gammel organisasjon', 'Innspill fra før bruker_id fantes.');
 
+-- Samme constraint som i prod før denne migrasjonen.
+create table public.ai_dognkvoter (
+  bruker_id uuid not null references auth.users (id) on delete cascade,
+  oppgave text not null,
+  dato date not null,
+  antall integer not null,
+  primary key (bruker_id, oppgave, dato),
+  constraint ai_dognkvoter_antall_check check (antall > 0),
+  constraint ai_dognkvoter_oppgave_check check (oppgave = any (array['klartekst'::text, 'budsjett'::text]))
+);
+
+create function public.reserver_ai_kvote(p_bruker uuid, p_oppgave text, p_grense integer)
+returns boolean
+language plpgsql
+set search_path to ''
+as $$
+declare reservert integer;
+begin
+  if p_grense < 1 or p_grense > 120 then return false; end if;
+  insert into public.ai_dognkvoter (bruker_id, oppgave, dato, antall)
+  values (p_bruker, p_oppgave, (now() at time zone 'Europe/Oslo')::date, 1)
+  on conflict (bruker_id, oppgave, dato) do update
+    set antall = public.ai_dognkvoter.antall + 1
+    where public.ai_dognkvoter.antall < p_grense
+  returning antall into reservert;
+  return reservert is not null;
+end;
+$$;
+
+do $$
+begin
+  perform public.reserver_ai_kvote('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'horingshjelp', 10);
+  raise exception 'horingshjelp ble godtatt før constrainten ble utvidet';
+exception when check_violation then
+  null;
+end $$;
+
 -- Hele åpningen og rolleprøvene rulles tilbake. Etterpå skal
 -- skjema, policies og grants være som før migrasjonen.
 begin;
@@ -213,6 +250,29 @@ begin
   if not has_function_privilege('authenticated', 'public.horingssvar_hold_utkast()', 'execute') then
     raise exception 'authenticated mangler execute på triggerfunksjonen';
   end if;
+
+  if (
+    select pg_get_constraintdef(oid) from pg_constraint where conname = 'ai_dognkvoter_oppgave_check'
+  ) not like '%horingshjelp%' then
+    raise exception 'constrainten mangler horingshjelp';
+  end if;
+end $$;
+
+do $$
+declare ok boolean;
+begin
+  ok := public.reserver_ai_kvote('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'horingshjelp', 10);
+  if ok is not true then raise exception 'horingshjelp ble ikke reservert mot ekte constraint'; end if;
+  ok := public.reserver_ai_kvote('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'klartekst', 10);
+  if ok is not true then raise exception 'klartekst ble ikke reservert'; end if;
+  ok := public.reserver_ai_kvote('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'budsjett', 10);
+  if ok is not true then raise exception 'budsjett ble ikke reservert'; end if;
+  begin
+    perform public.reserver_ai_kvote('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'ukjent', 10);
+    raise exception 'ukjent oppgave ble godtatt';
+  exception when check_violation then
+    null;
+  end;
 end $$;
 
 -- Anon får verken skrive eller lese.
@@ -443,4 +503,19 @@ begin
   if gjenstar <> 0 then raise exception 'rollback etterlot utkast'; end if;
   select count(*) into gjenstar from public.kommune_innspill;
   if gjenstar <> 1 then raise exception 'rollback endret gamle innspill, fant %', gjenstar; end if;
+  if (
+    select pg_get_constraintdef(oid) from pg_constraint where conname = 'ai_dognkvoter_oppgave_check'
+  ) like '%horingshjelp%' then
+    raise exception 'rollback beholdt horingshjelp i constrainten';
+  end if;
+  select count(*) into gjenstar from public.ai_dognkvoter;
+  if gjenstar <> 0 then raise exception 'rollback etterlot kvoterader'; end if;
+end $$;
+
+do $$
+begin
+  perform public.reserver_ai_kvote('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', 'horingshjelp', 10);
+  raise exception 'horingshjelp ble godtatt etter rollback';
+exception when check_violation then
+  null;
 end $$;

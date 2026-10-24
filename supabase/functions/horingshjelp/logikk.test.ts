@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { kjorHoringshjelp, merkelinje, type HoringDeps, type SakRad } from "./logikk.ts";
+import { kjorHoringshjelp, merkelinje, nesteTryggeUrl, tryggKildeUrl, type HoringDeps, type SakRad } from "./logikk.ts";
 
 const SAK: SakRad = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -33,6 +33,7 @@ function deps(over: Partial<HoringDeps> & { kallModell: HoringDeps["kallModell"]
   return {
     logg,
     deps: {
+      aktiv: true,
       getUser: async () => ({ id: "bruker-1" }),
       hentProfil: async () => ({ plan: "premium" }),
       hentSak: async () => SAK,
@@ -154,11 +155,12 @@ test("brukt kvote stopper før modellen kalles", async () => {
   assert.equal(kall, 0);
 });
 
-test("uten Premium kalles verken kvote eller modell", async () => {
+test("flagget av svarer 404 uten kvote, også for Premium", async () => {
   let kvote = 0;
   let kall = 0;
   const rigget = deps({
-    hentProfil: async () => ({ plan: "gratis" }),
+    aktiv: false,
+    hentProfil: async () => ({ plan: "premium" }),
     reserverKvote: async () => {
       kvote += 1;
       return "ok";
@@ -169,9 +171,43 @@ test("uten Premium kalles verken kvote eller modell", async () => {
     },
   });
   const resultat = await kjorHoringshjelp({ token: "jwt", body: BODY }, rigget.deps);
-  assert.equal(resultat.status, 403);
+  assert.equal(resultat.status, 404);
   assert.equal(kvote, 0);
   assert.equal(kall, 0);
+});
+
+test("innlogget uten Premium får forslag når flagget er på", async () => {
+  let kvote = 0;
+  const rigget = deps({
+    hentProfil: async () => ({ plan: "gratis" }),
+    reserverKvote: async () => {
+      kvote += 1;
+      return "ok";
+    },
+    kallModell: async () => normaltUtkast(),
+  });
+  const resultat = await kjorHoringshjelp({ token: "jwt", body: BODY }, rigget.deps);
+  assert.equal(resultat.status, 200);
+  assert.equal(kvote, 1);
+});
+
+test("kilde-URL blokkerer private nett og utrygge omdirigeringer", () => {
+  assert.equal(tryggKildeUrl("https://www.regjeringen.no/no/dokumenter/"), true);
+  assert.equal(tryggKildeUrl("https://172.16.0.5/notat"), false);
+  assert.equal(tryggKildeUrl("https://172.31.255.1/notat"), false);
+  assert.equal(tryggKildeUrl("https://172.15.0.1/notat"), true);
+  assert.equal(tryggKildeUrl("https://172.32.0.1/notat"), true);
+  assert.equal(tryggKildeUrl("https://[::1]/notat"), false);
+  assert.equal(tryggKildeUrl("https://[fc00::1]/notat"), false);
+  assert.equal(tryggKildeUrl("https://[fd12:3456::1]/notat"), false);
+  assert.equal(tryggKildeUrl("https://[fe80::1]/notat"), false);
+  assert.equal(tryggKildeUrl("https://[::ffff:127.0.0.1]/notat"), false);
+  assert.equal(tryggKildeUrl("https://[::ffff:192.168.1.20]/notat"), false);
+  assert.equal(tryggKildeUrl("https://[2001:4860:4860::8888]/"), true);
+  const fra = "https://www.regjeringen.no/no/dokumenter/horing";
+  assert.equal(nesteTryggeUrl(fra, "https://172.16.0.8/intern"), null);
+  assert.equal(nesteTryggeUrl(fra, "https://[fe80::2]/lokalt"), null);
+  assert.match(nesteTryggeUrl(fra, "/id3173432/") ?? "", /^https:\/\/www\.regjeringen\.no\//);
 });
 
 test("funksjonen krever innlogging, lav temperatur og service_role", () => {
@@ -181,6 +217,10 @@ test("funksjonen krever innlogging, lav temperatur og service_role", () => {
   assert.match(index, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(index, /temperature: HORING_TEMPERATUR/);
   assert.match(index, /reserverAiKvote\(db, brukerId, "horingshjelp"/);
+  assert.match(index, /redirect:\s*"manual"/);
+  assert.match(index, /HORINGSHJELP_AKTIV/);
+  assert.doesNotMatch(index, /harPremium/);
+  assert.doesNotMatch(index, /krever Premium/);
   assert.doesNotMatch(index, /from\("horingssvar"\)/);
   assert.doesNotMatch(index, /UTSENDING_AKTIV/);
   assert.match(toml, /\[functions\.horingshjelp\]\s+verify_jwt = true/);

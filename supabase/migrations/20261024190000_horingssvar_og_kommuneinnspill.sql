@@ -106,3 +106,9 @@ create policy "Send egne innspill"
     and svar_tekst is null
     and svar_dato is null
   );
+
+-- Uten horingshjelp feiler reserver_ai_kvote med 23514, og funksjonen svarer 503.
+alter table public.ai_dognkvoter drop constraint ai_dognkvoter_oppgave_check;
+alter table public.ai_dognkvoter
+  add constraint ai_dognkvoter_oppgave_check
+  check (oppgave = any (array['klartekst'::text, 'budsjett'::text, 'horingshjelp'::text]));

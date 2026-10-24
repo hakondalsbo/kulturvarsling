@@ -2,7 +2,6 @@
 // Utkastet sendes ikke. Kalleren lagrer det bare hvis brukeren selv ber om det.
 
 import { loggUdokumenterteTall, type Tallavvik } from "../_shared/kildekontroll.ts";
-import { harPremium } from "../_shared/tilgang.ts";
 
 export const HORING_MODELL = "claude-sonnet-5";
 export const HORING_MAKS_TOKENS = 4000;
@@ -391,18 +390,100 @@ export function htmlTilTekst(html: string): string {
     .trim();
 }
 
+function erPrivatV4(a: number, b: number): boolean {
+  if (![a, b].every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) return true;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  return false;
+}
+
+function ipv4Deler(ip: string): [number, number, number, number] | null {
+  const deler = ip.split(".");
+  if (deler.length !== 4) return null;
+  const tall = deler.map((del) => (/^\d{1,3}$/.test(del) ? Number(del) : NaN));
+  if (tall.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+  return tall as [number, number, number, number];
+}
+
+/** Åtte hextetter, eller null når teksten ikke er en IPv6-adresse. */
+function ipv6Hextetter(raw: string): number[] | null {
+  let ip = raw.toLowerCase();
+  const sone = ip.indexOf("%");
+  if (sone !== -1) ip = ip.slice(0, sone);
+  let v4: [number, number, number, number] | null = null;
+  if (ip.includes(".")) {
+    const kolon = ip.lastIndexOf(":");
+    v4 = ipv4Deler(ip.slice(kolon + 1));
+    if (!v4) return null;
+    ip = ip.slice(0, kolon);
+  }
+  const sider = ip.split("::");
+  if (sider.length > 2) return null;
+  const les = (side: string) => {
+    if (!side) return [] as number[];
+    return side.split(":").map((del) => (/^[0-9a-f]{1,4}$/.test(del) ? parseInt(del, 16) : NaN));
+  };
+  const hode = les(sider[0]);
+  const hale = sider.length === 2 ? les(sider[1]) : [];
+  if ([...hode, ...hale].some((n) => Number.isNaN(n))) return null;
+  const v4plass = v4 ? 2 : 0;
+  let full: number[];
+  if (sider.length === 1) {
+    if (hode.length + v4plass !== 8) return null;
+    full = hode;
+  } else {
+    const mangler = 8 - hode.length - hale.length - v4plass;
+    if (mangler < 0) return null;
+    full = [...hode, ...Array(mangler).fill(0), ...hale];
+  }
+  if (v4) full.push((v4[0] << 8) | v4[1], (v4[2] << 8) | v4[3]);
+  return full.length === 8 ? full : null;
+}
+
+function erPrivatV6(deler: number[]): boolean {
+  if (deler.every((n) => n === 0)) return true;
+  if (deler.slice(0, 7).every((n) => n === 0) && deler[7] === 1) return true;
+  const a = deler[0];
+  if ((a & 0xfe00) === 0xfc00) return true;
+  if ((a & 0xffc0) === 0xfe80) return true;
+  if ((a & 0xffc0) === 0xfec0) return true;
+  if (deler.slice(0, 5).every((n) => n === 0) && deler[5] === 0xffff) {
+    return erPrivatV4((deler[6] >> 8) & 255, deler[6] & 255);
+  }
+  return false;
+}
+
 export function tryggKildeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return false;
-    const host = parsed.hostname.toLowerCase();
-    if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) return false;
+    if (parsed.username || parsed.password) return false;
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (!host || host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) return false;
     if (host === "metadata.google.internal") return false;
-    const ip = host.replace(/^\[|\]$/g, "");
-    if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1)/.test(ip)) return false;
+    const v4 = ipv4Deler(host);
+    if (v4) return !erPrivatV4(v4[0], v4[1]);
+    if (host.includes(":")) {
+      const v6 = ipv6Hextetter(host);
+      if (!v6) return false;
+      return !erPrivatV6(v6);
+    }
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Neste hopp etter en manuell omdirigering. Null når Location mangler eller ikke er trygg. */
+export function nesteTryggeUrl(fra: string, location: string | null): string | null {
+  if (!location || !location.trim()) return null;
+  try {
+    const neste = new URL(location, fra).href;
+    return tryggKildeUrl(neste) ? neste : null;
+  } catch {
+    return null;
   }
 }
 
@@ -438,6 +519,7 @@ export function lesBody(data: unknown): HoringBody | string {
 }
 
 export type HoringDeps = {
+  aktiv: boolean;
   getUser: (token: string) => Promise<{ id: string; anonymous?: boolean } | null>;
   hentProfil: (brukerId: string) => Promise<Record<string, unknown> | null | "feil">;
   hentSak: (id: string) => Promise<SakRad | null | "feil">;
@@ -457,6 +539,7 @@ export async function kjorHoringshjelp(
   deps: HoringDeps,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const logg = deps.logg ?? (() => undefined);
+  if (!deps.aktiv) return { status: 404, body: { feil: "Forslag til utkast er ikke skrudd på" } };
   if (!input.token) return { status: 401, body: { feil: "Du må være innlogget" } };
   const bruker = await deps.getUser(input.token);
   if (!bruker || bruker.anonymous) return { status: 401, body: { feil: "Du må være innlogget" } };
@@ -464,9 +547,6 @@ export async function kjorHoringshjelp(
   const profil = await deps.hentProfil(bruker.id);
   if (profil === "feil") return { status: 503, body: { feil: "Kunne ikke hente profilen akkurat nå" } };
   if (!profil) return { status: 409, body: { feil: "Fullfør profilen før du ber om et utkast" } };
-  if (!harPremium(profil)) {
-    return { status: 403, body: { feil: "Forslag til utkast krever Premium" } };
-  }
 
   const lest = lesBody(input.body);
   if (typeof lest === "string") return { status: 400, body: { feil: lest } };

@@ -1,11 +1,11 @@
-// Høringshjelp: utkast til høringssvar for innloggede Premium-brukere.
+// Høringshjelp: utkast for innloggede brukere. Av til HORINGSHJELP_AKTIV=true.
 // Svaret sendes ikke. Funksjonen skriver bare døgnkvoten, med service_role.
 // Selve utkastet lagres av brukeren fra klienten, under RLS.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { kallClaude } from "../_shared/claude.ts";
-import { harPremium, reserverAiKvote } from "../_shared/tilgang.ts";
+import { reserverAiKvote } from "../_shared/tilgang.ts";
 import { trekkUtTekst } from "../klartekst/logikk.ts";
 import {
   HORING_MAKS_TOKENS,
@@ -14,6 +14,7 @@ import {
   htmlTilTekst,
   hentBearerToken,
   kjorHoringshjelp,
+  nesteTryggeUrl,
   tryggKildeUrl,
   type OffisiellKilde,
   type SakRad,
@@ -40,12 +41,26 @@ async function lesOffisiellKilde(sak: SakRad): Promise<OffisiellKilde> {
     return { tekst: fallback, hentet: null, grunnlag: "sak" };
   }
   try {
-    const res = await fetch(sak.kilde, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(8000),
-      headers: { accept: "text/html, text/plain;q=0.9" },
-    });
-    if (!res.ok) return { tekst: fallback, hentet: null, grunnlag: "sak" };
+    let url = sak.kilde;
+    let res: Response | null = null;
+    for (let hopp = 0; hopp < 4; hopp++) {
+      if (!tryggKildeUrl(url)) return { tekst: fallback, hentet: null, grunnlag: "sak" };
+      res = await fetch(url, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(8000),
+        headers: { accept: "text/html, text/plain;q=0.9" },
+      });
+      if (res.status >= 300 && res.status < 400) {
+        const neste = nesteTryggeUrl(url, res.headers.get("location"));
+        await res.body?.cancel();
+        if (!neste) return { tekst: fallback, hentet: null, grunnlag: "sak" };
+        url = neste;
+        res = null;
+        continue;
+      }
+      break;
+    }
+    if (!res || !res.ok) return { tekst: fallback, hentet: null, grunnlag: "sak" };
     const type = res.headers.get("content-type") ?? "";
     if (type && !/text\/html|text\/plain|application\/xhtml/.test(type)) {
       return { tekst: fallback, hentet: null, grunnlag: "sak" };
@@ -82,6 +97,7 @@ Deno.serve(async (req: Request) => {
   const resultat = await kjorHoringshjelp(
     { token: hentBearerToken(req.headers.get("authorization")), body },
     {
+      aktiv: Deno.env.get("HORINGSHJELP_AKTIV") === "true",
       getUser: async (token) => {
         const { data, error } = await db.auth.getUser(token);
         if (error || !data.user) return null;
@@ -103,10 +119,7 @@ Deno.serve(async (req: Request) => {
         return data;
       },
       hentOffisiellKilde: lesOffisiellKilde,
-      reserverKvote: async (brukerId) => {
-        const { data: profil } = await db.from("profiler").select("plan").eq("id", brukerId).maybeSingle();
-        return reserverAiKvote(db, brukerId, "horingshjelp", harPremium(profil));
-      },
+      reserverKvote: (brukerId) => reserverAiKvote(db, brukerId, "horingshjelp", false),
       kallModell: async (prompt) => {
         const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
         if (!apiKey) return null;
