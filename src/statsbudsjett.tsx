@@ -198,7 +198,7 @@ export function StatsbudsjettSide() {
       </main>
       <footer className="avis-fot">
         <div className="avis-wrap avis-fot-rad">
-          <div>© {new Date().getFullYear()} Åndsverkstedet AS</div>
+          <div>© {new Date().getFullYear()} Kulturvarsling AS</div>
           <div><a href="/personvern">Personvern</a></div>
         </div>
       </footer>
