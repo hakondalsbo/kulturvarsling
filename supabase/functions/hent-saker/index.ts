@@ -1,4 +1,5 @@
 import { kallClaude } from "../_shared/claude.ts";
+import { kildegrunnlag, loggUdokumenterteTall } from "../_shared/kildekontroll.ts";
 import {
   genererGenerellKlartekst,
   lagreKlartekstCache,
@@ -19,6 +20,7 @@ import {
   finnHøringsfrist,
   innholdDedupNokkel,
   kategoriForEinnsyn,
+  kategoriFraAdapter,
   kategoriFraTittel,
   kildeNokkel,
   parseStortingetDato,
@@ -719,7 +721,7 @@ Deno.serve(async (req: Request) => {
             : { niva: analyse.niva ?? "nasjonalt", sted: "Norge" };
           const avvistRad = byggVarselRad(item, {
             publisert: false,
-            kategori: analyse.kategori ?? "kulturpolitikk",
+            kategori: kategoriFraAdapter(item.kategori, analyse.kategori ?? "kulturpolitikk"),
             niva: avvistGeo.niva,
             status: "normal",
             sammendrag: "Automatisk avvist av relevansfilteret",
@@ -762,6 +764,17 @@ Deno.serve(async (req: Request) => {
         niva = geo.niva;
         sted = geo.sted;
       }
+      // Ordningskoden setter kategorien. Modellen får ikke overstyre den.
+      kategori = kategoriFraAdapter(item.kategori, kategori);
+
+      // Tall og årstall som ikke står i kilden logges. Raden lagres likevel.
+      // Eksisterende rader, også manuelt_redigert, skrives ikke om (ignoreDuplicates).
+      loggUdokumenterteTall(
+        "hent-saker",
+        sammendrag,
+        kildegrunnlag([item.tittel, item.sammendrag_raa, item.instans, item.frist]),
+        typeof item.kilde === "string" ? item.kilde : "",
+      );
 
       item.sakstype = item.sakstype ?? sakstypeFraSak(item);
       const rad = byggVarselRad(item, {
@@ -834,7 +847,10 @@ Deno.serve(async (req: Request) => {
       item.sakstype = item.sakstype ?? sakstypeFraSak(item);
       const rad = byggVarselRad(item, {
         publisert: false,
-        kategori: kategoriFraTittel(item.tittel, item.sammendrag_raa ?? ""),
+        kategori: kategoriFraAdapter(
+          item.kategori,
+          kategoriFraTittel(item.tittel, item.sammendrag_raa ?? ""),
+        ),
         niva: item.niva ?? "nasjonalt",
         status: statusForSak(item.frist, item.motedato),
         sammendrag: "Samme sak som en allerede registrert høring eller pressemelding.",

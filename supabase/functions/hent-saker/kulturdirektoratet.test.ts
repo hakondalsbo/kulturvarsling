@@ -72,6 +72,8 @@ test("innvilgede vedtak aggregeres til én varsel per runde med sum og antall", 
   assert.equal(items.length, 1);
   const [item] = items;
   assert.match(item.tittel, /Fond for lyd og bilde — 2 søknader innvilget/);
+  assert.match(item.tittel, /FLB-AUDIO: Fond for lyd og bilde Musikk, runde 2026-02-20/);
+  assert.match(item.sammendrag_raa, /Ordning FLB-AUDIO: Fond for lyd og bilde Musikk\./);
   assert.match(item.sammendrag_raa, /til sammen 360 000 kr/);
   assert.match(item.sammendrag_raa, /Konsertturné \(250 000 kr\)/);
   assert.equal(item.kilde, "https://www.kulturdirektoratet.no/vedtak#FLB-AUDIO-2026-02-20");
@@ -79,6 +81,7 @@ test("innvilgede vedtak aggregeres til én varsel per runde med sum og antall", 
   assert.equal(item.sakstype, "tildeling");
   assert.equal(item.forhåndsgodkjent, true);
   assert.equal(item.frist, null); // søknadsfristen er passert — ikke en brukerfrist
+  assert.equal(item.kategori, "musikk");
 });
 
 test("ulike runder (ordning eller frist) blir separate varsler", () => {
@@ -99,6 +102,16 @@ test("gamle runder (frist eldre enn ~6 mnd) holdes utenfor", () => {
     NÅ,
   );
   assert.deepEqual(items, []);
+});
+
+test("ukjent ordningskode gjengis som koden, uten oppdiktet navn", () => {
+  const items = grupperTildelinger([rad({ ordning_kode: "NKF-XYZ" })], NÅ);
+  assert.equal(items.length, 1);
+  assert.match(items[0].tittel, /\(NKF-XYZ, runde 2026-02-20\)/);
+  assert.match(items[0].sammendrag_raa, /Ordning NKF-XYZ\./);
+  assert.doesNotMatch(items[0].sammendrag_raa, /NKF-XYZ:/);
+  assert.doesNotMatch(items[0].tittel, /filmstøtte|stipend|skjønnlitteratur/);
+  assert.equal(items[0].kategori, undefined);
 });
 
 test("rader uten gyldig frist eller ordning hopper over uten krasj", () => {
@@ -132,4 +145,84 @@ test("stipend uten kronebeløp telles, men gir ingen sum-tekst", () => {
   assert.equal(items.length, 1);
   assert.match(items[0].tittel, /1 søknader innvilget/);
   assert.doesNotMatch(items[0].sammendrag_raa, /til sammen/);
+});
+
+test("innkjøpsordninger blir én sak per ordning, uten frist i nøkkel eller tekst", () => {
+  const items = grupperTildelinger(
+    [
+      rad({
+        ordning_kode: "NKF-IAB",
+        soknadsfrist: "2026-10-15",
+        hovedfinansieringskilde: "Kulturrådet",
+        verdi_type: "Innkjøp",
+        verdi_innvilget: "414000",
+        tiltak_tittel: "Bok fra 2025",
+      }),
+      rad({
+        ordning_kode: "NKF-IAB",
+        soknadsfrist: "2026-03-01",
+        hovedfinansieringskilde: "Kulturrådet",
+        verdi_type: "Innkjøp",
+        verdi_innvilget: "200000",
+        tiltak_tittel: "Annen bok",
+      }),
+      rad({
+        ordning_kode: "NKF-IAV",
+        soknadsfrist: "2026-10-15",
+        hovedfinansieringskilde: "Kulturrådet",
+        verdi_type: "Innkjøp",
+        verdi_innvilget: "500000",
+      }),
+      rad({
+        ordning_kode: "NKF-ISV",
+        soknadsfrist: "2026-02-20",
+        hovedfinansieringskilde: "Kulturrådet",
+        verdi_type: "Innkjøp",
+        verdi_innvilget: "1000",
+      }),
+      rad({
+        ordning_kode: "NKF-ISV",
+        soknadsfrist: "2026-04-08",
+        hovedfinansieringskilde: "Kulturrådet",
+        verdi_type: "Innkjøp",
+        verdi_innvilget: "1000",
+      }),
+    ],
+    NÅ,
+  );
+  assert.equal(items.length, 3);
+  const iab = items.find((i) => i.kilde.endsWith("#NKF-IAB"));
+  const iav = items.find((i) => i.kilde.endsWith("#NKF-IAV"));
+  const isv = items.find((i) => i.kilde.endsWith("#NKF-ISV"));
+  assert.ok(iab && iav && isv);
+  assert.equal(iab.kilde, "https://www.kulturdirektoratet.no/vedtak#NKF-IAB");
+  assert.equal(iab.kilde_id, "kulturdirektoratet-NKF-IAB");
+  assert.match(iab.tittel, /2 søknader innvilget/);
+  assert.match(iab.tittel, /NKF-IAB: Ny norsk skjønnlitteratur for barn og unge/);
+  assert.doesNotMatch(`${iab.tittel} ${iab.sammendrag_raa}`, /runde|søknadsfrist|2026-10-15|2026-03-01/);
+  assert.doesNotMatch(`${iab.tittel} ${iab.sammendrag_raa}`, /414 000|200 000|til sammen/);
+  assert.equal(iab.kategori, "litteratur");
+  assert.equal(iav.kategori, "litteratur");
+  assert.equal(isv.kategori, "litteratur");
+  assert.match(isv.tittel, /2 søknader innvilget/);
+});
+
+test("FLB-MEDIA og FLB-LIVE beholder runden og får fast kategori", () => {
+  const items = grupperTildelinger(
+    [
+      rad({ ordning_kode: "FLB-MEDIA", soknadsfrist: "2026-02-20" }),
+      rad({ ordning_kode: "FLB-MEDIA", soknadsfrist: "2026-04-30" }),
+      rad({ ordning_kode: "FLB-LIVE", soknadsfrist: "2026-02-20" }),
+    ],
+    NÅ,
+  );
+  assert.equal(items.length, 3);
+  const media = items.filter((i) => i.kilde.includes("FLB-MEDIA"));
+  const live = items.find((i) => i.kilde.includes("FLB-LIVE"));
+  assert.equal(media.length, 2);
+  assert.equal(media[0].kategori, "kulturpolitikk");
+  assert.equal(media[1].kategori, "kulturpolitikk");
+  assert.match(media[0].tittel, /runde 2026-/);
+  assert.equal(live.kategori, "scenekunst");
+  assert.equal(live.kilde, "https://www.kulturdirektoratet.no/vedtak#FLB-LIVE-2026-02-20");
 });

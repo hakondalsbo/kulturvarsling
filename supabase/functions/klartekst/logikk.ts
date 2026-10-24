@@ -1,6 +1,8 @@
 // Ren logikk for klartekst-funksjonen — holdes uten Deno-avhengigheter
 // slik at den kan enhetstestes med `npm test` (node --test).
 
+import { ordningsforklaring } from "../_shared/ordningskoder.ts";
+
 export type Profil = {
   fagfelt: string[];
   org_type: string | null;
@@ -211,6 +213,7 @@ export function byggPrompt(
   const sted = kortTekst(sak.sted, 120);
   const frist = kortTekst(sak.frist, 120) || "ingen kjent frist";
   const sammendrag = kortTekst(sak.sammendrag, 1200) || "(mangler)";
+  const forklaring = ordningsforklaring([tittel, sammendrag, instans].join("\n"));
   return `Du er ekspert på norsk kulturpolitikk og offentlig forvaltning. Forklar saken under i klartekst for en konkret kulturaktør — hverdagsspråk, ikke forvaltningsspråk. Skriv direkte til mottakeren («du/dere») og forankre svaret i mottakerens fagfelt og situasjon.
 
 SAKEN:
@@ -225,16 +228,35 @@ Fagfelt: ${normalisertProfil.fagfelt.length ? normalisertProfil.fagfelt.join(", 
 Organisasjonstype: ${normalisertProfil.org_type ?? "ukjent"}
 Fylke: ${normalisertProfil.fylke ?? "hele landet"}
 
-Vær konkret og ærlig: hvis saken bare indirekte berører mottakerens felt, si det. Ikke funn opp tall eller frister som ikke står i saken.
+Vær konkret og ærlig: hvis saken bare indirekte berører mottakerens felt, si det.
 
+KILDETROSKAP:
+- Bruk bare opplysninger som står i saken over. Ikke gjett.
+- Ikke legg til vurderinger, superlativer, konsekvenser, datoer eller tall som ikke står der.
+- Hvis saken ikke sier det, skriv «kilden sier ikke …».
+- En ordningskode skal bruke navnet fra saken eller fra listen under. Finnes ingen av delene, gjengi koden. Ikke tolk den.
+${forklaring ? `\n${forklaring}\n` : ""}
 Svar BARE med gyldig JSON, ingen markdown:
 {
   "hva_skjer": "én setning i klartekst om hva som faktisk skjer",
-  "hvem_pavirkes": "1-2 setninger om hvem dette treffer, spesielt mottakerens fagfelt",
-  "tall_belop": "konkrete tall/beløp fra saken, eller null hvis ingen",
+  "hvem_pavirkes": "én til to setninger om hvem dette treffer, spesielt mottakerens fagfelt",
+  "tall_belop": "konkrete tall eller beløp fra saken, eller null hvis ingen",
   "frist": "hva mottakeren må rekke innen når, eller null hvis ingen frist",
-  "hva_kan_du_gjore": ["2-4 konkrete handlinger mottakeren kan gjøre nå"]
+  "hva_kan_du_gjore": ["to til fire konkrete handlinger mottakeren kan gjøre nå"]
 }`;
+}
+
+/** Teksten som etterkontrolleres mot kilden. */
+export function klartekstSomTekst(svar: {
+  hva_skjer: string;
+  hvem_pavirkes: string;
+  tall_belop?: string | null;
+  frist?: string | null;
+  hva_kan_du_gjore: string[];
+}): string {
+  return [svar.hva_skjer, svar.hvem_pavirkes, svar.tall_belop, svar.frist, ...svar.hva_kan_du_gjore]
+    .filter((del) => typeof del === "string" && del.trim())
+    .join("\n");
 }
 
 /** Identisk input gjenbrukes; endret sak eller prompt får et nytt fingeravtrykk. */
