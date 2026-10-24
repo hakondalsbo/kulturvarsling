@@ -1,22 +1,21 @@
 {
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/app", "dest": "/index.html" },
-    { "src": "/app/(.*)", "dest": "/index.html" },
-    { "src": "/personvern", "dest": "/personvern.html" },
-    { "src": "/bekreft", "dest": "/bekreft.html" },
-    { "src": "/avmelding", "dest": "/avmelding.html" },
-    { "src": "/statsbudsjett", "dest": "/index.html" },
-    { "src": "/statsbudsjett/", "dest": "/index.html" },
-    { "src": "/ordliste", "dest": "/index.html" },
-    { "src": "/app/ordliste", "dest": "/index.html" },
-    { "src": "/design", "dest": "/index.html" },
-    { "src": "/app/design", "dest": "/index.html" },
-    { "src": "/min-side", "dest": "/index.html" },
-    { "src": "/app/min-side", "dest": "/index.html" },
-    { "src": "/mobiliser", "dest": "/index.html" },
-    { "src": "/mobiliser/", "dest": "/index.html" },
-    { "src": "/(.*)", "status": 404, "dest": "/404.html" }
+  "rewrites": [
+    { "source": "/app", "destination": "/index.html" },
+    { "source": "/app/(.*)", "destination": "/index.html" },
+    { "source": "/personvern", "destination": "/personvern.html" },
+    { "source": "/bekreft", "destination": "/bekreft.html" },
+    { "source": "/avmelding", "destination": "/avmelding.html" },
+    { "source": "/statsbudsjett", "destination": "/index.html" },
+    { "source": "/statsbudsjett/", "destination": "/index.html" },
+    { "source": "/ordliste", "destination": "/index.html" },
+    { "source": "/app/ordliste", "destination": "/index.html" },
+    { "source": "/design", "destination": "/index.html" },
+    { "source": "/app/design", "destination": "/index.html" },
+    { "source": "/min-side", "destination": "/index.html" },
+    { "source": "/app/min-side", "destination": "/index.html" },
+    { "source": "/mobiliser", "destination": "/index.html" },
+    { "source": "/mobiliser/", "destination": "/index.html" },
+    { "source": "/(.*)", "destination": "/404.html", "statusCode": 404 }
   ],
   "github": {
     "silent": true
