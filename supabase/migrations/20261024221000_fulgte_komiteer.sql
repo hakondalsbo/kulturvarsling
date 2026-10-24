@@ -1,6 +1,8 @@
 -- Følg komité. Flagget er av til personvernteksten er godkjent.
 -- Ingen e-post. UTSENDING_AKTIV røres ikke.
 -- Skriving krever authenticated og egen rad, og at flagget er på.
+-- Nye objekter arver standardrettighetene fra 20261024203000.
+-- Her gis bare de rettighetene funksjonen trenger.
 
 create table public.funksjonsflagg (
   nokkel text primary key,
@@ -15,9 +17,7 @@ values ('folg_komite', false);
 
 alter table public.funksjonsflagg enable row level security;
 
-revoke all on table public.funksjonsflagg from public;
-revoke all on table public.funksjonsflagg from anon;
-revoke all on table public.funksjonsflagg from authenticated;
+revoke all on table public.funksjonsflagg from public, anon, authenticated;
 
 grant select, update on table public.funksjonsflagg to service_role;
 
@@ -26,35 +26,28 @@ returns boolean
 language sql
 stable
 security invoker
-set search_path = pg_catalog, public
+set search_path = ''
 as $$
-  select coalesce(
+  select pg_catalog.coalesce(
     (select f.aktiv from public.funksjonsflagg f where f.nokkel = 'folg_komite'),
     false
   );
 $$;
 
 comment on function public.folg_komite_aktiv() is
-  'Om følg-komité er slått på. Security invoker. Bare service_role får kjøre den.';
+  'Om følg-komité er slått på. Security invoker og tom search_path. Bare service_role får kjøre den.';
 
-revoke all on function public.folg_komite_aktiv() from public;
-revoke all on function public.folg_komite_aktiv() from anon;
-revoke all on function public.folg_komite_aktiv() from authenticated;
+revoke all on function public.folg_komite_aktiv() from public, anon, authenticated;
 grant execute on function public.folg_komite_aktiv() to service_role;
-
-create schema if not exists privat;
-
-revoke all on schema privat from public;
-grant usage on schema privat to anon, authenticated, service_role;
 
 create or replace function privat.folg_komite_aktiv()
 returns boolean
 language sql
 stable
 security definer
-set search_path = pg_catalog, public
+set search_path = ''
 as $$
-  select coalesce(
+  select pg_catalog.coalesce(
     (select f.aktiv from public.funksjonsflagg f where f.nokkel = 'folg_komite'),
     false
   );
@@ -63,10 +56,9 @@ $$;
 alter function privat.folg_komite_aktiv() owner to postgres;
 
 comment on function privat.folg_komite_aktiv() is
-  'Samme flagg som public.folg_komite_aktiv, for RLS-policyen. Returnerer bare et boolsk svar, ingen brukerdata. Eieren er postgres.';
+  'Samme flagg som public.folg_komite_aktiv, for RLS-policyen og mottakere_for_sak. Returnerer bare et boolsk svar, ingen brukerdata. Eieren er postgres.';
 
-revoke all on function privat.folg_komite_aktiv() from public;
-revoke all on function privat.folg_komite_aktiv() from anon;
+revoke all on function privat.folg_komite_aktiv() from public, anon;
 grant execute on function privat.folg_komite_aktiv() to authenticated, service_role;
 
 create table public.fulgte_komiteer (
@@ -86,9 +78,7 @@ create index fulgte_komiteer_komite_idx
 
 alter table public.fulgte_komiteer enable row level security;
 
-revoke all on table public.fulgte_komiteer from public;
-revoke all on table public.fulgte_komiteer from anon;
-revoke all on table public.fulgte_komiteer from authenticated;
+revoke all on table public.fulgte_komiteer from public, anon, authenticated;
 
 grant select, insert, delete on table public.fulgte_komiteer to authenticated;
 
@@ -113,7 +103,8 @@ create policy "Slutt å følge komité"
   to authenticated
   using (auth.uid() = bruker_id);
 
--- Komité mellom fulgt sak (0) og abonnement (2). Grenen er tom når flagget er av.
+-- Samme funksjon som 20261024203000, med komité mellom sak og abonnement.
+-- Grenen er tom når privat.folg_komite_aktiv() er false.
 create or replace function public.mottakere_for_sak(p_sak_id uuid)
 returns table (
   bruker_id uuid,
@@ -123,8 +114,8 @@ returns table (
 )
 language sql
 stable
-security invoker
-set search_path = pg_catalog, public
+security definer
+set search_path = ''
 as $$
   select distinct on (q.bruker_id)
     q.bruker_id,
@@ -134,7 +125,12 @@ as $$
   from (
     select
       p.id as bruker_id,
-      coalesce(nullif(btrim(p.epost), ''), u.email) as epost,
+      case
+        when u.email_confirmed_at is not null
+          and nullif(pg_catalog.btrim(u.email), '') is not null
+          then u.email
+        else null
+      end as epost,
       p.varsel_frekvens,
       'sak'::text as grunn,
       0 as prioritet
@@ -147,7 +143,12 @@ as $$
 
     select
       p.id,
-      coalesce(nullif(btrim(p.epost), ''), u.email),
+      case
+        when u.email_confirmed_at is not null
+          and nullif(pg_catalog.btrim(u.email), '') is not null
+          then u.email
+        else null
+      end,
       p.varsel_frekvens,
       'komite'::text,
       1
@@ -156,13 +157,18 @@ as $$
     join public.profiler p on p.id = fk.bruker_id
     left join auth.users u on u.id = p.id
     where h.varsel_id = p_sak_id
-      and public.folg_komite_aktiv()
+      and privat.folg_komite_aktiv()
 
     union all
 
     select
       p.id,
-      coalesce(nullif(btrim(p.epost), ''), u.email),
+      case
+        when u.email_confirmed_at is not null
+          and nullif(pg_catalog.btrim(u.email), '') is not null
+          then u.email
+        else null
+      end,
       p.varsel_frekvens,
       'abonnement'::text,
       2
@@ -171,16 +177,37 @@ as $$
     left join auth.users u on u.id = p.id
     where v.id = p_sak_id
       and public.sak_treffer_abonnement(
-        v.kategori, v.niva, v.fylkesnr, v.kommunenr, v.sted, p.fagfelt, p.geografisk
+        v.kategori, v.niva, v.fylkesnr, v.kommunenr, v.sted, p.fagfelt, p.geografisk,
+        v.instans, v.kilde, p.organ, p.komiteer
       )
+
+    union all
+
+    select
+      p.id,
+      case
+        when u.email_confirmed_at is not null
+          and nullif(pg_catalog.btrim(u.email), '') is not null
+          then u.email
+        else null
+      end,
+      p.varsel_frekvens,
+      'sok'::text,
+      3
+    from public.lagrede_sok s
+    join public.profiler p on p.id = s.bruker_id
+    join public.varsler v on v.id = p_sak_id
+    left join auth.users u on u.id = p.id
+    where public.tekst_inneholder(v.tittel, s.sporretekst)
+      or public.tekst_inneholder(v.sammendrag, s.sporretekst)
+      or public.tekst_inneholder(v.instans, s.sporretekst)
   ) q
   order by q.bruker_id, q.prioritet;
 $$;
 
 comment on function public.mottakere_for_sak(uuid) is
-  'Mottakere: fulgt sak, fulgt komité når folg_komite er på, og abonnement. Sender ingen e-post.';
+  'Mottakere for en sak. SECURITY DEFINER med tom search_path. Bekreftet auth.users.email. Komité når privat.folg_komite_aktiv() er sann, ellers samme grener som 20261024203000. EXECUTE bare for service_role. Sender ingen e-post.';
 
-revoke all on function public.mottakere_for_sak(uuid) from public;
-revoke all on function public.mottakere_for_sak(uuid) from anon;
-revoke all on function public.mottakere_for_sak(uuid) from authenticated;
+alter function public.mottakere_for_sak(uuid) owner to postgres;
+revoke all on function public.mottakere_for_sak(uuid) from public, anon, authenticated;
 grant execute on function public.mottakere_for_sak(uuid) to service_role;
