@@ -71,6 +71,19 @@ create table public.kampanje_signaturer (
   opprettet timestamptz default now()
 );
 
+alter table public.kampanjer enable row level security;
+create policy "Les kampanjer"
+  on public.kampanjer
+  for select
+  to public
+  using (aktiv = true);
+create policy "foreslaa_kampanje"
+  on public.kampanjer
+  for insert
+  to public
+  with check (aktiv = false);
+grant select, insert on table public.kampanjer to authenticated;
+
 alter table public.kampanje_signaturer enable row level security;
 -- Utgangspunkt som etter 20261024170000, pluss den åpne lesepolicyen
 -- denne migrasjonen fortsatt skal ta hvis den ligger igjen.
@@ -106,13 +119,16 @@ insert into public.varsler (id, tittel) values
   ('33333333-3333-4333-8333-333333333333', 'Fase');
 
 insert into public.kampanjer (id, tittel, slag, aktiv, sak_id) values
-  ('22222222-2222-4222-8222-222222222222', 'Felles innspill', 'felles_innspill', true, '11111111-1111-4111-8111-111111111111');
+  ('22222222-2222-4222-8222-222222222222', 'Felles innspill', 'felles_innspill', true, '11111111-1111-4111-8111-111111111111'),
+  ('44444444-4444-4444-8444-444444444444', 'Vanlig kampanje', null, true, null),
+  ('55555555-5555-4555-8555-555555555555', 'Avsluttet innspill', 'felles_innspill', false, null);
 
 insert into public.kampanje_signaturer (kampanje_id, navn, epost, samtykke_gitt_tid, bekreftet_tid, trukket_tid) values
   ('22222222-2222-4222-8222-222222222222', 'Demo Berg', 'berg@example.test', now(), now(), null),
   ('22222222-2222-4222-8222-222222222222', 'Demo Lie', 'lie@example.test', now(), now(), null),
   ('22222222-2222-4222-8222-222222222222', 'Demo Aasen', 'aasen@example.test', now(), null, null),
-  ('22222222-2222-4222-8222-222222222222', 'Demo Trukket', 'trukket@example.test', now(), now(), now());
+  ('22222222-2222-4222-8222-222222222222', 'Demo Trukket', 'trukket@example.test', now(), now(), now()),
+  ('55555555-5555-4555-8555-555555555555', 'Demo Hvile', 'hvile@example.test', now(), now(), null);
 
 do $$
 declare
@@ -149,18 +165,18 @@ begin
     where table_schema = 'public'
       and table_name = 'kampanje_signaturer'
       and grantee = 'authenticated'
-      and privilege_type <> 'INSERT'
   ) then
-    raise exception 'authenticated har mer enn INSERT på kampanje_signaturer';
+    raise exception 'authenticated har tabellrettighet på kampanje_signaturer';
   end if;
-  if not exists (
-    select 1 from information_schema.role_table_grants
+  if (
+    select coalesce(array_agg(column_name::text order by column_name::text), '{}'::text[])
+    from information_schema.column_privileges
     where table_schema = 'public'
       and table_name = 'kampanje_signaturer'
       and grantee = 'authenticated'
       and privilege_type = 'INSERT'
-  ) then
-    raise exception 'authenticated mangler INSERT på kampanje_signaturer';
+  ) <> array['bruker_id', 'epost', 'kampanje_id', 'navn']::text[] then
+    raise exception 'authenticated skal bare ha kolonne-INSERT på kampanje_id, bruker_id, navn og epost';
   end if;
 
   select count(*) into antall_policy
@@ -211,7 +227,100 @@ begin
   if n <> 2 then
     raise exception 'forventet 2 bekreftede signaturer, fikk %', n;
   end if;
+  select public.felles_innspill_antall('55555555-5555-4555-8555-555555555555') into n;
+  if n <> 0 then
+    raise exception 'inaktivt felles innspill skulle ikke telles, fikk %', n;
+  end if;
   execute 'reset role';
+
+  perform set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01', true);
+  begin
+    execute 'set local role authenticated';
+    insert into public.kampanje_signaturer (kampanje_id, bruker_id, navn, epost, bekreftet_tid)
+    values (
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+      'Innlogget',
+      'innlogget@example.test',
+      now()
+    );
+    raise exception 'innlogget skrev bekreftet signatur på felles innspill';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    execute 'set local role authenticated';
+    insert into public.kampanje_signaturer (kampanje_id, bruker_id, navn, epost)
+    values (
+      '22222222-2222-4222-8222-222222222222',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+      'Innlogget',
+      'innlogget@example.test'
+    );
+    raise exception 'innlogget skrev signatur på felles innspill';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  execute 'set local role authenticated';
+  insert into public.kampanje_signaturer (kampanje_id, bruker_id, navn, epost)
+  values (
+    '44444444-4444-4444-8444-444444444444',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01',
+    'Kari Kampanje',
+    'kari@example.test'
+  );
+  execute 'reset role';
+  if not exists (
+    select 1 from public.kampanje_signaturer
+    where kampanje_id = '44444444-4444-4444-8444-444444444444'
+      and bruker_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01'
+      and navn = 'Kari Kampanje'
+      and epost = 'kari@example.test'
+      and bekreftet_tid is null
+  ) then
+    raise exception 'vanlig kampanjesignering med de fire kolonnene ble ikke lagret';
+  end if;
+
+  begin
+    execute 'set local role authenticated';
+    insert into public.kampanjer (id, tittel, aktiv, slag)
+    values (
+      '66666666-6666-4666-8666-666666666666',
+      'Forsøk på felles innspill',
+      false,
+      'felles_innspill'
+    );
+    raise exception 'innlogget opprettet kampanje med slag felles_innspill';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  execute 'set local role authenticated';
+  insert into public.kampanjer (id, tittel, beskrivelse, mal, kategori, sak_id, tags, dager, aktiv)
+  values (
+    '77777777-7777-4777-8777-777777777777',
+    'Forslag',
+    'En vanlig kampanje',
+    500,
+    'scenekunst',
+    null,
+    '{}',
+    30,
+    false
+  );
+  execute 'reset role';
+  if not exists (
+    select 1 from public.kampanjer
+    where id = '77777777-7777-4777-8777-777777777777'
+      and aktiv = false
+      and slag is null
+      and sendt_tid is null
+      and avsluttet_tid is null
+  ) then
+    raise exception 'vanlig kampanjeforslag ble ikke lagret';
+  end if;
 
   begin
     execute 'set local role anon';

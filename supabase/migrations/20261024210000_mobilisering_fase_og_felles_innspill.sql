@@ -7,8 +7,10 @@
 -- Et eget slag skiller felles innspill fra en senere signaturkampanje,
 -- uten en parallell tabell for samme kobling.
 --
--- Signaturer leses bare av service_role. Anon og authenticated får
--- verken SELECT eller INSERT. Aggregatet er en SECURITY DEFINER-funksjon
+-- Signaturer leses bare av service_role. Anon har verken SELECT
+-- eller INSERT. Authenticated kan bare sette inn kampanje_id,
+-- bruker_id, navn og epost, og bare på en aktiv kampanje som
+-- ikke er felles innspill. Aggregatet er en SECURITY DEFINER-funksjon
 -- som bare returnerer et tall.
 
 do $$
@@ -199,18 +201,58 @@ create index if not exists kampanje_signaturer_bekreftet_idx
   on public.kampanje_signaturer (kampanje_id)
   where bekreftet_tid is not null and trukket_tid is null;
 
--- «Les signaturer» (USING true) skal være borte. «Signer» fra
--- 20261024170000 blir stående, så innloggede fortsatt kan sette inn
--- egen kampanjerad. Felles innspill skrives av service_role.
+-- «Les signaturer» (USING true) skal være borte.
+-- «Signer» fra 20261024170000 sjekket bare auth.uid() = bruker_id,
+-- og authenticated hadde INSERT på hele raden. Da kan en innlogget
+-- bruker sette bekreftet_tid direkte på et felles innspill og hoppe
+-- over e-postbekreftelsen. Policyen slipper nå bare inn en aktiv
+-- kampanje som ikke er felles innspill, og bare de fire kolonnene
+-- klienten i #32 sender. Felles innspill skrives av service_role.
 drop policy if exists "Les signaturer" on public.kampanje_signaturer;
+drop policy if exists "Signer" on public.kampanje_signaturer;
 
 revoke select (id, kampanje_id) on table public.kampanje_signaturer from anon, authenticated;
 revoke select, update, delete, truncate on table public.kampanje_signaturer from anon, authenticated;
 revoke insert on table public.kampanje_signaturer from anon;
+revoke insert on table public.kampanje_signaturer from authenticated;
 revoke all on table public.kampanje_signaturer from public;
 grant select, insert, update, delete on table public.kampanje_signaturer to service_role;
+grant insert (kampanje_id, bruker_id, navn, epost) on table public.kampanje_signaturer to authenticated;
+
+create policy "Signer"
+  on public.kampanje_signaturer
+  for insert
+  to authenticated
+  with check (
+    auth.uid() = bruker_id
+    and exists (
+      select 1 from public.kampanjer k
+      where k.id = kampanje_id
+        and k.aktiv
+        and k.slag is distinct from 'felles_innspill'
+    )
+  );
 
 alter table public.kampanje_signaturer enable row level security;
+
+-- «foreslaa_kampanje» i prod er FOR INSERT TO public
+-- WITH CHECK (aktiv = false). Forslaget skal ikke kunne sette slag
+-- eller de nye fasekolonnene. De skrives av service_role.
+drop policy if exists "foreslaa_kampanje" on public.kampanjer;
+create policy "foreslaa_kampanje"
+  on public.kampanjer
+  for insert
+  to public
+  with check (
+    aktiv = false
+    and slag is null
+    and mottaker is null
+    and innsendingslenke is null
+    and utkast is null
+    and planlagt_dato is null
+    and sendt_tid is null
+    and avsluttet_tid is null
+  );
 
 insert into public.samtykke_tekster (versjon, tekst, gyldig_fra)
 values (
@@ -234,13 +276,14 @@ as $$
   join public.kampanjer k on k.id = s.kampanje_id
   where s.kampanje_id = p_kampanje_id
     and k.slag = 'felles_innspill'
+    and k.aktiv
     and s.samtykke_gitt_tid is not null
     and s.bekreftet_tid is not null
     and s.trukket_tid is null;
 $$;
 
 comment on function public.felles_innspill_antall(uuid) is
-  'Antall bekreftede signaturer som ikke er trukket. Ingen navn, e-post eller rader.';
+  'Antall bekreftede signaturer som ikke er trukket, på et aktivt felles innspill. Ingen navn, e-post eller rader.';
 
 revoke all on function public.felles_innspill_antall(uuid) from public;
 grant execute on function public.felles_innspill_antall(uuid) to anon, authenticated, service_role;
@@ -262,6 +305,7 @@ as $$
   join public.kampanjer k on k.id = s.kampanje_id
   where s.kampanje_id = p_kampanje_id
     and k.slag = 'felles_innspill'
+    and k.aktiv
     and s.samtykke_gitt_tid is not null
     and s.bekreftet_tid is not null
     and s.trukket_tid is null
@@ -269,7 +313,7 @@ as $$
 $$;
 
 comment on function public.felles_innspill_til_mottaker(uuid) is
-  'Navneliste til mottakeren. Ingen e-postkolonne. Bare service_role.';
+  'Navneliste til mottakeren, bare for et aktivt felles innspill. Ingen e-postkolonne. Bare service_role.';
 
 revoke all on function public.felles_innspill_til_mottaker(uuid) from public;
 revoke all on function public.felles_innspill_til_mottaker(uuid) from anon, authenticated;
