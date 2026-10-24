@@ -15,6 +15,12 @@ import { kommuneLoginSynlig } from "./kommunelogin.ts";
 import { PREMIUM_AAR_KR, PREMIUM_MAANED_KR, sparProsentArlig } from "./priser.ts";
 import { dagerTilFrist, fristEtikett } from "./frist.ts";
 import { geografiskFraNivaa, leggTilUtvalg, nivaaFraGeografisk, preferanserFraProfil, utvalgErDekket } from "./preferanser.ts";
+import { MinSide } from "./minside/MinSide.tsx";
+import { kategorierForMeny } from "./minside/kategorier.ts";
+import type { LagretSok, MinValg } from "./minside/filter.ts";
+import { FolgeBoks } from "./minside/Personlig.tsx";
+import { boksForForside, personligKilde } from "./minside/forslag.ts";
+import { demoParameter } from "./minside/demo.ts";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase, Settings, API
@@ -52,12 +58,12 @@ async function lastKampanjer() {
   }));
 }
 
-async function hentProfil(userId) {
+async function hentProfil(userId: any) {
   const { data } = await sb.from("profiler").select("*").eq("id", userId).single();
   return data;
 }
 
-function profilfelt(oppdateringer) {
+function profilfelt(oppdateringer: any) {
   const felt = { ...oppdateringer };
   // id ligger i WHERE. plan og stripe_customer_id settes bare av service_role.
   delete felt.id;
@@ -66,7 +72,7 @@ function profilfelt(oppdateringer) {
   return felt;
 }
 
-async function lagreProfil(userId, oppdateringer) {
+async function lagreProfil(userId: any, oppdateringer: any) {
   const { error } = await sb.from("profiler")
     .update({ ...profilfelt(oppdateringer), oppdatert: new Date().toISOString() })
     .eq("id", userId);
@@ -74,11 +80,11 @@ async function lagreProfil(userId, oppdateringer) {
 }
 
 // handle_new_user oppretter raden ved registrering. Klienten oppdaterer den.
-async function upsertProfil(userId, data) {
+async function upsertProfil(userId: any, data: any) {
   return lagreProfil(userId, data);
 }
 
-async function toggleFølgSak(brukerId, sakId, følger) {
+async function toggleFølgSak(brukerId: any, sakId: any, følger: any) {
   if (følger) {
     const { error } = await sb.from("fulgte_saker").delete()
       .eq("bruker_id", brukerId).eq("sak_id", sakId);
@@ -91,11 +97,20 @@ async function toggleFølgSak(brukerId, sakId, følger) {
   return !error;
 }
 
-async function hentFulgte(brukerId) {
+async function hentFulgte(brukerId: any) {
   const { data, error } = await sb.from("fulgte_saker")
     .select("sak_id").eq("bruker_id", brukerId);
   if (error) return { ids: [], feil: true };
   return { ids: (data ?? []).map(r => r.sak_id), feil: false };
+}
+
+async function hentLagredeSok(brukerId: string): Promise<LagretSok[]> {
+  const { data, error } = await sb.from("lagrede_sok")
+    .select("id,navn,sporretekst")
+    .eq("bruker_id", brukerId)
+    .order("opprettet", { ascending: false });
+  if (error) return [];
+  return (data ?? []) as LagretSok[];
 }
 
 function brukerFraSesjon(authUser: any, profil: any) {
@@ -113,6 +128,9 @@ function brukerFraSesjon(authUser: any, profil: any) {
     fylkesnr: profil?.fylkesnr || null,
     kommunenr: profil?.kommunenr || null,
     ...pref,
+    organ: profil?.organ ?? [],
+    komiteer: profil?.komiteer ?? [],
+    minsideKlar: !!profil?.minside_klar,
   };
 }
 
@@ -139,13 +157,13 @@ async function lastKilder() {
 // Klartekst («hva betyr dette for meg?») er forståelse av en offentlig sak =
 // GRATIS for alle innloggede. Innlogging kreves kun for å hindre anonymt
 // misbruk av et betalt-per-kall AI-endepunkt — selve registreringen er gratis.
-export function kanBrukeKlartekst(user){
+export function kanBrukeKlartekst(user: any){
   return !!user?.id;
 }
 // Beholdt for bakoverkompatibilitet med E2-koden; klartekst har ingen kvote nå.
-export function registrerKlartekstBruk(_user){ /* gratis — ingen teller */ }
+export function registrerKlartekstBruk(_user: any){ /* gratis — ingen teller */ }
 
-async function loggAktivitetDB(brukerId, entry) {
+async function loggAktivitetDB(brukerId: any, entry: any) {
   await sb.from("aktivitet").insert({
     bruker_id: brukerId,
     type: entry.type,
@@ -155,7 +173,7 @@ async function loggAktivitetDB(brukerId, entry) {
   });
 }
 
-async function hentAktivitet(brukerId) {
+async function hentAktivitet(brukerId: any) {
   const { data } = await sb.from("aktivitet")
     .select("*").eq("bruker_id", brukerId)
     .order("opprettet", { ascending: false }).limit(50);
@@ -166,7 +184,7 @@ const SIGNATUR_INNLOGGING = "Logg inn for å signere kampanjen. Signaturen lagre
 
 // return=minimal: anon og authenticated har ikke SELECT på tabellen.
 // return=representation (RETURNING) ville feilet, og raden ble ikke lagret.
-async function signKampanje(kampanjeId, brukerId, navn, epost) {
+async function signKampanje(kampanjeId: any, brukerId: any, navn: any, epost: any) {
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token ?? null;
   const innlogget = data?.session?.user?.id ?? null;
@@ -198,7 +216,7 @@ async function signKampanje(kampanjeId, brukerId, navn, epost) {
   return true;
 }
 
-async function sendFeedbackDB(brukerId, type, tekst, sakTittel) {
+async function sendFeedbackDB(brukerId: any, type: any, tekst: any, sakTittel: any) {
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token ?? null;
   const innlogget = data?.session?.user?.id ?? null;
@@ -241,18 +259,7 @@ async function sendFeedbackDB(brukerId, type, tekst, sakTittel) {
 }
 
 // ─── Static data ────────────────────────────────────────────────────────────
-const KATEGORIER = [
-  {id:"scenekunst",label:"Scenekunst"},
-  {id:"musikk",label:"Musikk"},
-  {id:"dans",label:"Dans"},
-  {id:"opera",label:"Opera"},
-  {id:"litteratur",label:"Litteratur"},
-  {id:"film",label:"Film og TV"},
-  {id:"visuell",label:"Visuell kunst"},
-  {id:"museer",label:"Museer"},
-  {id:"spill",label:"Spill"},
-  {id:"kulturarv",label:"Kulturarv og bygg"},
-];
+const KATEGORIER = kategorierForMeny();
 
 const FYLKER = [
   {nr:"03",navn:"Oslo"},{nr:"11",navn:"Rogaland"},{nr:"15",navn:"Møre og Romsdal"},
@@ -261,12 +268,12 @@ const FYLKER = [
   {nr:"40",navn:"Telemark"},{nr:"42",navn:"Agder"},{nr:"46",navn:"Vestland"},
   {nr:"50",navn:"Trøndelag"},{nr:"55",navn:"Troms"},{nr:"56",navn:"Finnmark"},
 ];
-const fylkesnavn = (nr) => FYLKER.find(f=>f.nr===String(nr))?.navn ?? null;
+const fylkesnavn = (nr: any) => FYLKER.find(f=>f.nr===String(nr))?.navn ?? null;
 
-const VARSLER = [];
-const KAMPANJER = [];
+const VARSLER: any[] = [];
+const KAMPANJER: any[] = [];
 const SAK_HISTORIKK: any[] = [];
-const AKTIVITET_INIT = [];
+const AKTIVITET_INIT: any[] = [];
 const KOM_HØRINGER_INIT: any[] = [];
 const KOM_SVAR_MOCK: any[] = [];
 
@@ -365,13 +372,13 @@ function ToastContainer() {
   );
 }
 
-function KildeTillitsstrip({onÅpne}) {
+function KildeTillitsstrip({onÅpne}: any) {
   const [kilder,setKilder]=useState<any[]|null>(null);
   useEffect(()=>{ lastKilder().then(setKilder).catch(()=>setKilder([])); },[]);
   return <KildeSetning kilder={kilder} onÅpne={onÅpne}/>;
 }
 
-function KildeHelseSide({onBack}) {
+function KildeHelseSide({onBack}: any) {
   const [kilder,setKilder]=useState<any[]>([]);
   const [lastet,setLastet]=useState(false);
   useEffect(()=>{ lastKilder().then(k=>{setKilder(k);setLastet(true);}).catch(()=>{setKilder([]);setLastet(true);}); },[]);
@@ -383,7 +390,7 @@ function KildeHelseSide({onBack}) {
   );
 }
 
-function Landing({setScreen,varsler=[],kampanjer=[]}) {
+export function Landing({setScreen,varsler=[],kampanjer=[]}: any) {
   const [valgt,setValgt]=useState<any>(null);
   const [fane,setFane]=useState("info");
   const [lokaleFulgte,setLokaleFulgte]=useState<any[]>([]);
@@ -427,7 +434,7 @@ function Landing({setScreen,varsler=[],kampanjer=[]}) {
   );
 }
 
-function OnboardingWizard({user,setUser,onDone}) {
+function OnboardingWizard({user,setUser,onDone}: any) {
   const [steg,setSteg]=useState(0);
   const [org,setOrg]=useState(user?.org||"");
   const [orgType,setOrgType]=useState(user?.orgType||"");
@@ -454,7 +461,7 @@ function OnboardingWizard({user,setUser,onDone}) {
       varslerAktive: true, varselKat: valgtKat, varselNivå: valgtNivå,
       varselFrekvens: frekvens, varselEpost: user?.epost||"", onboardingDone: true,
     };
-    setUser(u=>({...u,...neste}));
+    setUser((u: any)=>({...u,...neste}));
     if(user?.id) {
       setLagrer(true);
       const ok = await upsertProfil(user.id, {
@@ -543,7 +550,7 @@ function OnboardingWizard({user,setUser,onDone}) {
   );
 }
 
-function FeedbackModal({onClose, kontekst=null as any}) {
+function FeedbackModal({onClose, kontekst=null as any}: any) {
   const [type,setType]=useState(kontekst?.type||"feil");
   const [tekst,setTekst]=useState("");
   const [sendt,setSendt]=useState(false);
@@ -610,7 +617,7 @@ function FeedbackModal({onClose, kontekst=null as any}) {
   );
 }
 
-function BrukerLogin({setScreen,setUser,grunn=""}) {
+function BrukerLogin({setScreen,setUser,grunn=""}: any) {
   const [epost,setEpost]=useState("");
   const [pw,setPw]=useState("");
   const [navn,setNavn]=useState("");
@@ -738,6 +745,7 @@ function visningFraSti(): string {
   const p = window.location.pathname.replace(/\/$/, "");
   if (p === "/ordliste" || p === "/app/ordliste") return "ordliste";
   if (p === "/design" || p === "/app/design") return "design";
+  if (p === "/min-side" || p === "/app/min-side") return "minside";
   const vis = forhandsvisning();
   if (vis === "profil" || vis === "varsler") return "profil";
   if (vis === "mobiliser") return "mobiliser";
@@ -754,6 +762,11 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [showOnboarding,setShowOnboarding]=useState(user&&!user.onboardingDone);
   const [showFeedback,setShowFeedback]=useState(false);
   const [fulgte,setFullgte]=useState<any[]>([]);
+  const [lagredeSok,setLagredeSok]=useState<LagretSok[]>([]);
+  const [sokLastet,setSokLastet]=useState(false);
+  const [minSak,setMinSak]=useState<any>(null);
+  const [minFane,setMinFane]=useState("horingssvar");
+  const [apneOppsett,setApneOppsett]=useState(false);
   const isPremium = user?.plan==="premium";
   const [aktivitet,setAktivitet]=useState<any[]>(AKTIVITET_INIT);
 
@@ -762,7 +775,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [dataLastet,setDataLastet]=useState(false);
 
   const idagISO = new Date().toISOString().split("T")[0];
-  const erHistorisk = (v)=>
+  const erHistorisk = (v: any)=>
     (v.frist && v.frist < idagISO) ||
     (!v.frist && v.opprettet && (Date.now()-new Date(v.opprettet).getTime()) > 90*86400000);
   const aktiveVarsler = useMemo(()=>varsler.filter(v=>!erHistorisk(v)),[varsler]);
@@ -801,14 +814,34 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     return ()=>{ sb.removeChannel(kanalen); };
   },[]);
 
-  async function loggAktivitet(entry) {
+  useEffect(()=>{
+    let aktiv = true;
+    if(!user?.id) {
+      setLagredeSok([]);
+      setSokLastet(true);
+      return;
+    }
+    setSokLastet(false);
+    (async ()=>{
+      const liste = await hentLagredeSok(user.id);
+      const f = await hentFulgte(user.id);
+      if(!aktiv) return;
+      setLagredeSok(liste);
+      if(!f.feil) setFullgte(f.ids);
+      setSokLastet(true);
+    })();
+    return ()=>{ aktiv = false; };
+  },[user?.id]);
+
+  async function loggAktivitet(entry: any) {
     const ny = {...entry, id:Date.now(), dato:new Date().toLocaleDateString("no-NO")};
     setAktivitet(a=>[ny,...a]);
     if(user?.id) await loggAktivitetDB(user.id, entry);
   }
 
-  async function toggleFølg(sakId) {
+  async function toggleFølg(sakId: any) {
     if(!user?.id) {
+      if (demoParameter()) return;
       beOmInnlogging("Logg inn for å følge saken. Valget lagres på kontoen din.");
       return;
     }
@@ -846,14 +879,14 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
       varselKat: utvalg.fagfelt,
       varselNivå: nivaaFraGeografisk(utvalg.geografisk),
     };
-    setUser(u=>({...u,...neste}));
+    setUser((u: any)=>({...u,...neste}));
     const ok = await lagreProfil(user.id, {
       varsler_aktive: neste.varslerAktive,
       fagfelt: neste.fagfelt,
       geografisk: neste.geografisk,
     });
     if(!ok) {
-      setUser(u=>({...u,...forrige}));
+      setUser((u: any)=>({...u,...forrige}));
       showToast("Kunne ikke lagre varslene. Prøv igjen.","feil");
     }
   }
@@ -873,12 +906,25 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  function demoNå() {
+    return demoParameter();
+  }
   function gå(id: string){
     setMenyÅpen(false);
     setMerÅpen(false);
     if(id==="premium"&&!isPremium){setShowPremium(true);return;}
-    if(id==="mobiliser"&&!user){setScreen("bruker-login");return;}
+    const demo = demoNå();
+    if(id==="mobiliser"&&!user&&!demo){setScreen("bruker-login");return;}
     if(id==="ordliste") window.history.pushState({}, "", "/ordliste");
+    else if(id==="minside") {
+      const m = demo === "tom" || demo === "oppsett" ? demo : demo ? "side" : "";
+      window.history.pushState({}, "", m ? `/min-side?demo=${m}` : "/min-side");
+    }
+    else if(id==="forside"||id==="varsler"||id==="mobiliser"||id==="kampanjer") {
+      if(demo==="side"||demo==="forside") window.history.pushState({}, "", "/?demo=forside");
+      else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
+    }
+    else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
     setView(id);
     window.scrollTo({top:0});
   }
@@ -892,6 +938,60 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     setView("forside");
     window.setTimeout(()=>document.getElementById("metode")?.scrollIntoView({behavior:"smooth",block:"start"}),40);
   }
+  async function lagreMinSide(felt: MinValg) {
+    if(!user?.id) return false;
+    const ok = await lagreProfil(user.id, {
+      fagfelt: felt.fagfelt,
+      geografisk: felt.geografisk,
+      organ: felt.organ,
+      komiteer: felt.komiteer,
+      varsler_aktive: felt.varslerAktive,
+      minside_klar: true,
+    });
+    if(!ok) {
+      showToast("Kunne ikke lagre valgene. Prøv igjen.","feil");
+      return false;
+    }
+    setUser((u: any)=>u?{
+      ...u,
+      fagfelt: felt.fagfelt,
+      geografisk: felt.geografisk,
+      organ: felt.organ,
+      komiteer: felt.komiteer,
+      varslerAktive: felt.varslerAktive,
+      varselKat: felt.fagfelt,
+      varselNivå: nivaaFraGeografisk(felt.geografisk),
+      minsideKlar: true,
+    }:u);
+    return true;
+  }
+
+  async function lagreSokMinSide(navn: string, sporretekst: string): Promise<LagretSok | null> {
+    if(!user?.id) return null;
+    const { data, error } = await sb.from("lagrede_sok")
+      .insert({ bruker_id: user.id, navn, sporretekst })
+      .select("id,navn,sporretekst")
+      .single();
+    if(error || !data) {
+      showToast("Kunne ikke lagre søket. Prøv igjen.","feil");
+      return null;
+    }
+    const rad = data as LagretSok;
+    setLagredeSok(liste=>[rad, ...liste.filter(s=>s.id!==rad.id)]);
+    return rad;
+  }
+
+  async function slettSokMinSide(id: string) {
+    if(!user?.id) return false;
+    const { error } = await sb.from("lagrede_sok").delete().eq("id", id).eq("bruker_id", user.id);
+    if(error) {
+      showToast("Kunne ikke fjerne søket. Prøv igjen.","feil");
+      return false;
+    }
+    setLagredeSok(liste=>liste.filter(s=>s.id!==id));
+    return true;
+  }
+
   const mer=[
     {id:"ordliste",label:"Ordliste"},
     {id:"kampanjer",label:"Kampanjer"},
@@ -907,12 +1007,33 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     view==="profil"?"Min profil":
     view==="premium"?"Premium-verktøy":"";
   const fagAktiv = (id: string) => view==="varsler" && arkivKat===id;
+  const personlig = personligKilde({
+    userId: user?.id,
+    valg: {
+      fagfelt: user?.fagfelt ?? [],
+      geografisk: user?.geografisk ?? [],
+      organ: user?.organ ?? [],
+      komiteer: user?.komiteer ?? [],
+      varslerAktive: !!user?.varslerAktive,
+    },
+    saker: varsler,
+    fulgte,
+    sok: lagredeSok,
+    kampanjer,
+  });
+  const folgeLinjer = boksForForside(
+    personlig.valg,
+    personlig.mock ? personlig.saker : aktiveVarsler,
+    personlig.fulgte,
+    personlig.sok,
+    personlig.nå ?? new Date(),
+  );
 
   return (
     <div className="avis">
       {showPremium&&<PremiumModal user={user} onClose={()=>setShowPremium(false)} onLogin={()=>{setShowPremium(false);setScreen("bruker-login");}}/>}
       {showVarselReg&&<VarselRegistreringModal user={user} setUser={setUser} onClose={()=>setShowVarselReg(false)} beOmInnlogging={beOmInnlogging}/>}
-      {showOnboarding&&user&&<OnboardingWizard user={user} setUser={setUser} onDone={()=>setShowOnboarding(false)}/>}
+      {showOnboarding&&user&&view!=="minside"&&<OnboardingWizard user={user} setUser={setUser} onDone={()=>setShowOnboarding(false)}/>}
       {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
 
       <div className="avis-dato">
@@ -954,6 +1075,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         <div className="avis-wrap">
           <button type="button" className={view==="forside"?"aktiv":undefined} onClick={()=>gå("forside")}>Forsiden</button>
           <button type="button" className={view==="varsler"?"aktiv":undefined} onClick={()=>gå("varsler")}>Arkiv</button>
+          <button type="button" className={view==="minside"?"aktiv":undefined} onClick={()=>gå("minside")}>Min side</button>
           <button type="button" onClick={tilMetode}>Slik jobber vi</button>
           <span className="avis-mer">
             <button type="button" className={mer.some(m=>m.id===view)?"aktiv":undefined} aria-expanded={merÅpen} onClick={()=>setMerÅpen(v=>!v)}>Mer</button>
@@ -975,6 +1097,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
           ))}
           <button type="button" className={view==="forside"?"aktiv":undefined} onClick={()=>gå("forside")}>Forsiden</button>
           <button type="button" className={view==="varsler"?"aktiv":undefined} onClick={()=>gå("varsler")}>Arkiv</button>
+          <button type="button" className={view==="minside"?"aktiv":undefined} onClick={()=>gå("minside")}>Min side</button>
           <button type="button" onClick={tilMetode}>Slik jobber vi</button>
           {mer.map(m=>(
             <button type="button" key={m.id} className={view===m.id?"aktiv":undefined} onClick={()=>gå(m.id)}>{m.label}</button>
@@ -990,19 +1113,21 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         {view==="forside" && (
           <BrukerForside
             setView={gå}
-            varsler={aktiveVarsler}
-            kampanjer={kampanjer}
+            varsler={personlig.mock ? personlig.saker : aktiveVarsler}
+            kampanjer={personlig.mock ? personlig.kampanjer : kampanjer}
             setShowPremium={setShowPremium}
             isPremium={isPremium}
-            fulgte={fulgte}
+            fulgte={personlig.mock ? personlig.fulgte : fulgte}
             toggleFølg={toggleFølg}
             onLogin={()=>setScreen("bruker-login")}
             onKrevInnlogging={beOmInnlogging}
-            dataLastet={dataLastet}
+            dataLastet={personlig.mock ? true : dataLastet}
             user={user}
             minFylke={user?.fylkesnr}
-            onVelgFylke={(fnr)=>{setUser(u=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}
+            onVelgFylke={(fnr: any)=>{setUser((u: any)=>u?{...u,fylkesnr:fnr}:u);if(user?.id)lagreProfil(user.id,{fylkesnr:fnr});}}
             onVelgFag={velgFag}
+            linjer={personlig.vis ? folgeLinjer : null}
+            mock={personlig.mock}
           />
         )}
         {view==="varsler" && (
@@ -1027,7 +1152,37 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         {view==="design" && <DesignSide />}
         {view==="horing" && <HoringForhandsvisning />}
         {view==="innspill" && <InnspillForhandsvisning />}
-        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&(
+        {view==="minside" && (
+          <MinSide
+            user={user}
+            varsler={varsler}
+            fulgte={fulgte}
+            sok={lagredeSok}
+            sokLastet={sokLastet}
+            onLagreValg={lagreMinSide}
+            onLagreSok={lagreSokMinSide}
+            onSlettSok={slettSokMinSide}
+            onToggleFolg={toggleFølg}
+            onLogin={()=>setScreen("bruker-login")}
+            onÅpne={(sak, fane)=>{ setMinSak(sak); setMinFane(fane); }}
+            kampanjer={personlig.kampanjer}
+            apneOppsett={apneOppsett}
+            onOppsettApnet={()=>setApneOppsett(false)}
+          />
+        )}
+        {view==="minside" && minSak && (
+          <SaksModal
+            sak={minSak}
+            startTab={minFane}
+            kampanjer={personlig.kampanjer}
+            user={user}
+            onKrevInnlogging={beOmInnlogging}
+            onClose={()=>setMinSak(null)}
+            onTilMinSide={()=>setMinSak(null)}
+            onVarsler={()=>{ setMinSak(null); setApneOppsett(true); }}
+          />
+        )}
+        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&(
           <div className="avis-wrap avis-annet">
             {annenTittel&&<h1>{annenTittel}</h1>}
             {view==="historikk" && <SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
@@ -1111,7 +1266,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
   const [fylkeVal,setFylkeVal]=useState(user?.fylkesnr||"");
   async function lagreOrg(){
     const oppd={org:orgVal,orgType:orgTypeVal,fylkesnr:fylkeVal||null};
-    setUser(u=>({...u,...oppd}));
+    setUser((u: any)=>({...u,...oppd}));
     setRedigerOrg(false);
     if(user?.id) await lagreProfil(user.id,{org:orgVal,org_type:orgTypeVal,fylkesnr:fylkeVal||null});
   }
@@ -1223,7 +1378,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
               {user?.varslerAktive&&(
                 <Knapp variant="linje" onClick={async()=>{
                   const forrige=user;
-                  setUser(u=>({...u,varslerAktive:false,varselEpost:""}));
+                  setUser((u: any)=>({...u,varslerAktive:false,varselEpost:""}));
                   const ok=user?.id ? await lagreProfil(user.id,{varsler_aktive:false}) : false;
                   if(!ok){ setUser(forrige); showToast("Kunne ikke lagre varslene. Prøv igjen.","feil"); }
                 }}>Skru av varsler</Knapp>
@@ -1270,12 +1425,25 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
   );
 }
 
-function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true,minFylke=null,onVelgFylke=()=>{},user=null,onVelgFag=(_id: string)=>{},onKrevInnlogging=()=>{}}:{setView:any;setShowPremium:any;isPremium:any;fulgte?:any[];toggleFølg?:any;onLogin?:any;varsler?:any[];kampanjer?:any[];dataLastet?:boolean;minFylke?:any;onVelgFylke?:any;user?:any;onVelgFag?:(id:string)=>void;onKrevInnlogging?:(grunn:string)=>void}) {
+function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=()=>{},onLogin=()=>{},varsler=[],kampanjer=[],dataLastet=true,minFylke=null,onVelgFylke=()=>{},user=null,onVelgFag=(_id: string)=>{},onKrevInnlogging=()=>{},linjer=null,mock=false}:{setView:any;setShowPremium:any;isPremium:any;fulgte?:any[];toggleFølg?:any;onLogin?:any;varsler?:any[];kampanjer?:any[];dataLastet?:boolean;minFylke?:any;onVelgFylke?:any;user?:any;onVelgFag?:(id:string)=>void;onKrevInnlogging?:(grunn:string)=>void;linjer?:any[]|null;mock?:boolean}) {
   const [valgt,setValgt]=useState<any>(null);
   const [fane,setFane]=useState("info");
   void setShowPremium; void isPremium; void onLogin; void minFylke; void onVelgFylke;
   return (
     <>
+      {linjer && (
+        <div className="avis-wrap">
+          {mock && <p className="minside-forslag">Forslag til godkjenning. Eksemplene er ikke ekte saker, og ingenting lagres.</p>}
+          <FolgeBoks
+            linjer={linjer}
+            onMinSide={()=>setView("minside")}
+            onÅpne={(id)=>{
+              const sak = varsler.find((s: {id: string|number}) => String(s.id) === String(id));
+              if (sak) { setFane("info"); setValgt(sak); }
+            }}
+          />
+        </div>
+      )}
       <ForsideAvis
         saker={varsler}
         lastet={dataLastet}
@@ -1287,7 +1455,17 @@ function BrukerForside({setView,setShowPremium,isPremium,fulgte=[],toggleFølg=(
         kampanjeAntall={kampanjer.length}
         onKampanjer={()=>setView("kampanjer")}
       />
-      {valgt&&<SaksModal sak={valgt} startTab={fane} onClose={()=>setValgt(null)} kampanjer={kampanjer} user={user} onKrevInnlogging={onKrevInnlogging}/>}
+      {valgt&&(
+        <SaksModal
+          sak={valgt}
+          startTab={fane}
+          onClose={()=>setValgt(null)}
+          kampanjer={kampanjer}
+          user={user}
+          onKrevInnlogging={onKrevInnlogging}
+          onTilMinSide={()=>{ setValgt(null); setView("minside"); }}
+        />
+      )}
     </>
   );
 }
@@ -1325,7 +1503,7 @@ function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevIn
     if(!navn||!epost) return;
     setLaster(true);
     const ok = await signKampanje(k.id, user.id, navn, epost);
-    if(ok) { setSig(s=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
+    if(ok) { setSig((s: any)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
     else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
     setLaster(false);
   }
@@ -1357,7 +1535,7 @@ function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevIn
   );
 }
 
-function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInnlogging}: {sak:any; onClose:any; kampanjer?:any; startTab?:string; user?:any; onKrevInnlogging?:(grunn:string)=>void}) {
+function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInnlogging,onTilMinSide,onVarsler}: {sak:any; onClose:any; kampanjer?:any; startTab?:string; user?:any; onKrevInnlogging?:(grunn:string)=>void; onTilMinSide?:()=>void; onVarsler?:()=>void}) {
   const [tab,setTab]=useState(startTab||"info");
   useEffect(()=>{ setTab(startTab||"info"); },[sak?.id, startTab]);
   useEffect(()=>{
@@ -1372,7 +1550,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
   const [nyKampTittel,setNyKampTittel]=useState(`Stopp: ${sak.tittel}`);
   const [nyKampBeskr,setNyKampBeskr]=useState("");
   const [nyKampOpprettet,setNyKampOpprettet]=useState(false);
-  const relKampanjer=kampanjer.filter(k=>k.kategori===sak.kategori||k.sakId===sak.id);
+  const relKampanjer=kampanjer.filter((k: any)=>k.kategori===sak.kategori||k.sakId===sak.id);
   const merket = useMemo(
     () => delOppDokument([sak?.tittel || "", sak?.sammendrag || "", sak?.instans || ""]),
     [sak?.id, sak?.tittel, sak?.sammendrag, sak?.instans],
@@ -1414,6 +1592,12 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
         valgt={tab}
         onVelg={setTab}
       />
+      {(onTilMinSide || onVarsler) && (
+        <div className="kv-klynge">
+          {onTilMinSide && <Knapp variant="stille" onClick={onTilMinSide}>Tilbake til Min side</Knapp>}
+          {onVarsler && <Knapp variant="stille" onClick={onVarsler}>Varslingsvalg</Knapp>}
+        </div>
+      )}
       {tab==="info"&&(
         <div className="kv-stakk">
           <p className="kv-brod"><MerketTekst deler={merket[1]} /></p>
@@ -1472,7 +1656,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
             <div>
               <h3 className="kv-undertittel">Kampanjer på denne saken</h3>
               <ul className="kv-liste">
-                {relKampanjer.map(k=>(
+                {relKampanjer.map((k: any)=>(
                   <li key={k.id} className="kv-rad">
                     <h3 className="kv-undertittel">{k.tittel}</h3>
                     <p className="kv-brod">{k.beskrivelse}</p>
@@ -1615,7 +1799,7 @@ function KampanjeSignerMini({k,user=null,onKrevInnlogging}:{k:any;user?:any;onKr
   return <Knapp onClick={beOmSignatur}>Signer denne kampanjen</Knapp>;
 }
 
-function DelMini({sak}) {
+function DelMini({sak}: any) {
   const [kopiert,setKopiert]=useState(false);
   const [epostSendt,setEpostSendt]=useState(false);
   const url="https://kulturvarsling.no/sak/"+sak.id;
@@ -1800,7 +1984,7 @@ const MAL_TEMPLATES: Record<string, Mal[]> = {
 };
 
 function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}:{type:string;kontekst:any;onClose:()=>void;onSend?:(entry:any)=>void;user?:any}) {
-  function applyUserFill(txt) {
+  function applyUserFill(txt: any) {
     if(!user) return txt;
     const org = user.org||user.navn||"";
     const navn = user.navn||"";
@@ -1834,7 +2018,7 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}:{type:stri
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  function velgMal(id) {
+  function velgMal(id: any) {
     setValgtMal(id);
     const mal = maler.find(m=>m.id===id);
     if(!mal) return;
@@ -2101,9 +2285,9 @@ function PremiumVerktøy({varslerData=[],user=null}:{varslerData?:any[];user?:an
               <section>
                 <h2 className="kv-undertittel">{resultat.kommune}: kulturøkonomi</h2>
                 <ul className="kv-liste">
-                  {resultat.nøkkeltall.map(n=>{
-                    const siste=n.serie.filter(v=>v!=null).slice(-1)[0];
-                    const forrige=n.serie.filter(v=>v!=null).slice(-2)[0];
+                  {resultat.nøkkeltall.map((n: any)=>{
+                    const siste=n.serie.filter((v: any)=>v!=null).slice(-1)[0];
+                    const forrige=n.serie.filter((v: any)=>v!=null).slice(-2)[0];
                     const opp=siste!=null&&forrige!=null?siste-forrige:null;
                     const vsSnitt=siste!=null&&n.landssnitt!=null?siste-n.landssnitt:null;
                     return (
@@ -2194,7 +2378,7 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
     const geografisk = geografiskFraNivaa(valgtNivå, user?.geografisk||[]);
     const forrige = user;
     setFeil("");
-    setUser(u=>({
+    setUser((u: any)=>({
       ...u, varselEpost:epost, varselKat:valgtKat, varselNivå:valgtNivå, varselFrekvens:frekvens,
       fagfelt:valgtKat, geografisk, varslerAktive:true,
     }));
@@ -2344,7 +2528,7 @@ function PremiumModal({user,onClose,onLogin}:{user:any;onClose:()=>void;onLogin?
   );
 }
 
-function KommuneLogin({setScreen,setKommune}) {
+function KommuneLogin({setScreen,setKommune}: any) {
   const [epost,setEpost]=useState("");
   const [pw,setPw]=useState("");
   const [kom,setKom]=useState("Oslo");
@@ -2369,7 +2553,7 @@ function KommuneLogin({setScreen,setKommune}) {
   );
 }
 
-function KommuneApp({kommune,setScreen}) {
+function KommuneApp({kommune,setScreen}: any) {
   const [view,setView]=useState("oversikt");
   const [høringer,setHøringer]=useState<any[]>(KOM_HØRINGER_INIT);
   const [visPubliser,setVisPubliser]=useState(false);
@@ -2385,7 +2569,7 @@ function KommuneApp({kommune,setScreen}) {
 
   return (
     <div className="kv-skjerm">
-      {visPubliser&&<PubliserModal onClose={()=>setVisPubliser(false)} onPubliser={h=>{setHøringer(p=>[{...h,id:p.length+1,publisert:new Date().toISOString().split("T")[0],status:"aktiv",svar:0,varslet:Math.floor(Math.random()*200)+50},...p]);setVisPubliser(false);setView("høringer");}}/>}
+      {visPubliser&&<PubliserModal onClose={()=>setVisPubliser(false)} onPubliser={(h: any)=>{setHøringer(p=>[{...h,id:p.length+1,publisert:new Date().toISOString().split("T")[0],status:"aktiv",svar:0,varslet:Math.floor(Math.random()*200)+50},...p]);setVisPubliser(false);setView("høringer");}}/>}
       <header className="avis-mast">
         <button type="button" className="avis-tittel" onClick={()=>setScreen("bruker-app")}>Kultur<span>varsling</span></button>
         <p className="avis-under">{kommune?.kommune}</p>
@@ -2410,10 +2594,10 @@ function KommuneApp({kommune,setScreen}) {
   );
 }
 
-function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPubliser}) {
-  const aktive=høringer.filter(h=>h.status==="aktiv").length;
+function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPubliser}: any) {
+  const aktive=høringer.filter((h: any)=>h.status==="aktiv").length;
   const respons = `${Math.round(totalSvar/Math.max(1,totalVarslet)*100)} prosent`;
-  const aktiveHøringer = høringer.filter(h=>h.status==="aktiv");
+  const aktiveHøringer = høringer.filter((h: any)=>h.status==="aktiv");
   return (
     <div className="kv-stakk">
       <ul className="kv-liste">
@@ -2431,7 +2615,7 @@ function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPublise
         <section>
           <h2 className="kv-undertittel">Aktive høringer</h2>
           {aktiveHøringer.length===0&&<p className="kv-tom">Ingen aktive høringer.</p>}
-          {aktiveHøringer.map(h=><HøringRad key={h.id} h={h}/>)}
+          {aktiveHøringer.map((h: any)=><HøringRad key={h.id} h={h}/>)}
         </section>
         <section>
           <h2 className="kv-undertittel">Siste innspill</h2>
@@ -2451,7 +2635,7 @@ function KommuneOversikt({høringer,totalVarslet,totalSvar,setView,setVisPublise
   );
 }
 
-function HøringRad({h}) {
+function HøringRad({h}: any) {
   return (
     <article className="kv-rad">
       <h3 className="kv-undertittel">{h.tittel}</h3>
@@ -2460,13 +2644,13 @@ function HøringRad({h}) {
   );
 }
 
-function KommuneHøringer({høringer,setVisPubliser}) {
+function KommuneHøringer({høringer,setVisPubliser}: any) {
   return (
     <div className="kv-stakk">
       <Knapp onClick={()=>setVisPubliser(true)}>Publiser høring</Knapp>
       {høringer.length===0&&<p className="kv-tom">Ingen høringer er publisert.</p>}
       <ul className="kv-liste">
-        {høringer.map(h=>(
+        {høringer.map((h: any)=>(
           <li key={h.id} className="kv-rad">
             <h3 className="kv-undertittel">{h.tittel}</h3>
             <p className="kv-meta">{metaLinje([katNavn(h.kategori), h.status==="aktiv"?"Aktiv":"Avsluttet", `Publisert ${h.publisert}`, `Frist ${h.frist}`])}</p>
@@ -2488,13 +2672,13 @@ function KommuneSvar() {
   const [tags,setTags]=useState<any>({});
   const filtered=valgtHøring==="alle"?svar:svar.filter(s=>s.høringId===parseInt(valgtHøring));
 
-  function merkLest(id){ setSvar(s=>s.map(x=>x.id===id?{...x,status:"lest"}:x)); }
-  function sendSvar(id){
-    setSendt(p=>({...p,[id]:true}));
+  function merkLest(id: any){ setSvar(s=>s.map(x=>x.id===id?{...x,status:"lest"}:x)); }
+  function sendSvar(id: any){
+    setSendt((p: any)=>({...p,[id]:true}));
     setÅpenSvar(null);
     merkLest(id);
   }
-  function toggleTag(svId,t){ setTags(p=>({...p,[svId]:p[svId]?.includes(t)?p[svId].filter(x=>x!==t):[...(p[svId]||[]),t]})); }
+  function toggleTag(svId: any,t: any){ setTags((p: any)=>({...p,[svId]:p[svId]?.includes(t)?p[svId].filter((x: any)=>x!==t):[...(p[svId]||[]),t]})); }
 
   function eksporter(){
     const csv=["Org,Dato,Høring,Status,Tags,Tekst",...filtered.map(s=>`"${s.org}","${s.dato}","Høring #${s.høringId}","${s.status}","${(tags[s.id]||[]).join("|")}","${s.tekst.replace(/"/g,"'")}"`)].join("\n");
@@ -2524,7 +2708,7 @@ function KommuneSvar() {
             </div>
             {åpenSvar===s.id?(
               <div>
-                <Tekstfelt id={`svar-${s.id}`} label="Svar" rows={3} value={svarTekst[s.id]||""} onChange={e=>setSvarTekst(p=>({...p,[s.id]:e.target.value}))} placeholder={"Svar til "+s.org} />
+                <Tekstfelt id={`svar-${s.id}`} label="Svar" rows={3} value={svarTekst[s.id]||""} onChange={e=>setSvarTekst((p: any)=>({...p,[s.id]:e.target.value}))} placeholder={"Svar til "+s.org} />
                 <div className="kv-klynge">
                   <Knapp onClick={()=>sendSvar(s.id)}>Send svar</Knapp>
                   <Knapp variant="linje" onClick={()=>setÅpenSvar(null)}>Avbryt</Knapp>
@@ -2545,7 +2729,7 @@ function KommuneSvar() {
   );
 }
 
-function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
+function KommuneStatistikk({høringer,totalVarslet,totalSvar}: any) {
   const respons = Math.round(totalSvar/Math.max(1,totalVarslet)*100);
   return (
     <div className="kv-stakk">
@@ -2553,7 +2737,7 @@ function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
       <h2 className="kv-undertittel">Per høring</h2>
       {høringer.length===0&&<p className="kv-tom">Ingen høringer å vise.</p>}
       <ul className="kv-liste">
-        {høringer.map(h=>(
+        {høringer.map((h: any)=>(
           <li key={h.id} className="kv-rad">
             <p>{h.tittel}</p>
             <p className="kv-meta">{h.svar} innspill. {h.varslet} varslet.</p>
@@ -2564,7 +2748,7 @@ function KommuneStatistikk({høringer,totalVarslet,totalSvar}) {
   );
 }
 
-function PubliserModal({onClose,onPubliser}) {
+function PubliserModal({onClose,onPubliser}: any) {
   const [tittel,setTittel]=useState("");
   const [beskrivelse,setBeskrivelse]=useState("");
   const [frist,setFrist]=useState("");
@@ -2653,7 +2837,7 @@ export default function App() {
         const profil=await hentProfil(session.user.id);
         if(profil?.plan==="premium"){
           clearInterval(intervall);
-          setUser(u=>u?{...u,plan:"premium"}:u);
+          setUser((u: any)=>u?{...u,plan:"premium"}:u);
           showToast("Premium er aktivert.","ok");
           return;
         }

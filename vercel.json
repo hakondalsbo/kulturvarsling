@@ -12,6 +12,8 @@
     { "src": "/app/ordliste", "dest": "/index.html" },
     { "src": "/design", "dest": "/index.html" },
     { "src": "/app/design", "dest": "/index.html" },
+    { "src": "/min-side", "dest": "/index.html" },
+    { "src": "/app/min-side", "dest": "/index.html" },
     { "src": "/(.*)", "status": 404, "dest": "/404.html" }
   ],
   "github": {

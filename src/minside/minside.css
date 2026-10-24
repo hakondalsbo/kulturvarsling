@@ -1,0 +1,242 @@
+.minside {
+  padding: 12px 0 88px;
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+.minside-ark {
+  max-width: 720px;
+}
+
+.minside h1 {
+  font: 500 44px/1.08 var(--serif);
+  letter-spacing: -0.02em;
+  margin: 8px 0 12px;
+  color: var(--tekst);
+  overflow-wrap: anywhere;
+}
+
+.minside h2 {
+  font: 500 28px/1.25 var(--serif);
+  margin: 36px 0 8px;
+  color: var(--tekst);
+}
+
+.minside h3 {
+  font: 500 22px/1.3 var(--serif);
+  margin: 0 0 6px;
+  color: var(--tekst);
+  overflow-wrap: anywhere;
+}
+
+.minside-innledning,
+.minside-forklaring {
+  font: 400 18px/1.55 var(--serif);
+  color: var(--brod);
+  max-width: 62ch;
+  margin: 0 0 22px;
+}
+
+.minside-forslag {
+  margin: 0 0 18px;
+  color: var(--oker);
+  font: 500 15px/1.5 var(--sans);
+}
+
+.minside-rad {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 22px;
+  margin-top: 8px;
+}
+
+.minside-liste {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--linje);
+  background: var(--flate);
+  padding: 4px 16px;
+  margin: 0 0 18px;
+}
+
+.minside-gruppe {
+  margin: 0 0 22px;
+}
+
+.minside-gruppe .kv-feltnavn {
+  margin-bottom: 10px;
+}
+
+.minside-sak {
+  padding: 18px 0 18px 14px;
+  border-bottom: 1px solid var(--linje);
+  border-left: 3px solid transparent;
+  min-width: 0;
+}
+
+.minside-sak.handling {
+  border-left-color: var(--tegl);
+}
+
+.minside-sak.orientering {
+  border-left-style: dashed;
+  border-left-color: var(--linje-mork);
+}
+
+.minside-sak p {
+  color: var(--brod);
+  margin: 0 0 8px;
+  max-width: 62ch;
+}
+
+.minside-meta {
+  color: var(--dempet);
+  font: 500 14px/1.45 var(--sans);
+  margin: 0 0 8px;
+}
+
+.minside-meta .frist {
+  color: var(--oker);
+}
+
+.minside-handling {
+  border-left-color: var(--tegl);
+}
+
+.minside-tom {
+  padding: 12px 0 8px;
+  color: var(--dempet);
+}
+
+.minside-sok {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 0 0 12px;
+}
+
+.minside-sok .kv-felt {
+  flex: 1 1 220px;
+  margin: 0;
+  min-width: 0;
+}
+
+.minside-lagret {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.minside-lagret li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--linje);
+  color: var(--tekst);
+  min-width: 0;
+}
+
+.minside-lagret li span {
+  overflow-wrap: anywhere;
+}
+
+.minside-fulgt {
+  min-width: 0;
+  flex: 1;
+}
+
+.minside-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: baseline;
+  margin-top: 8px;
+  color: var(--dempet);
+  font: 500 14px/1.4 var(--sans);
+}
+
+.folge-boks {
+  max-width: 640px;
+  margin: 28px 0 8px;
+  padding: 22px 24px 18px;
+  background: var(--flate);
+  border: 1px solid var(--linje);
+  overflow-x: clip;
+}
+
+.folge-boks h2 {
+  font: 500 28px/1.2 var(--serif);
+  margin: 0 0 12px;
+  color: var(--tekst);
+}
+
+.folge-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.avis .folge-linje {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--linje);
+  border-radius: 0;
+  background: transparent;
+  color: var(--tekst);
+  text-align: left;
+  cursor: pointer;
+  font: 500 18px/1.35 var(--serif);
+}
+
+.folge-tittel {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.folge-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font: 500 14px/1.4 var(--sans);
+  color: var(--dempet);
+}
+
+.folge-meta .frist {
+  color: var(--oker);
+}
+
+.folge-tom {
+  margin: 0 0 12px;
+  color: var(--dempet);
+  font: 400 17px/1.45 var(--serif);
+}
+
+.avis .folge-alt {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(43, 74, 63, 0.45);
+  border-radius: 0;
+  background: transparent;
+  color: var(--granitt);
+  font: 500 16px/1.3 var(--sans);
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .minside h1 { font-size: 34px; }
+  .minside h2 { font-size: 24px; }
+  .folge-boks { padding: 18px 16px 14px; }
+  .folge-boks h2 { font-size: 24px; }
+  .minside-rad .kv-knapp:not(.stille) { width: 100%; }
+  .minside-sok .kv-knapp { width: 100%; }
+}

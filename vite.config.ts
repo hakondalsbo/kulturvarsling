@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Vercel setter VERCEL_ENV, ikke VITE_VERCEL_ENV. Klienten skal se samme verdi.
+const vercelEnv = process.env.VITE_VERCEL_ENV || process.env.VERCEL_ENV || "";
+
 // Samme rene stier som vercel.json, så lenkene virker i vite dev og preview.
 function reneStier(): Plugin {
   const kart: Record<string, string> = {
@@ -9,7 +12,7 @@ function reneStier(): Plugin {
     "/bekreft": "/bekreft.html",
     "/avmelding": "/avmelding.html",
   };
-  const appSti = new Set(["/", "/ordliste", "/design", "/statsbudsjett", "/app"]);
+  const appSti = new Set(["/", "/ordliste", "/design", "/statsbudsjett", "/min-side", "/app"]);
   const omskriv = (req: { url?: string; headers?: { accept?: string } }, res: { statusCode?: number }, next: () => void) => {
     const url = req.url ?? "/";
     const q = url.indexOf("?");
@@ -46,4 +49,7 @@ function reneStier(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), reneStier()],
+  define: {
+    "import.meta.env.VITE_VERCEL_ENV": JSON.stringify(vercelEnv),
+  },
 })
