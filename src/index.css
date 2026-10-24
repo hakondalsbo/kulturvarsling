@@ -1141,6 +1141,7 @@ button.avis-tittel {
   font: 500 36px/1.1 var(--serif);
   margin: 0 0 28px;
   color: var(--tekst);
+  overflow-wrap: anywhere;
 }
 
 .avis-skjelett {
@@ -1899,7 +1900,20 @@ button.avis-tittel {
 
 .kv-knapp.bred { width: 100%; }
 .kv-knapp.vokse { flex: 1; }
-.kv-knapp:disabled { opacity: 0.55; cursor: not-allowed; }
+.kv-knapp:disabled,
+.kv-knapp.er-inaktiv {
+  background: var(--linje);
+  color: var(--dempet);
+  opacity: 1;
+  cursor: not-allowed;
+}
+.kv-knapp.linje:disabled,
+.kv-knapp.stille:disabled,
+.kv-knapp.fare:disabled {
+  background: transparent;
+  color: var(--dempet);
+  border-color: var(--linje);
+}
 
 .kv-felt { display: block; margin: 0 0 16px; }
 
@@ -1920,7 +1934,9 @@ button.avis-tittel {
 input.kv-input,
 textarea.kv-input,
 select.kv-input {
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
   min-height: 48px;
   padding: 10px 12px;
   border: 1px solid var(--linje-myk);
@@ -2039,7 +2055,8 @@ textarea.kv-input,
 
 .kv-klynge.mellom { justify-content: space-between; }
 .kv-klynge.slutt { justify-content: flex-end; }
-.kv-stakk { display: flex; flex-direction: column; gap: 16px; }
+.kv-stakk { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.kv-stakk > * { min-width: 0; max-width: 100%; }
 .kv-rutenett { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .kv-rutenett-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
 .kv-notis {
@@ -2413,8 +2430,32 @@ textarea.kv-input,
 .kv-knapp:active:not(:disabled):not(.linje):not(.stille):not(.fare),
 .kv-knapp.vis-aktiv:not(.linje):not(.stille):not(.fare) { background: #641910; }
 .kv-knapp.vis-fokus { outline: 2px solid var(--tekst); outline-offset: 3px; }
-.kv-knapp:disabled,
-.kv-knapp.er-inaktiv { opacity: 0.45; cursor: not-allowed; }
+.avis .kv-knapp:disabled:not(.linje):not(.stille):not(.fare),
+.avis .kv-knapp.er-inaktiv:not(.linje):not(.stille):not(.fare) {
+  background: var(--linje);
+  color: var(--dempet);
+  opacity: 1;
+}
+.avis .kv-knapp.linje:disabled,
+.avis .kv-knapp.stille:disabled,
+.avis .kv-knapp.fare:disabled,
+.avis .kv-knapp.linje.er-inaktiv,
+.avis .kv-knapp.stille.er-inaktiv,
+.avis .kv-knapp.fare.er-inaktiv {
+  background: transparent;
+  color: var(--dempet);
+  border-color: var(--linje);
+  opacity: 1;
+}
+textarea.kv-utkast {
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.55;
+  background: var(--papir);
+  min-height: 280px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .kv-knapp.laster { cursor: progress; }
 .kv-knapp.laster i {
   width: 0.7em;

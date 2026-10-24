@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { harPremium, reserverAiKvote } from "./tilgang.ts";
+import { aiKvoteGrense, harPremium, reserverAiKvote } from "./tilgang.ts";
 
 test("harPremium leser kun profiler.plan === premium", () => {
   assert.equal(harPremium({ plan: "premium" }), true);
@@ -33,4 +33,21 @@ test("kvote-rpc som feiler eller ikke svarer boolsk blir feil, false blir grense
   assert.equal(await reserverAiKvote(feilDb, "bruker-1", "klartekst", false), "feil");
   const grenseDb = { rpc: () => Promise.resolve({ data: false, error: null }) };
   assert.equal(await reserverAiKvote(grenseDb, "bruker-1", "budsjett", true), "grense");
+});
+
+test("horingshjelp har egen døgnkvote og endrer ikke klartekst eller budsjett", async () => {
+  assert.equal(aiKvoteGrense("budsjett", true), 10);
+  assert.equal(aiKvoteGrense("klartekst", false), 30);
+  assert.equal(aiKvoteGrense("klartekst", true), 120);
+  assert.equal(aiKvoteGrense("horingshjelp", true), 10);
+  const kall: Array<Record<string, unknown>> = [];
+  const db = {
+    rpc: (_navn: string, params: Record<string, unknown>) => {
+      kall.push(params);
+      return Promise.resolve({ data: true, error: null });
+    },
+  };
+  assert.equal(await reserverAiKvote(db, "bruker-1", "horingshjelp", true), "ok");
+  assert.equal(kall[0].p_oppgave, "horingshjelp");
+  assert.equal(kall[0].p_grense, 10);
 });
