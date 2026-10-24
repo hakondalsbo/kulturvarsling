@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { utvalgErDekket } from "./preferanser.ts";
+import { StatsbudsjettInngang } from "./statsbudsjett.tsx";
 
 /**
  * Presentasjon for Kulturavisen v2.
@@ -385,6 +386,7 @@ export function ForsideAvis({
   const følger = lead ? fulgte.includes(lead.id) : false;
   return (
     <>
+      <StatsbudsjettInngang />
       <section className="avis-forside avis-wrap">
         <article className="avis-lead">
           {!lastet ? (

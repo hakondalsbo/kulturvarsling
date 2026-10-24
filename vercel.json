@@ -6,6 +6,8 @@
     { "src": "/personvern", "dest": "/personvern.html" },
     { "src": "/bekreft", "dest": "/bekreft.html" },
     { "src": "/avmelding", "dest": "/avmelding.html" },
+    { "src": "/statsbudsjett", "dest": "/index.html" },
+    { "src": "/statsbudsjett/", "dest": "/index.html" },
     { "src": "/(.*)", "dest": "/vente.html" }
   ],
   "github": {
