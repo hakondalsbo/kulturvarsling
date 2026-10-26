@@ -1,6 +1,7 @@
 -- Daglig telling av utløpte signaturer.
 -- Kl. 03:00 UTC, etter eInnsyn-bolkene 01:00–02:10 UTC og backup rundt 02:30 UTC.
 -- Cron kaller slett_utlopte_signaturer(now(), true), altså bare telling.
+-- Standardverdien er også true, så et kall uten andre argument teller.
 -- Ekte sletting (andre argument false) kommer i en egen migrasjon etter at tellingen er sjekket.
 -- Erstatter slett_utlopte_signaturer med tellemodus. Den gamle migrasjonen er urørt.
 -- kilde_kjoringer brukes ikke: den kan leses av alle, og den logger kildehenting.
@@ -103,7 +104,7 @@ drop function if exists public.slett_utlopte_signaturer(timestamptz);
 
 create or replace function public.slett_utlopte_signaturer(
   p_naa timestamptz default now(),
-  p_dry_run boolean default false
+  p_dry_run boolean default true
 )
 returns table (epost_slettet integer, navn_slettet integer, rader_slettet integer)
 language plpgsql
@@ -207,7 +208,7 @@ end
 $fn$;
 
 comment on function public.slett_utlopte_signaturer(timestamptz, boolean) is
-  'Teller e-post 30 dager etter innsending og navn etter 12 måneder. Uten innsending teller raden etter slettes_etter. p_dry_run true skriver bare antall. false sletter, og er ikke det cron kaller. Idempotent. Skriver aldri til public.varsler.';
+  'Teller e-post 30 dager etter innsending og navn etter 12 måneder. Uten innsending teller raden etter slettes_etter. Standard og cron er telling. false sletter, og tas i bruk i en senere migrasjon. Idempotent. Skriver aldri til public.varsler.';
 
 revoke all on function public.slett_utlopte_signaturer(timestamptz, boolean) from public, anon, authenticated;
 grant execute on function public.slett_utlopte_signaturer(timestamptz, boolean) to service_role;

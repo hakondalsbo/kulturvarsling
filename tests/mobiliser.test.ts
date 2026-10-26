@@ -335,7 +335,7 @@ test("sletting av signaturer kjøres kl. 03:00 UTC med tellemodus", () => {
   assert.match(sql, /cron\.schedule\(\s*'slett-utlopte-signaturer-daglig',\s*'0 3 \* \* \*'/);
   assert.match(sql, /slett_utlopte_signaturer\(now\(\), true\)/);
   assert.match(sql, /01:00–02:10 UTC/);
-  assert.match(sql, /p_dry_run boolean default false/);
+  assert.match(sql, /p_dry_run boolean default true/);
   assert.match(sql, /privat\.sett_innspill_slettefrist/);
   assert.match(sql, /interval '12 months'/);
   assert.doesNotMatch(sql, /manuelt_redigert/);
