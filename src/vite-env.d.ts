@@ -8,4 +8,6 @@ interface ImportMetaEnv {
   readonly VITE_MOBILISERING_SIGNATUR_AKTIV?: string;
   readonly VITE_MOBILISER_PANEL_AKTIV?: string;
   readonly VITE_MOBILISER_DEMO?: string;
+  /** Cloudflare Turnstile site key. Tom verdi skrur av widgeten. */
+  readonly VITE_TURNSTILE_SITE_KEY?: string;
 }

@@ -187,9 +187,9 @@ function erKortEgenTekst(melding: string): boolean {
 }
 
 /**
- * Tekst som kan ligge i kilde_kjoringer. Tabellen er offentlig lesbar, så
- * eksterne URL-er og vilkårlige svartekster blir aldri med. Detaljer logges
- * med console.error hos kalleren.
+ * Tekst som kan ligge i kilde_kjoringer. Tabellen leses bare av
+ * service_role, men feilmeldingen skal likevel ikke inneholde eksterne
+ * URL-er. Detaljer logges med console.error hos kalleren.
  */
 export function sanitertFeilmelding(f: HenteFeil): string {
   if ((f.type === "http" || f.type === "auth") && f.httpStatus != null) {
