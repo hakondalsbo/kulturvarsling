@@ -192,6 +192,8 @@ function erKortEgenTekst(melding: string): boolean {
  * med console.error hos kalleren.
  */
 export function sanitertFeilmelding(f: HenteFeil): string {
+  const egen = f.melding.trim();
+  if (/^Tidsgrense: \d+ av \d+ enheter$/.test(egen)) return egen;
   if ((f.type === "http" || f.type === "auth") && f.httpStatus != null) {
     return `HTTP ${f.httpStatus}`;
   }

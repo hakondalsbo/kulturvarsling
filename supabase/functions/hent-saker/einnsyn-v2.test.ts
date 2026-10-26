@@ -1,18 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { klassifiserKjøring, sanitertFeilmelding } from "./kildehelse.ts";
 import { EINNSYN_V1_MAKS_GEO, EINNSYN_V1_SOK, hentEInnsynKultursaker } from "./einnsyn.ts";
 import { EINNSYN_USER_AGENT } from "./einnsyn.ts";
 import {
   EINNSYN_SPEC_FIL,
   EINNSYN_SPEC_KJENT_SHA,
+  EINNSYN_V2_BOLK_TIDSGRENSE_MS,
   EINNSYN_V2_BOLKER,
   EINNSYN_V2_LIMIT,
   EINNSYN_V2_MAKS_FORSOK,
   EINNSYN_V2_MAKS_KALL,
   EINNSYN_V2_SOKEORD,
   avbruddsKjoringRad,
+  einnsynRotering,
   einnsynSokUrl,
+  einnsynV2ErPa,
   einnsynValg,
   einnsynV2Aktiv,
   erEinnsynV2Organ,
@@ -21,9 +25,11 @@ import {
   forventetEinnsynV2Kall,
   hentEInnsynV2,
   lesBolk,
+  lesEinnsynV2FraDb,
   lesKildeutvalg,
   moetedatoFra,
   organerIBolk,
+  roteringssteg,
   specShaAvviker,
   tryggEinnsynUrl,
   validerEinnsynListe,
@@ -51,16 +57,22 @@ test("forventet kall med flagget på er 478 eInnsyn-kall ved 43 enheter", () => 
   assert.equal(EINNSYN_V2_MAKS_KALL >= tall.totalt, true);
   assert.equal(EINNSYN_V2_MAKS_KALL, 600);
   const bolk = forventetEinnsynV2BolkKall();
-  assert.equal(bolk.bolker, 4);
-  assert.equal(bolk.enheter, 11);
+  assert.equal(bolk.bolker, 8);
+  assert.equal(bolk.enheter, 5);
   assert.deepEqual(
     { oppdagelse: bolk.oppdagelse, sok: bolk.sok, geo: bolk.geo, einnsyn: bolk.einnsyn },
-    { oppdagelse: 5, sok: 110, geo: 11, einnsyn: 126 },
+    { oppdagelse: 5, sok: 50, geo: 5, einnsyn: 60 },
   );
-  assert.equal(bolk.brreg, 22);
+  assert.equal(bolk.brreg, 10);
+  assert.equal(bolk.varighetMs, 82_150);
+  assert.equal(bolk.varighetMs < 90_000, true);
+  assert.equal(bolk.varighetMs < EINNSYN_V2_BOLK_TIDSGRENSE_MS, true);
+  assert.equal(bolk.dekket, 40);
+  assert.equal(bolk.utsatt, 3);
+  assert.equal(bolk.nattKall, 480);
+  assert.equal(bolk.nattKall < EINNSYN_V2_MAKS_KALL, true);
   assert.equal(bolk.claude, 3);
   assert.equal(bolk.klartekst, 1);
-  assert.equal(bolk.einnsyn < EINNSYN_V2_MAKS_KALL, true);
 });
 
 test("v1-søket og geo-taket er uendret", async () => {
@@ -205,6 +217,8 @@ test("hent-saker velger eInnsyn ut fra flagg og kilde-parameter", () => {
   assert.match(kilde, /beforeunload/);
   assert.match(kilde, /avbruddsKjoringRad/);
   assert.match(kilde, /hentEInnsynV2\(\{ bolk: jobb\.bolk/);
+  assert.match(kilde, /lesEinnsynV2FraDb/);
+  assert.match(kilde, /startetMs/);
   assert.equal(kilde.includes("bakgrunn: true"), false);
   assert.equal(kilde.includes("400 s"), false);
   assert.equal(einnsynValg({ kilder: null, v2: false }), "v1");
@@ -219,8 +233,13 @@ test("hent-saker velger eInnsyn ut fra flagg og kilde-parameter", () => {
   assert.deepEqual(lesBolk(null), { bolk: null, feil: null });
   assert.deepEqual(lesBolk(2), { bolk: 2, feil: null });
   assert.equal(lesBolk(0).feil, "Ukjent bolk");
-  assert.equal(lesBolk(5).feil, "Ukjent bolk");
+  assert.deepEqual(lesBolk(8), { bolk: 8, feil: null });
+  assert.equal(lesBolk(9).feil, "Ukjent bolk");
   assert.equal(lesBolk("1").feil, "Ukjent bolk");
+  assert.equal(einnsynV2ErPa(null, false), false);
+  assert.equal(einnsynV2ErPa(null, true), true);
+  assert.equal(einnsynV2ErPa(false, true), false);
+  assert.equal(einnsynV2ErPa(true, false), true);
 });
 
 test("User-Agent, 429 med Retry-After og 404 gir alarmgrunnlag", async () => {
@@ -408,6 +427,7 @@ test("bolk søker bare sin andel, stabilt på id", async () => {
     await hentEInnsynV2({
       pauseMs: 0,
       bolk,
+      rotering: 0,
       hent: async (url) => {
         const s = String(url);
         if (s.includes("/enhet?query=kommune")) return svar({ items: enheter });
@@ -431,15 +451,28 @@ test("bolk søker bare sin andel, stabilt på id", async () => {
   assert.equal(bolk2.some((url) => url.includes("enh_a")), false);
 
   const ids = Array.from({ length: 43 }, (_, i) => ({ id: String(i).padStart(2, "0") }));
-  const storrelser = [1, 2, 3, 4].map((bolk) => organerIBolk(ids, bolk).length);
-  assert.deepEqual(storrelser, [11, 11, 11, 10]);
-  assert.equal(EINNSYN_V2_BOLKER, 4);
-  const sett = new Set([1, 2, 3, 4].flatMap((bolk) => organerIBolk(ids, bolk).map((o) => o.id)));
-  assert.equal(sett.size, 43);
+  const storrelser = [1, 2, 3, 4, 5, 6, 7, 8].map((bolk) => organerIBolk(ids, bolk).length);
+  assert.deepEqual(storrelser, [5, 5, 5, 5, 5, 5, 5, 5]);
+  assert.equal(EINNSYN_V2_BOLKER, 8);
+  assert.equal(roteringssteg(43), 3);
+  const med = new Set([1, 2, 3, 4, 5, 6, 7, 8].flatMap((bolk) => organerIBolk(ids, bolk).map((o) => o.id)));
+  assert.equal(med.size, 40);
+  assert.equal(med.has("40"), false);
+  const neste = new Set([1, 2, 3, 4, 5, 6, 7, 8].flatMap((bolk) => organerIBolk(ids, bolk, { rotering: 3 }).map((o) => o.id)));
+  assert.equal(neste.has("40"), true);
+  assert.equal(neste.has("41"), true);
+  assert.equal(neste.has("42"), true);
+  assert.equal(neste.has("00"), false);
+  const sistNa = organerIBolk(ids, 1).at(-1)?.id;
+  const sistNeste = organerIBolk(ids, 1, { rotering: 3 }).at(-1)?.id;
+  assert.notEqual(sistNa, sistNeste);
   assert.deepEqual(
     organerIBolk([{ id: "b" }, { id: "a" }], 1).map((o) => o.id),
     organerIBolk([{ id: "a" }, { id: "b" }], 1).map((o) => o.id),
   );
+  const dag = Date.parse("2026-10-27T01:00:00Z");
+  assert.equal(einnsynRotering(dag, 43), einnsynRotering(dag + 60_000, 43));
+  assert.notEqual(einnsynRotering(dag, 43), einnsynRotering(dag + 86_400_000, 43));
 });
 
 test("avbrudd skriver feil_timeout med bolk, og cron-migrasjonen feiler hardt", () => {
@@ -470,11 +503,135 @@ test("avbrudd skriver feil_timeout med bolk, og cron-migrasjonen feiler hardt", 
     ["einnsyn-v2-bolk-2", "10 1 * * *"],
     ["einnsyn-v2-bolk-3", "20 1 * * *"],
     ["einnsyn-v2-bolk-4", "30 1 * * *"],
+    ["einnsyn-v2-bolk-5", "40 1 * * *"],
+    ["einnsyn-v2-bolk-6", "50 1 * * *"],
+    ["einnsyn-v2-bolk-7", "0 2 * * *"],
+    ["einnsyn-v2-bolk-8", "10 2 * * *"],
   ] as const) {
     assert.equal(sql.includes(`'${navn}'`) || sql.includes("'einnsyn-v2-bolk-'"), true, navn);
     assert.equal(sql.includes(`'${tid}'`), true, tid);
   }
   assert.match(sql, /'bolk', %s/);
+  assert.match(sql, /insert into public\.funksjonsflagg/);
+  assert.match(sql, /'einnsyn_v2', false/);
+  assert.match(sql, /on conflict \(nokkel\) do nothing/);
+});
+
+test("bolk henter én side og stopper på tidsgrensen uten å miste treff", async () => {
+  const sider: string[] = [];
+  const utfall = await hentEInnsynV2({
+    pauseMs: 0,
+    bolk: 1,
+    rotering: 0,
+    nå: Date.parse("2026-10-26T01:00:00Z"),
+    hent: async (url) => {
+      const s = String(url);
+      if (s.includes("/enhet?query=kommune")) {
+        return svar({ items: [{ id: "enh_a", navn: "Arendal kommune" }] });
+      }
+      if (s.includes("/enhet?query=")) return svar({ items: [] });
+      if (s.includes("/search")) {
+        sider.push(s);
+        return svar({
+          items: Array.from({ length: 50 }, (_, i) => ({
+            id: `ms_${i}`,
+            offentligTittel: "Kultursak",
+            journalenhet: "enh_a",
+          })),
+          next: "https://api.einnsyn.no/search?side=2&limit=50",
+        });
+      }
+      if (s.includes("/enhet/enh_")) return svar({ navn: "Arendal kommune" });
+      if (s.includes("data.brreg.no")) return { ok: false, status: 404, async text() { return ""; } };
+      return svar({ items: [] });
+    },
+  });
+  assert.equal(sider.length, EINNSYN_V2_SOKEORD.length);
+  assert.equal(sider.some((url) => url.includes("side=2")), false);
+  assert.equal(utfall.feil.some((f) => f.melding.includes("sidegrense")), false);
+  assert.equal(utfall.items.length > 0, true);
+
+  let klokke = 0;
+  let sok = 0;
+  const stoppet = await hentEInnsynV2({
+    pauseMs: 0,
+    bolk: 1,
+    rotering: 0,
+    startetMs: 0,
+    tidsgrenseMs: 1_000,
+    klokke: () => klokke,
+    hent: async (url) => {
+      const s = String(url);
+      if (s.includes("/enhet?query=kommune")) {
+        return svar({
+          items: [
+            { id: "enh_a", navn: "Arendal kommune" },
+            { id: "enh_b", navn: "Stavanger kommune" },
+          ],
+        });
+      }
+      if (s.includes("/enhet?query=")) return svar({ items: [] });
+      if (s.includes("/search")) {
+        sok++;
+        if (sok === 1) {
+          return svar({
+            items: [{ id: "ms_1", offentligTittel: "Kultursak", journalenhet: "enh_a" }],
+          });
+        }
+        klokke = 5_000;
+        return svar({ items: [] });
+      }
+      return svar({ items: [] });
+    },
+  });
+  assert.equal(stoppet.items.length, 1);
+  const grense = stoppet.feil.find((f) => f.melding.startsWith("Tidsgrense:"));
+  assert.equal(grense?.melding, "Tidsgrense: 0 av 1 enheter");
+  assert.equal(sanitertFeilmelding(grense!), grense?.melding);
+  const klass = klassifiserKjøring({
+    raattAntall: stoppet.raattAntall,
+    antallNye: 1,
+    feil: stoppet.feil,
+    forsok: stoppet.forsok,
+    vellykket: stoppet.vellykket,
+    httpStatus: stoppet.httpStatus,
+  });
+  assert.equal(klass.status, "delvis");
+  assert.match(klass.feilmelding ?? "", /Tidsgrense: 0 av 1 enheter/);
+});
+
+test("funksjonsflagg styrer v2, og hemmeligheten er reserve", async () => {
+  const pa = await lesEinnsynV2FraDb({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: { aktiv: true }, error: null }),
+        }),
+      }),
+    }),
+  });
+  assert.equal(pa, true);
+  const av = await lesEinnsynV2FraDb({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: { aktiv: false }, error: null }),
+        }),
+      }),
+    }),
+  });
+  assert.equal(av, false);
+  const mangler = await lesEinnsynV2FraDb({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: null, error: { message: "finnes ikke" } }),
+        }),
+      }),
+    }),
+  });
+  assert.equal(mangler, null);
+  assert.equal(einnsynV2ErPa(mangler, true), true);
 });
 
 function svar(data: unknown) {

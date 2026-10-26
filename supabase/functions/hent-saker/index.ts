@@ -44,9 +44,11 @@ import {
   EINNSYN_V2_BOLK_MAKS_KLARTEKST,
   avbruddsKjoringRad,
   einnsynV2Aktiv,
+  einnsynV2ErPa,
   einnsynValg,
   hentEInnsynV2,
   lesBolk,
+  lesEinnsynV2FraDb,
   lesKildeutvalg,
   skalKjoreKilde,
 } from "./einnsyn-v2.ts";
@@ -677,7 +679,13 @@ Deno.serve(async (req: Request) => {
       forventetBackfillKode: BACKFILL_KODE,
     });
     if (avklart.avvist) return jsonSvar({ feil: avklart.avvist }, 400);
-    const valg = einnsynValg({ kilder: jobb.kilder, v2: einnsynV2Aktiv() });
+    const startetMs = Date.now();
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const v2 = einnsynV2ErPa(await lesEinnsynV2FraDb(supabase), einnsynV2Aktiv());
+    const valg = einnsynValg({ kilder: jobb.kilder, v2 });
     if (valg === "hopp over" && jobb.kilder?.length === 1 && jobb.kilder[0] === "einnsyn") {
       return jsonSvar({
         hoppet_over: "einnsyn",
@@ -685,10 +693,6 @@ Deno.serve(async (req: Request) => {
       });
     }
     const kjoeringstype: Kjoeringstype = avklart.kjoeringstype;
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
     if (avklart.spesialBackfill) {
       const resultat = await kjorRegjeringenBackfill(supabase);
       console.log("Backfill:", resultat);
@@ -737,7 +741,7 @@ Deno.serve(async (req: Request) => {
       : await lesSisteVellykkede(supabase, kilderMap);
 
     if (valg === "v2" && jobb.bolk == null) {
-      console.warn("eInnsyn v2 uten bolk kjører alle organ. Nattjobben skal sende bolk 1-4.");
+      console.warn("eInnsyn v2 uten bolk kjører alle organ. Nattjobben skal sende bolk 1-8.");
     }
     const einnsynKilde = kilderMap.get("einnsyn")?.id;
     if (valg === "v2" && einnsynKilde) {
@@ -759,7 +763,7 @@ Deno.serve(async (req: Request) => {
       ["stortinget-horinger", () => hentStortingetHoringer()],
       ["regjeringen-rss", () => hentRegjeringenRSS()],
       ["stortinget-ventede", () => hentVentedeSaker()],
-      ["einnsyn", () => valg === "v2" ? hentEInnsynV2({ bolk: jobb.bolk ?? undefined }) : hentEInnsynKultursaker()],
+      ["einnsyn", () => valg === "v2" ? hentEInnsynV2({ bolk: jobb.bolk ?? undefined, startetMs }) : hentEInnsynKultursaker()],
       ["bergen", () => hentBergenSaker()],
       ["kulturdirektoratet", () => hentKulturdirektoratetTildelinger()],
       ["sametinget", () => hentSametingetSaker()],
@@ -861,9 +865,8 @@ Deno.serve(async (req: Request) => {
 
     // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
     // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke
-    // lagret). 25 holder en vanlig kjøring på ~1 min. En eInnsyn-bolk har
-    // allerede brukt det meste av gratisplanens 150 s, så den tar færre
-    // Claude-kall og skal være ferdig under 110 s.
+    // lagret). 25 holder en vanlig kjøring på ~1 min. En eInnsyn-bolk stopper
+    // søket rundt 85 s, så de få Claude-kallene rekker å bli ferdige før 150 s.
     // kallClaude har allerede ett kontrollert nytt forsøk. Ikke legg på et til.
     const maksClaude = jobb.bolk != null ? EINNSYN_V2_BOLK_MAKS_CLAUDE : 25;
     const maksKlartekst = jobb.bolk != null ? EINNSYN_V2_BOLK_MAKS_KLARTEKST : MAKS_KLARTEKST_PER_KJORING;

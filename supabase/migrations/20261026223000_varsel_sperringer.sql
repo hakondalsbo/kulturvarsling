@@ -15,7 +15,7 @@
 --   from public.varsel_sperringer
 --   order by opprettet desc;
 
-create table public.varsel_sperringer (
+create table if not exists public.varsel_sperringer (
   id bigint generated always as identity primary key,
   varsel_id uuid not null references public.varsler (id) on delete cascade,
   arsak text not null,
@@ -39,7 +39,7 @@ comment on column public.varsel_sperringer.oppgave is
 comment on column public.varsel_sperringer.detalj is
   'Bare årstallene og tallene som manglet i kilden. Ikke sammendraget og ikke kilde-URL.';
 
-create index varsel_sperringer_opprettet_idx
+create index if not exists varsel_sperringer_opprettet_idx
   on public.varsel_sperringer (opprettet desc);
 
 alter table public.varsel_sperringer enable row level security;
@@ -55,3 +55,19 @@ grant usage, select on sequence public.varsel_sperringer_id_seq to service_role;
 -- bare select og insert (og sekvensen over). 
 revoke update, delete, truncate, references, trigger
   on table public.varsel_sperringer from service_role;
+
+-- service_role omgår RLS. Policyene gjør tilgangen tydelig og tåler
+-- at migrasjonen kjøres på nytt (drop + create). anon har ingen policy.
+drop policy if exists varsel_sperringer_service_les on public.varsel_sperringer;
+create policy varsel_sperringer_service_les
+  on public.varsel_sperringer
+  for select
+  to service_role
+  using (true);
+
+drop policy if exists varsel_sperringer_service_skriv on public.varsel_sperringer;
+create policy varsel_sperringer_service_skriv
+  on public.varsel_sperringer
+  for insert
+  to service_role
+  with check (true);

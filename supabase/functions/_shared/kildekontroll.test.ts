@@ -109,7 +109,7 @@ test("sperret sak får varsel-id og årsak tall_uten_kilde", async () => {
 
 test("varsel_sperringer er ny tabell, ikke en kolonne på kilde_kjoringer", () => {
   const sql = readFileSync("supabase/migrations/20261026223000_varsel_sperringer.sql", "utf8");
-  assert.match(sql, /create table public\.varsel_sperringer/);
+  assert.match(sql, /create table if not exists public\.varsel_sperringer/);
   assert.match(sql, /arsak = 'tall_uten_kilde'/);
   assert.match(sql, /varsel_id uuid not null references public\.varsler/);
   assert.match(sql, /unique \(varsel_id, arsak, oppgave\)/);
@@ -118,7 +118,12 @@ test("varsel_sperringer er ny tabell, ikke en kolonne på kilde_kjoringer", () =
   assert.match(sql, /grant select, insert on table public\.varsel_sperringer to service_role/);
   assert.match(sql, /revoke update, delete, truncate, references, trigger/);
   assert.match(sql, /from service_role/);
-  assert.equal(/create policy/i.test(sql), false);
+  assert.match(sql, /create index if not exists varsel_sperringer_opprettet_idx/);
+  assert.match(sql, /drop policy if exists varsel_sperringer_service_les/);
+  assert.match(sql, /create policy varsel_sperringer_service_les/);
+  assert.match(sql, /drop policy if exists varsel_sperringer_service_skriv/);
+  assert.match(sql, /create policy varsel_sperringer_service_skriv/);
+  assert.equal(/to anon/i.test(sql) && /create policy[\s\S]*to anon/.test(sql), false);
   assert.equal(sql.includes("kilde_kjoringer"), true);
   assert.equal(/alter table public\.kilde_kjoringer/.test(sql), false);
 });

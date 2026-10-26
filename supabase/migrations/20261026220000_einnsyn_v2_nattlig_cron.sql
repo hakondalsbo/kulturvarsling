@@ -1,7 +1,7 @@
--- Nattlig eInnsyn v2, delt i fire bolker. pg_cron er UTC.
--- 01:00, 01:10, 01:20 og 01:30 UTC er 02:00–02:30 norsk vintertid
--- og 03:00–03:30 sommertid. Morgenjobben hent-saker-daglig (06:00 UTC)
--- røres ikke og kaller ikke eInnsyn når EINNSYN_V2_AKTIV er true.
+-- Nattlig eInnsyn v2, delt i åtte bolker med ti minutters mellomrom.
+-- 01:00–02:10 UTC er 02:00–03:10 norsk vintertid og 03:00–04:10 sommertid.
+-- Det er én nattlig kjøring. Morgenjobben hent-saker-daglig (06:00 UTC)
+-- røres ikke og kaller ikke eInnsyn når flagget er på.
 --
 -- Kommandoen bygges her, ikke ved å klone hent-saker-daglig. Prod-jobben
 -- bruker jsonb_build_object uten mellomrom, og en streng-match mot varianten
@@ -11,9 +11,18 @@
 -- Mangler URL eller en hemmelighet, feiler migrasjonen.
 --
 -- Gratisplanens veggklokke er 150 s, også for EdgeRuntime.waitUntil.
--- Hver bolk søker sin andel av organene og skal være ferdig under 110 s.
--- Med flagget av svarer kallet 200 uten skriving.
+-- Målt svartid 26.10 er om lag 1,0 s per søk pluss 400 ms pause. Hver bolk
+-- tar høyst 5 enheter, én side per søk, og er estimert til om lag 82 s.
+-- Søket stopper ved 85 s og lagrer det som er hentet. Med flagget av
+-- svarer kallet 200 uten skriving.
 -- Gammel enkeltjobb einnsyn-v2-nattlig tas ned hvis den finnes.
+--
+-- Flagget leses fra funksjonsflagg. Hemmeligheten EINNSYN_V2_AKTIV er
+-- bare reserve. on conflict gjør at et senere kjør ikke skrur flagget av.
+
+insert into public.funksjonsflagg (nokkel, aktiv)
+values ('einnsyn_v2', false)
+on conflict (nokkel) do nothing;
 
 do $cron$
 declare
@@ -62,7 +71,11 @@ begin
     'einnsyn-v2-bolk-1',
     'einnsyn-v2-bolk-2',
     'einnsyn-v2-bolk-3',
-    'einnsyn-v2-bolk-4'
+    'einnsyn-v2-bolk-4',
+    'einnsyn-v2-bolk-5',
+    'einnsyn-v2-bolk-6',
+    'einnsyn-v2-bolk-7',
+    'einnsyn-v2-bolk-8'
   ]
   loop
     if exists (select 1 from cron.job where jobname = navn) then
@@ -76,7 +89,11 @@ begin
       (1, '0 1 * * *'::text),
       (2, '10 1 * * *'::text),
       (3, '20 1 * * *'::text),
-      (4, '30 1 * * *'::text)
+      (4, '30 1 * * *'::text),
+      (5, '40 1 * * *'::text),
+      (6, '50 1 * * *'::text),
+      (7, '0 2 * * *'::text),
+      (8, '10 2 * * *'::text)
     ) as p(nr, tid)
   loop
     cmd := format($job$
