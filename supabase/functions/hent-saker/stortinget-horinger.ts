@@ -551,11 +551,7 @@ export async function hentStortingetHoringer(opts: {
     };
   }
 
-  usikre.sort((a, b) => {
-    const aFam = komiteId(a.rå) === "FAMKULT" ? 1 : 0;
-    const bFam = komiteId(b.rå) === "FAMKULT" ? 1 : 0;
-    return aFam - bFam;
-  });
+  usikre.sort(sammenlignUsikkerHoring);
   const oppslag: number[] = [];
   const settSak = new Set<number>();
   for (const u of usikre) {
@@ -565,6 +561,9 @@ export async function hentStortingetHoringer(opts: {
       oppslag.push(id);
     }
   }
+  console.log(
+    `Stortinget høringer: ${usikre.length} usikre, sak-oppslag=${oppslag.length ? oppslag.join(",") : "ingen"}`,
+  );
   const emne = new Map<number, boolean>();
   const leggTilEtterEmne = () => {
     for (const u of usikre) {
@@ -671,6 +670,16 @@ function sakHarKulturEmne(data: unknown): boolean {
 function komiteId(rå: unknown): string | null {
   const id = (rå as { komite?: { id?: unknown } })?.komite?.id;
   return typeof id === "string" ? id : null;
+}
+
+/** FAMKULT først. Stigende 1/0 satte kulturkomiteen sist og utenfor de 10 oppslagene. */
+export function sammenlignUsikkerHoring(
+  a: { rå: unknown },
+  b: { rå: unknown },
+): number {
+  const aFam = komiteId(a.rå) === "FAMKULT" ? 0 : 1;
+  const bFam = komiteId(b.rå) === "FAMKULT" ? 0 : 1;
+  return aFam - bFam;
 }
 
 function somListe(verdi: unknown): Array<Record<string, unknown>> {

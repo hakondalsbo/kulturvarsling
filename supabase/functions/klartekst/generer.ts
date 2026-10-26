@@ -3,7 +3,7 @@
 // Feil returneres som null — kalleren skal ikke la dem velte innhentingen.
 
 import { kallClaude } from "../_shared/claude.ts";
-import { kildegrunnlag, loggUdokumenterteTall } from "../_shared/kildekontroll.ts";
+import { kildegrunnlag, loggUdokumenterteTall, type Tallavvik } from "../_shared/kildekontroll.ts";
 import {
   byggPrompt,
   generellProfilNokkel,
@@ -32,6 +32,7 @@ export type GenerellKlartekst = {
   svar: KlartekstSvar;
   profilNokkel: string;
   innhold: string;
+  tallavvik: Tallavvik;
 };
 
 export async function genererGenerellKlartekst(
@@ -61,7 +62,8 @@ export async function genererGenerellKlartekst(
     const parsed = parseKlartekstSvar(trekkUtTekst(data.content));
     if (!parsed) return null;
     // Flagget stopper ikke klarteksten. Cache-raden skrives likevel.
-    loggUdokumenterteTall(
+    // Kalleren lagrer avviket i varsel_sperringer når den har varsel-id.
+    const tallavvik = loggUdokumenterteTall(
       "klartekst",
       klartekstSomTekst(parsed),
       kildegrunnlag([sak.tittel, sak.sammendrag, sak.instans, sak.frist, sak.sted]),
@@ -71,6 +73,7 @@ export async function genererGenerellKlartekst(
       svar: parsed,
       profilNokkel: generellProfilNokkel(),
       innhold: await lagInnholdsNokkel(prompt, KLARTEKST_MODELL),
+      tallavvik,
     };
   } catch (e) {
     console.error("Klartekst pipeline:", String(e).slice(0, 200));

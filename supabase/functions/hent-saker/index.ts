@@ -1,5 +1,5 @@
 import { kallClaude } from "../_shared/claude.ts";
-import { kildegrunnlag, loggUdokumenterteTall, publiseresEtterKontroll } from "../_shared/kildekontroll.ts";
+import { kildegrunnlag, lagreTallSperring, loggUdokumenterteTall, publiseresEtterKontroll } from "../_shared/kildekontroll.ts";
 import {
   genererGenerellKlartekst,
   lagreKlartekstCache,
@@ -39,7 +39,19 @@ import {
   type Kjoeringstype,
 } from "./datofilter.ts";
 import { geografiSomLagres, hentEInnsynKultursaker } from "./einnsyn.ts";
-import { einnsynV2Aktiv, hentEInnsynV2 } from "./einnsyn-v2.ts";
+import {
+  EINNSYN_V2_BOLK_MAKS_CLAUDE,
+  EINNSYN_V2_BOLK_MAKS_KLARTEKST,
+  avbruddsKjoringRad,
+  einnsynV2Aktiv,
+  einnsynV2ErPa,
+  einnsynValg,
+  hentEInnsynV2,
+  lesBolk,
+  lesEinnsynV2FraDb,
+  lesKildeutvalg,
+  skalKjoreKilde,
+} from "./einnsyn-v2.ts";
 import { hentBergenSaker } from "./bergen.ts";
 import {
   hovedsakForHoring,
@@ -58,6 +70,7 @@ import {
   klassifiserKjøring,
   lesSakerListe,
   lesTekstRespons,
+  medClaudeFeil,
   okUtfall,
   sesjonIdStemmer,
   slåSammenAdapterdeler,
@@ -284,7 +297,7 @@ let sisteAnalyseFeil: string | null = null;
 async function analyserMedClaude(
   item: any,
   apiKey: string,
-): Promise<any | null> {
+): Promise<{ analyse: any | null; httpStatus: number | null; parseFeil: boolean }> {
   try {
     const res = await kallClaude({
       method: "POST",
@@ -309,19 +322,32 @@ async function analyserMedClaude(
       const kropp = await res.text().catch(() => "");
       sisteAnalyseFeil = `HTTP ${res.status}: ${kropp.slice(0, 200)}`;
       console.error("Claude API:", sisteAnalyseFeil);
-      return null;
+      return { analyse: null, httpStatus: res.status, parseFeil: false };
     }
-    const data = await res.json();
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      sisteAnalyseFeil = `HTTP ${res.status}: ugyldig JSON`;
+      console.error("Claude API:", sisteAnalyseFeil);
+      return { analyse: null, httpStatus: res.status, parseFeil: true };
+    }
     // Robust mot thinking-blokker (Claude 5): finn tekstblokken eksplisitt.
     const tekst = (data.content?.find((b: any) => b.type === "text")?.text ?? "{}")
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/```\s*$/, "")
       .trim();
-    return JSON.parse(tekst);
+    try {
+      return { analyse: JSON.parse(tekst), httpStatus: res.status, parseFeil: false };
+    } catch {
+      sisteAnalyseFeil = `HTTP ${res.status}: ugyldig JSON`;
+      console.error("Claude API:", sisteAnalyseFeil);
+      return { analyse: null, httpStatus: res.status, parseFeil: true };
+    }
   } catch (e) {
     sisteAnalyseFeil = `unntak: ${String(e).slice(0, 200)}`;
     console.error("Claude feil:", sisteAnalyseFeil);
-    return null;
+    return { analyse: null, httpStatus: null, parseFeil: false };
   }
 }
 
@@ -359,14 +385,20 @@ async function lesJobb(req: Request): Promise<{
   kjoertAv: KjoertAv;
   backfill: string | null;
   modus: string | null;
+  kilder: string[] | null;
+  kildeFeil: string | null;
+  bolk: number | null;
+  bolkFeil: string | null;
 }> {
-  let data: { utlost_av?: unknown; backfill?: unknown; modus?: unknown } = {};
+  let data: { utlost_av?: unknown; backfill?: unknown; modus?: unknown; kilder?: unknown; bolk?: unknown } = {};
   try {
     const tekst = await req.text();
     if (tekst.trim()) data = JSON.parse(tekst) ?? {};
   } catch {
     data = {};
   }
+  const utvalg = lesKildeutvalg(data?.kilder);
+  const bolk = lesBolk(data?.bolk);
   return {
     kjoertAv: utledKjoertAv({
       utlostAv: data?.utlost_av,
@@ -377,6 +409,10 @@ async function lesJobb(req: Request): Promise<{
       ? data.backfill.trim()
       : null,
     modus: typeof data?.modus === "string" && data.modus.trim() ? data.modus.trim() : null,
+    kilder: utvalg.kilder,
+    kildeFeil: utvalg.feil,
+    bolk: bolk.bolk,
+    bolkFeil: bolk.feil,
   };
 }
 
@@ -459,6 +495,75 @@ function jsonSvar(body: unknown, status = 200): Response {
   });
 }
 
+type BeforeUnloadEvent = Event & {
+  detail?: {
+    reason?: string;
+    waitUntil?: (p: Promise<unknown>) => void;
+  };
+};
+
+type PaagaendeKjoring = {
+  supabase: {
+    from: (tabell: string) => {
+      insert: (rad: Record<string, unknown>) => Promise<{ error: { message?: string } | null }>;
+    };
+  };
+  kildeId: string;
+  startetMs: number;
+  bolk: number | null;
+  kjoertAv: string;
+  kjoeringstype: Kjoeringstype;
+  ferdig: boolean;
+};
+
+let paagaende: PaagaendeKjoring | null = null;
+
+function skrivAvbrudd(): Promise<void> {
+  const jobb = paagaende;
+  if (!jobb || jobb.ferdig) return Promise.resolve();
+  jobb.ferdig = true;
+  const rad = avbruddsKjoringRad({
+    kildeId: jobb.kildeId,
+    bolk: jobb.bolk,
+    varighetMs: Date.now() - jobb.startetMs,
+    kjoertAv: jobb.kjoertAv,
+    kjoeringstype: jobb.kjoeringstype,
+  });
+  return jobb.supabase.from("kilde_kjoringer").insert(rad).then(({ error }) => {
+    if (error) console.error("kilde_kjoringer avbrudd:", error.message);
+  }).catch((e: unknown) => {
+    console.error("kilde_kjoringer avbrudd:", String(e).slice(0, 200));
+  });
+}
+
+function registrerAvbruddLytter(): void {
+  const g = globalThis as typeof globalThis & {
+    __hentSakerAvbrudd?: boolean;
+    addEventListener?: (type: string, fn: (ev: BeforeUnloadEvent) => void) => void;
+  };
+  if (g.__hentSakerAvbrudd || typeof g.addEventListener !== "function") return;
+  g.__hentSakerAvbrudd = true;
+  g.addEventListener("beforeunload", (ev) => {
+    try {
+      const vent = skrivAvbrudd();
+      const medVent = ev as BeforeUnloadEvent & { waitUntil?: (p: Promise<unknown>) => void };
+      const hold = ev.detail?.waitUntil ?? medVent.waitUntil;
+      if (typeof hold === "function") {
+        hold(vent);
+        return;
+      }
+      const rt = (globalThis as {
+        EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
+      }).EdgeRuntime;
+      rt?.waitUntil?.(vent);
+    } catch (e) {
+      console.error("beforeunload:", String(e).slice(0, 200));
+    }
+  });
+}
+
+registrerAvbruddLytter();
+
 // ON CONFLICT (kilde_nokkel) DO NOTHING. kilde_nokkel er generert og skal
 // ikke sendes med. Duplikat i samme kjøring er allerede fjernet før innsetting.
 async function lagreHoringOppfolging(
@@ -516,6 +621,7 @@ async function skrivKlartekst(
   niva: string,
   sted: string | null,
   apiKey: string,
+  sperret: Array<{ id: string; arsak: "tall_uten_kilde"; oppgave: "hent-saker" | "klartekst" }>,
 ): Promise<"ok" | "feil"> {
   try {
     const generert = await genererGenerellKlartekst({
@@ -531,6 +637,12 @@ async function skrivKlartekst(
     if (cacheFeil) {
       console.error("klartekst_cache:", cacheFeil);
       return "feil";
+    }
+    // Flagget stopper ikke klarteksten. Cachen er skrevet. Raden er sporbar.
+    const sperreFeil = await lagreTallSperring(supabase, varselId, "klartekst", generert.tallavvik);
+    if (sperreFeil) console.error("varsel_sperringer klartekst:", sperreFeil.slice(0, 120));
+    else if (generert.tallavvik.aar.length || generert.tallavvik.tall.length) {
+      sperret.push({ id: varselId, arsak: "tall_uten_kilde", oppgave: "klartekst" });
     }
     return "ok";
   } catch (e) {
@@ -557,6 +669,8 @@ Deno.serve(async (req: Request) => {
 
   try {
     const jobb = await lesJobb(req);
+    if (jobb.kildeFeil) return jsonSvar({ feil: jobb.kildeFeil }, 400);
+    if (jobb.bolkFeil) return jsonSvar({ feil: jobb.bolkFeil }, 400);
     const kjoertAv = jobb.kjoertAv;
     const avklart = avklarKjoering({
       kjoertAv,
@@ -565,16 +679,26 @@ Deno.serve(async (req: Request) => {
       forventetBackfillKode: BACKFILL_KODE,
     });
     if (avklart.avvist) return jsonSvar({ feil: avklart.avvist }, 400);
-    const kjoeringstype: Kjoeringstype = avklart.kjoeringstype;
+    const startetMs = Date.now();
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    const v2 = einnsynV2ErPa(await lesEinnsynV2FraDb(supabase), einnsynV2Aktiv());
+    const valg = einnsynValg({ kilder: jobb.kilder, v2 });
+    if (valg === "hopp over" && jobb.kilder?.length === 1 && jobb.kilder[0] === "einnsyn") {
+      return jsonSvar({
+        hoppet_over: "einnsyn",
+        grunn: "EINNSYN_V2_AKTIV er ikke true",
+      });
+    }
+    const kjoeringstype: Kjoeringstype = avklart.kjoeringstype;
     if (avklart.spesialBackfill) {
       const resultat = await kjorRegjeringenBackfill(supabase);
       console.log("Backfill:", resultat);
       return jsonSvar(resultat, resultat.feil && !resultat.backfill ? 503 : 200);
     }
+    const arbeid = async () => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     // Hent eksisterende kilder for deduplicering. Feil her avbryter før innhenting.
@@ -616,19 +740,39 @@ Deno.serve(async (req: Request) => {
       ? new Map<string, string | null>()
       : await lesSisteVellykkede(supabase, kilderMap);
 
-    // Hent fra alle kilder parallelt. Én adapter som kaster, stopper ikke de andre.
-    const kjøringer = await Promise.all([
-      kjørAdapter("stortinget-saker", () => hentStortingetSaker(eksKilder)),
-      kjørAdapter("stortinget-horinger", () => hentStortingetHoringer()),
-      kjørAdapter("regjeringen-rss", () => hentRegjeringenRSS()),
-      kjørAdapter("stortinget-ventede", () => hentVentedeSaker()),
-      // v2 øker kallvolumet. Bare når EINNSYN_V2_AKTIV er nøyaktig "true".
-      // Av er standard: samme funksjon og samme kall som før.
-      kjørAdapter("einnsyn", () => einnsynV2Aktiv() ? hentEInnsynV2() : hentEInnsynKultursaker()),
-      kjørAdapter("bergen", () => hentBergenSaker()),
-      kjørAdapter("kulturdirektoratet", () => hentKulturdirektoratetTildelinger()),
-      kjørAdapter("sametinget", () => hentSametingetSaker()),
-    ]);
+    if (valg === "v2" && jobb.bolk == null) {
+      console.warn("eInnsyn v2 uten bolk kjører alle organ. Nattjobben skal sende bolk 1-8.");
+    }
+    const einnsynKilde = kilderMap.get("einnsyn")?.id;
+    if (valg === "v2" && einnsynKilde) {
+      paagaende = {
+        supabase,
+        kildeId: einnsynKilde,
+        startetMs: Date.now(),
+        bolk: jobb.bolk,
+        kjoertAv,
+        kjoeringstype,
+        ferdig: false,
+      };
+    }
+
+    // Hent fra valgte kilder parallelt. Én adapter som kaster, stopper ikke de andre.
+    // Morgenkjøring med v2 på hopper over eInnsyn. Nattjobben sender bare einnsyn, med bolk.
+    const alleAdaptere: Array<[string, () => Promise<AdapterUtfall>]> = [
+      ["stortinget-saker", () => hentStortingetSaker(eksKilder)],
+      ["stortinget-horinger", () => hentStortingetHoringer()],
+      ["regjeringen-rss", () => hentRegjeringenRSS()],
+      ["stortinget-ventede", () => hentVentedeSaker()],
+      ["einnsyn", () => valg === "v2" ? hentEInnsynV2({ bolk: jobb.bolk ?? undefined, startetMs }) : hentEInnsynKultursaker()],
+      ["bergen", () => hentBergenSaker()],
+      ["kulturdirektoratet", () => hentKulturdirektoratetTildelinger()],
+      ["sametinget", () => hentSametingetSaker()],
+    ];
+    const kjøringer = await Promise.all(
+      alleAdaptere
+        .filter(([navn]) => skalKjoreKilde(navn, jobb.kilder) && !(navn === "einnsyn" && valg === "hopp over"))
+        .map(([navn, fn]) => kjørAdapter(navn, fn)),
+    );
 
     const alle = kjøringer.flatMap((k) =>
       k.utfall.items.map((i) => ({
@@ -687,6 +831,7 @@ Deno.serve(async (req: Request) => {
     const horingUtenFrist = new Map<string, number>();
     const idEtterKilde = new Map<string, string>();
     const driftFeil: string[] = [];
+    const sperret: Array<{ id: string; arsak: "tall_uten_kilde"; oppgave: "hent-saker" | "klartekst" }> = [];
     const varsletManglendeKilde = new Set<string>();
     const merkManglendeKilde = (adapter: string | undefined, kildeId: unknown) => {
       if (kildeId != null || !adapter || varsletManglendeKilde.has(adapter)) return;
@@ -720,12 +865,21 @@ Deno.serve(async (req: Request) => {
 
     // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
     // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke
-    // lagret). 25 holder kjøringen på ~1 min — trygt under Supabase-workerens
-    // regnekvote (80 ga WORKER_RESOURCE_LIMIT/546) og under Claude API-ets
-    // rate-grense for nye kontoer (50 kall/min).
+    // lagret). 25 holder en vanlig kjøring på ~1 min. En eInnsyn-bolk stopper
+    // søket rundt 85 s, så de få Claude-kallene rekker å bli ferdige før 150 s.
     // kallClaude har allerede ett kontrollert nytt forsøk. Ikke legg på et til.
-    const MAKS_CLAUDE_SAKER = 25;
+    const maksClaude = jobb.bolk != null ? EINNSYN_V2_BOLK_MAKS_CLAUDE : 25;
+    const maksKlartekst = jobb.bolk != null ? EINNSYN_V2_BOLK_MAKS_KLARTEKST : MAKS_KLARTEKST_PER_KJORING;
     let claudeSaker = 0;
+    const claudeUtsatt = new Map<string, number>();
+    let claudeHttp: number | null = null;
+    let claudeParseFeil = false;
+    const helsesjekkFeilet = !!anthropicKey && claudeStatus !== "ok";
+    let claudeFeilet = helsesjekkFeilet;
+    if (helsesjekkFeilet) {
+      const treff = /^HTTP (\d{3})\b/.exec(claudeStatus);
+      claudeHttp = treff ? Number(treff[1]) : null;
+    }
     let antallAvvist = 0;
     let klartekstForsok = 0;
     let klartekstLagret = 0;
@@ -747,16 +901,26 @@ Deno.serve(async (req: Request) => {
 
       // Bruk Claude for bedre analyse hvis API-nøkkel er satt
       if (anthropicKey) {
-        if (claudeSaker >= MAKS_CLAUDE_SAKER) {
+        if (claudeSaker >= maksClaude) {
           driftFeil.push(`${item.tittel.slice(0, 60)}: utsatt (kostnadstak per kjøring)`);
           continue;
         }
         claudeSaker++;
-        const analyse = await analyserMedClaude(item, anthropicKey);
+        if (claudeFeilet) {
+          claudeUtsatt.set(item.adapter, (claudeUtsatt.get(item.adapter) ?? 0) + 1);
+          driftFeil.push(`${item.tittel.slice(0, 60)}: Claude-analyse utilgjengelig, utsatt`);
+          continue;
+        }
+        const svar = await analyserMedClaude(item, anthropicKey);
+        const analyse = svar.analyse;
         if (!analyse) {
           // Claude utilgjengelig (rate-limit e.l.): IKKE lagre ufiltrert.
           // Saken er ikke i varsler ennå, så dedup stopper den ikke — den
           // blir vurdert på nytt ved neste kjøring i stedet.
+          claudeFeilet = true;
+          claudeHttp = svar.httpStatus;
+          claudeParseFeil = svar.parseFeil;
+          claudeUtsatt.set(item.adapter, (claudeUtsatt.get(item.adapter) ?? 0) + 1);
           driftFeil.push(`${item.tittel.slice(0, 60)}: Claude-analyse utilgjengelig, utsatt`);
           continue;
         }
@@ -886,6 +1050,11 @@ Deno.serve(async (req: Request) => {
         }
         const innhold = innholdDedupNokkel(item);
         if (innhold) eksInnhold.add(innhold);
+        if (!publisert && lagret.id) {
+          const sperreFeil = await lagreTallSperring(supabase, lagret.id, "hent-saker", tallavvik);
+          if (sperreFeil) driftFeil.push(`${lagret.id}: tall_uten_kilde ble ikke lagret`);
+          else sperret.push({ id: lagret.id, arsak: "tall_uten_kilde", oppgave: "hent-saker" });
+        }
         if (
           item.adapter === "regjeringen-rss" &&
           erRegjeringenHoring(item) &&
@@ -896,7 +1065,7 @@ Deno.serve(async (req: Request) => {
         // Klartekst fra #6, bare på publisert innsetting. Upubliserte rader
         // og koblinger bruker ikke Sonnet-kvoten.
         if (publisert && anthropicKey && lagret.id) {
-          if (klartekstForsok >= MAKS_KLARTEKST_PER_KJORING) {
+          if (klartekstForsok >= maksKlartekst) {
             klartekstUtsatt++;
           } else {
             klartekstForsok++;
@@ -908,6 +1077,7 @@ Deno.serve(async (req: Request) => {
               niva,
               (rad.sted as string | null) ?? null,
               anthropicKey,
+              sperret,
             );
             if (utfall === "ok") klartekstLagret++;
             else {
@@ -976,7 +1146,7 @@ Deno.serve(async (req: Request) => {
     for (const k of kjøringer) {
       const antallNye = lagretPerAdapter.get(k.navn) ?? 0;
       const meta = kilderMap.get(k.navn);
-      const klass = klassifiserKjøring({
+      const klass = medClaudeFeil(klassifiserKjøring({
         raattAntall: k.utfall.raattAntall,
         antallNye,
         feil: k.utfall.feil,
@@ -985,6 +1155,11 @@ Deno.serve(async (req: Request) => {
         httpStatus: k.utfall.httpStatus,
         forventerTreff: meta?.forventerTreff ?? false,
         manglendeFrist: horingUtenFrist.get(k.navn) ?? 0,
+      }), {
+        feilet: claudeFeilet,
+        httpStatus: claudeHttp,
+        utsatte: claudeUtsatt.get(k.navn) ?? 0,
+        parseFeil: claudeParseFeil,
       });
       kildeStatus.push({
         adapter: k.navn,
@@ -1007,6 +1182,9 @@ Deno.serve(async (req: Request) => {
         console.error(`Ingen rad i kilder for adapter ${k.navn} — kjøring logges ikke`);
         continue;
       }
+      const feilmelding = k.navn === "einnsyn" && jobb.bolk != null && klass.feilmelding
+        ? `Bolk ${jobb.bolk}: ${klass.feilmelding}`.slice(0, 2000)
+        : klass.feilmelding;
       const { error: loggFeil } = await supabase.from("kilde_kjoringer").insert(
         byggKildeKjoringRad({
           kildeId,
@@ -1014,7 +1192,7 @@ Deno.serve(async (req: Request) => {
           antallFunnet: k.utfall.raattAntall,
           antallEtterFilter: k.utfall.antallEtterFilter,
           antallNye,
-          feilmelding: klass.feilmelding,
+          feilmelding,
           httpStatus: klass.httpStatus,
           varighetMs: k.varighetMs,
           kjoertAv,
@@ -1034,6 +1212,7 @@ Deno.serve(async (req: Request) => {
       kjørt: new Date().toISOString(),
       kjoert_av: kjoertAv,
       kjoeringstype,
+      bolk: jobb.bolk ?? undefined,
       hoppet_over_gamle: datoFilter.forGamle.length,
       hoppet_over_uten_pubdate: datoFilter.stoppetUtenPubDate.length,
       uten_dato: datoFilter.utenDato.length,
@@ -1047,14 +1226,33 @@ Deno.serve(async (req: Request) => {
       klartekst_lagret: klartekstLagret,
       klartekst_feilet: klartekstFeilet || undefined,
       klartekst_utsatt: klartekstUtsatt || undefined,
+      sperret: sperret.length > 0 ? sperret : undefined,
       feil: feil.length > 0 ? feil.slice(0, 10) : undefined,
       kilde_status: kildeStatus,
     };
 
     console.log("Ferdig:", respons);
+    if (paagaende) paagaende.ferdig = true;
     return jsonSvar(respons);
+    };
+    return await arbeid();
   } catch (e) {
     console.error("Kritisk feil:", e);
+    if (paagaende && !paagaende.ferdig) {
+      paagaende.ferdig = true;
+      try {
+        const { error } = await paagaende.supabase.from("kilde_kjoringer").insert(avbruddsKjoringRad({
+          kildeId: paagaende.kildeId,
+          bolk: paagaende.bolk,
+          varighetMs: Date.now() - paagaende.startetMs,
+          kjoertAv: paagaende.kjoertAv,
+          kjoeringstype: paagaende.kjoeringstype,
+        }));
+        if (error) console.error("kilde_kjoringer avbrudd:", error.message);
+      } catch (logg) {
+        console.error("kilde_kjoringer avbrudd:", String(logg).slice(0, 200));
+      }
+    }
     return jsonSvar({ feil: String(e) }, 500);
   }
 });

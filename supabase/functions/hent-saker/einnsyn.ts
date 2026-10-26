@@ -9,10 +9,28 @@ import {
   okUtfall,
   uventetFormat,
   type AdapterUtfall,
+  type HenteFeil,
 } from "./kildehelse.ts";
 
 const API = "https://api.einnsyn.no";
 const BRREG_API = "https://data.brreg.no/enhetsregisteret/api";
+
+/** Digdir 26.10.2026: navn og kontaktadresse skal stå i User-Agent mot api.einnsyn.no. */
+export const EINNSYN_USER_AGENT =
+  "Kulturvarsling/1.0 (kulturvarsling.no; post@kulturvarsling.no)";
+
+/** Brreg og andre verter. Digdir-strengen brukes bare mot api.einnsyn.no. */
+export const KULTURVARSLING_USER_AGENT = "Kulturvarsling/1.0";
+
+/** Avbryter nattkjøringen. slåOppGeo skal ikke svelge denne. */
+export class EinnsynStopp extends Error {
+  readonly feil: HenteFeil;
+  constructor(feil: HenteFeil) {
+    super(feil.melding);
+    this.name = "EinnsynStopp";
+    this.feil = feil;
+  }
+}
 
 // Dagens søk. Uendret når EINNSYN_V2_AKTIV ikke er nøyaktig "true".
 export const EINNSYN_V1_SOK =
@@ -290,7 +308,7 @@ export function mapEInnsynItem(
 async function lesBrreg(orgnr: string, hent: typeof fetch = fetch): Promise<BrregEnhet | null> {
   for (const sti of ["enheter", "underenheter"]) {
     const res = await hent(`${BRREG_API}/${sti}/${orgnr}`, {
-      headers: { Accept: "application/json", "User-Agent": "Kulturvarsling/1.0" },
+      headers: { Accept: "application/json", "User-Agent": KULTURVARSLING_USER_AGENT },
     });
     if (res.ok) return await res.json() as BrregEnhet;
     if (res.status !== 404) return null;
@@ -301,7 +319,7 @@ async function lesBrreg(orgnr: string, hent: typeof fetch = fetch): Promise<Brre
 export async function slåOppGeo(enhetId: string, hent: typeof fetch = fetch): Promise<OrganGeo> {
   try {
     const eRes = await hent(`${API}/enhet/${enhetId}`, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", "User-Agent": EINNSYN_USER_AGENT },
     });
     if (!eRes.ok) return {};
     const enhet = await eRes.json();
@@ -331,7 +349,8 @@ export async function slåOppGeo(enhetId: string, hent: typeof fetch = fetch): P
       sted: klass.sted,
       niva: klass.niva,
     };
-  } catch (_) {
+  } catch (e) {
+    if (e instanceof EinnsynStopp) throw e;
     return {};
   }
 }
@@ -348,7 +367,9 @@ export async function hentEInnsynKultursaker(opts?: {
   // datogrensen i hent-saker siler dem bort uten at nyere saker er med.
   const url = EINNSYN_V1_SOK;
   try {
-    const res = await hent(url, { headers: { Accept: "application/json" } });
+    const res = await hent(url, {
+      headers: { Accept: "application/json", "User-Agent": EINNSYN_USER_AGENT },
+    });
     const lest = await lesTekstRespons(res, url);
     if ("feil" in lest) {
       console.error(`eInnsyn search: ${lest.feil.melding}`, url);

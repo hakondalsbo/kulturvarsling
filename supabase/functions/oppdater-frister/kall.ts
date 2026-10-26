@@ -1,4 +1,33 @@
 // Klassifisering av kall i oppdater-frister. Ingen nettverk.
+
+import { EINNSYN_USER_AGENT } from "../hent-saker/einnsyn.ts";
+
+/** Digdir krever navn og kontakt bare mot api.einnsyn.no. */
+export function userAgentForUrl(url: string): string {
+  try {
+    if (new URL(url).hostname === "api.einnsyn.no") return EINNSYN_USER_AGENT;
+  } catch {
+    /* ugyldig URL */
+  }
+  return "Kulturvarsling/1.0";
+}
+
+const FRIST_ADVARSEL = "Minst én kilde feilet. Se kilde_alarmer_frister.";
+
+/**
+ * 200 når minst én kilde svarte uten alarm. 502 bare når alt som ble kalt
+ * feilet, eller loggen ikke lot seg skrive og ingen kilde lyktes.
+ */
+export function svarForFristjobb(
+  rader: Array<{ alarm: boolean }>,
+  loggFeil?: string | null,
+): { status: 200 | 502; advarsel: string | null } {
+  const harSuksess = rader.some((rad) => !rad.alarm);
+  const harAlarm = rader.some((rad) => rad.alarm);
+  if (harSuksess && (harAlarm || loggFeil)) return { status: 200, advarsel: FRIST_ADVARSEL };
+  if (!harSuksess && (harAlarm || loggFeil)) return { status: 502, advarsel: null };
+  return { status: 200, advarsel: null };
+}
 //
 // Alarm-kolonnen er sann for status feil_* eller delvis. Fristjobben
 // skriver jobb = oppdater-frister, så raden havner i
