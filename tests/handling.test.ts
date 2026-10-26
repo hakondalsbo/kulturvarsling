@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { matcherHandling, vurderSak } from "../src/handling.ts";
+import fs from "node:fs";
+import { KONSEKVENS_NAVN, matcherHandling, vurderSak } from "../src/handling.ts";
 
 const nå = new Date("2026-10-24T12:00:00+02:00");
 
@@ -100,6 +101,26 @@ test("bare_orientering slår ut nær frist", () => {
   assert.equal(v.mobiliserNaa, false);
   assert.equal(matcherHandling({ frist: "2026-10-28", handling: "bare_orientering" }, "orientering", nå), true);
   assert.equal(matcherHandling({ frist: "2026-10-28", handling: "bare_orientering" }, "handling", nå), false);
+});
+
+test("merketekstene følger språkguiden og leses fra datoen", () => {
+  assert.deepEqual(KONSEKVENS_NAVN, {
+    kutt_innstramming: "Kutt og innstramming",
+    stor_endring: "Stor endring for bransjen",
+    ny_mulighet: "Ny mulighet",
+    til_orientering: "Til orientering",
+  });
+  const v = vurderSak({
+    tittel: "Kutt i en navngitt ordning",
+    konsekvens: "kutt_innstramming",
+    konsekvens_sikkerhet: "høy",
+    mobiliser_dato: "2026-01-01",
+  }, nå);
+  assert.equal(v.mobiliserNaa, false);
+  assert.equal(v.merke, "Kutt og innstramming");
+  for (const fil of ["src/handling.ts", "src/avis.tsx"]) {
+    assert.equal(fs.readFileSync(fil, "utf8").includes("på vanlig norsk"), false);
+  }
 });
 
 test("null i handling faller tilbake på frist", () => {

@@ -13,74 +13,16 @@ import { fileURLToPath } from "node:url";
 import {
   KONSEKVENS_NAVN,
   KONSEKVENS_VERDIER,
+  kjørFasitEval,
   tolkKonsekvensSvar,
-  treffrate,
 } from "../supabase/functions/_shared/konsekvens.ts";
 import { klassifiserKonsekvens } from "../supabase/functions/_shared/konsekvens-kall.ts";
+import { FASIT_DATO, FASIT_SAKER, type FasitSak } from "../supabase/functions/_shared/konsekvens-fasit.ts";
 
-const FASIT_DATO = "2026-10-20";
 const her = path.dirname(fileURLToPath(import.meta.url));
 
-type Tekst = {
-  id: string;
-  tittel: string;
-  sammendrag: string | null;
-  instans: string | null;
-  frist: string | null;
-};
-
-type Sak = Tekst & { forventet: string; sikkerhet: string };
-
-function parseCsv(tekst: string): string[][] {
-  const rader: string[][] = [];
-  let rad: string[] = [];
-  let celle = "";
-  let sitat = false;
-  const ren = tekst.replace(/^\uFEFF/, "");
-  for (let i = 0; i < ren.length; i++) {
-    const c = ren[i];
-    if (sitat) {
-      if (c === '"') {
-        if (ren[i + 1] === '"') { celle += '"'; i++; }
-        else sitat = false;
-      } else celle += c;
-    } else if (c === '"') sitat = true;
-    else if (c === ",") { rad.push(celle); celle = ""; }
-    else if (c === "\n") { rad.push(celle); rader.push(rad); rad = []; celle = ""; }
-    else if (c !== "\r") celle += c;
-  }
-  if (celle.length || rad.length) { rad.push(celle); rader.push(rad); }
-  return rader.filter((r) => r.some((c) => c.trim()));
-}
-
-function lesSaker(): Sak[] {
-  const tabell = parseCsv(fs.readFileSync(path.join(her, "konsekvens-stikkprove.csv"), "utf8"));
-  const hode = tabell[0];
-  const kol = (navn: string) => {
-    const i = hode.indexOf(navn);
-    if (i < 0) throw new Error(`Mangler kolonne ${navn}`);
-    return i;
-  };
-  const idI = kol("id");
-  const verdiI = kol("foreslatt_konsekvens");
-  const sikkerI = kol("sikkerhet");
-  const tekster = JSON.parse(fs.readFileSync(path.join(her, "konsekvens-tekster.json"), "utf8")) as Tekst[];
-  const etterId = new Map(tekster.map((t) => [t.id, t]));
-  return tabell.slice(1).map((r) => {
-    const id = r[idI];
-    const tekst = etterId.get(id);
-    if (!tekst) throw new Error(`Mangler tekst for ${id}`);
-    return {
-      ...tekst,
-      sammendrag: tekst.sammendrag ?? "",
-      forventet: r[verdiI],
-      sikkerhet: r[sikkerI],
-    };
-  });
-}
-
 /** Lokal stand-in. Leser bare tittel og lagret sammendrag, og er ikke fasiten. */
-function mockJson(sak: Sak): string {
+function mockJson(sak: FasitSak): string {
   const hay = `${sak.tittel}\n${sak.sammendrag ?? ""}`.toLowerCase();
   let konsekvens = "til_orientering";
   let sikkerhet = "middels";
@@ -128,41 +70,30 @@ function mockJson(sak: Sak): string {
   });
 }
 
-const saker = lesSaker();
 const brukMock = !process.env.ANTHROPIC_API_KEY || process.argv.includes("--mock");
 const kilde = brukMock ? "mock" : "haiku";
 
-const par = [];
-for (const sak of saker) {
-  let faktisk: string;
-  if (brukMock) {
-    faktisk = tolkKonsekvensSvar(mockJson(sak), FASIT_DATO).konsekvens;
-  } else {
-    const svar = await klassifiserKonsekvens({
-      tittel: sak.tittel,
-      sammendrag: sak.sammendrag ?? "",
-      kildetekst: sak.sammendrag ?? "",
-      instans: sak.instans ?? "",
-      frist: sak.frist,
-      dagensDato: FASIT_DATO,
-    }, process.env.ANTHROPIC_API_KEY!, { oppgave: "konsekvens-eval", log: () => {} });
-    faktisk = svar.ok ? svar.felt.konsekvens : "til_orientering";
-  }
-  par.push({ id: sak.id, forventet: sak.forventet, faktisk });
-}
+const rapport = await kjørFasitEval(FASIT_SAKER, async (sak) => {
+  if (brukMock) return tolkKonsekvensSvar(mockJson(sak), FASIT_DATO).konsekvens;
+  const svar = await klassifiserKonsekvens({
+    tittel: sak.tittel,
+    sammendrag: sak.sammendrag,
+    kildetekst: sak.sammendrag,
+    instans: sak.instans,
+    frist: sak.frist,
+    dagensDato: FASIT_DATO,
+  }, process.env.ANTHROPIC_API_KEY!, { oppgave: "konsekvens-eval", log: () => {} });
+  return svar.ok ? svar.felt.konsekvens : null;
+});
 
-const rapport = treffrate(par);
 const ut = {
   kilde,
   dagens_dato: FASIT_DATO,
+  skrev_til_database: false,
   merknad: brukMock
     ? "Ingen ANTHROPIC_API_KEY. Treffraten er fra en lokal nøkkelord-mock, ikke fra Haiku. Kildeteksten er det lagrede sammendraget, ikke hele dokumentet."
     : "Haiku via samme kall som pipelinen. Kildeteksten er det lagrede sammendraget, ikke hele dokumentet.",
-  antall: rapport.antall,
-  treff: rapport.treff,
-  rate: rapport.rate,
-  per_verdi: rapport.per_verdi,
-  saker: par,
+  ...rapport,
 };
 
 const maal = path.join(her, "eval-konsekvens-resultat.json");

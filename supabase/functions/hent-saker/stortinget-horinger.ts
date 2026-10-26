@@ -316,11 +316,17 @@ export function stortingSakIdFraUrl(kilde: string | null | undefined): string | 
   return m?.[1] ?? null;
 }
 
+function erSakKart(
+  saker: ReadonlyMap<string, string> | ReadonlyArray<{ stortingSakId: string; varselId: string }>,
+): saker is ReadonlyMap<string, string> {
+  return !Array.isArray(saker);
+}
+
 export function hovedsakForHoring(
   sakIder: ReadonlyArray<number> | null | undefined,
   saker: ReadonlyMap<string, string> | ReadonlyArray<{ stortingSakId: string; varselId: string }>,
 ): string | null {
-  const map = saker instanceof Map
+  const map: ReadonlyMap<string, string> = erSakKart(saker)
     ? saker
     : new Map(saker.map((s) => [s.stortingSakId, s.varselId]));
   for (const id of sakIder ?? []) {

@@ -1,27 +1,30 @@
-// Batchvis, idempotent backfill av konsekvens.
-// IKKE KJØR MOT PROD. Migrasjon og kjøring venter på Håkons godkjenning.
+// Batchvis, idempotent backfill av konsekvens, og en skrivebeskyttet eval.
 //
 // Krever KONSEKVENS_BACKFILL_SECRET i headeren x-backfill-secret, i tillegg
-// til plattformens JWT. GET gjør ingenting. POST tar én batch.
+// til plattformens JWT. GET gjør ingenting.
+// POST {"eval":true} klassifiserer de 30 fasitsakene med Haiku og skriver ikke
+// til databasen. POST uten eval tar én batch og oppdaterer ulåste rader.
 // Rader med konsekvens_manuell eller manuelt_redigert røres ikke.
 // Rader som allerede har konsekvens, hoppes over.
-// mobiliser_naa skrives fra datoen, aldri fra modellen.
+// mobiliser_naa skrives fra datoen, aldri fra modellen, og aldri på låste rader.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { tidligAvslag } from "../hent-saker/kildehelse.ts";
 import { klassifiserKonsekvens } from "../_shared/konsekvens-kall.ts";
+import { FASIT_DATO, FASIT_SAKER } from "../_shared/konsekvens-fasit.ts";
 import { oppfriskMobiliserNaa } from "../_shared/konsekvens-lager.ts";
 import {
+  EVAL_TIDSBUDSJETT_MS,
   KONSEKVENS_BACKFILL_BATCH,
   KONSEKVENS_BACKFILL_MAKS,
+  KONSEKVENS_TIMEOUT_MS,
   kanKlassifisereRad,
+  kjørFasitEval,
   osloDato,
 } from "../_shared/konsekvens.ts";
 
 const KOLONNER =
   "id, tittel, sammendrag, instans, frist, konsekvens, konsekvens_manuell, manuelt_redigert";
-const KOLONNER_UTEN_MANUELT =
-  "id, tittel, sammendrag, instans, frist, konsekvens, konsekvens_manuell";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -30,8 +33,8 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function manglerKolonne(melding: string, kolonne: string): boolean {
-  return melding.toLowerCase().includes(kolonne.toLowerCase());
+function erEval(body: unknown): boolean {
+  return !!body && typeof body === "object" && (body as { eval?: unknown }).eval === true;
 }
 
 Deno.serve(async (req: Request) => {
@@ -45,28 +48,61 @@ Deno.serve(async (req: Request) => {
       return json({
         status: "ok",
         jobb: "backfill-konsekvens",
-        merk: "GET klassifiserer ingenting. Ikke kall POST mot prod før Håkon har godkjent.",
+        merk: "GET klassifiserer ingenting. POST {\"eval\":true} skriver ikke til databasen.",
       });
     }
     if (tidlig.kind === "tekst") return new Response(tidlig.body, { status: tidlig.status });
     return json(tidlig.body, tidlig.status);
   }
 
-  let grense = KONSEKVENS_BACKFILL_BATCH;
+  let body: unknown = {};
   try {
     const tekst = await req.text();
-    if (tekst.trim()) {
-      const ønsket = Number(JSON.parse(tekst)?.grense);
-      if (Number.isFinite(ønsket) && ønsket > 0) {
-        grense = Math.min(KONSEKVENS_BACKFILL_MAKS, Math.floor(ønsket));
-      }
-    }
+    if (tekst.trim()) body = JSON.parse(tekst);
   } catch {
     return json({ feil: "Ugyldig JSON" }, 400);
   }
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return json({ feil: "ANTHROPIC_API_KEY mangler" }, 503);
+
+  if (erEval(body)) {
+    const rapport = await kjørFasitEval(
+      FASIT_SAKER,
+      async (sak) => {
+        const svar = await klassifiserKonsekvens({
+          tittel: sak.tittel,
+          sammendrag: sak.sammendrag,
+          kildetekst: sak.sammendrag,
+          instans: sak.instans,
+          frist: sak.frist,
+          dagensDato: FASIT_DATO,
+        }, apiKey, {
+          oppgave: "konsekvens-eval",
+          timeoutMs: KONSEKVENS_TIMEOUT_MS,
+          log: () => {},
+        });
+        return svar.ok ? svar.felt.konsekvens : null;
+      },
+      Date.now,
+      EVAL_TIDSBUDSJETT_MS,
+    );
+    return json({
+      eval: true,
+      kilde: "haiku",
+      dagens_dato: FASIT_DATO,
+      skrev_til_database: false,
+      tidsbudsjett_ms: EVAL_TIDSBUDSJETT_MS,
+      merknad: "Kildeteksten er det lagrede sammendraget, ikke hele dokumentet. Utsatte saker inngår ikke i treffraten.",
+      ...rapport,
+    });
+  }
+
+  let grense = KONSEKVENS_BACKFILL_BATCH;
+  const ønsket = Number((body as { grense?: unknown }).grense);
+  if (Number.isFinite(ønsket) && ønsket > 0) {
+    grense = Math.min(KONSEKVENS_BACKFILL_MAKS, Math.floor(ønsket));
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -80,24 +116,18 @@ Deno.serve(async (req: Request) => {
   } catch (e) {
     console.error("mobiliser-oppfrisk:", e);
     return json({
-      feil: "Konsekvens-feltene finnes ikke, eller mobiliser-flagget kunne ikke oppdateres. Migrasjonen er ikke kjørt.",
+      feil: "Konsekvens-feltene finnes ikke, eller mobiliser-flagget kunne ikke oppdateres.",
     }, 503);
   }
 
-  async function hentUklassifisert(kolonner: string) {
-    return await supabase
-      .from("varsler")
-      .select(kolonner)
-      .is("konsekvens", null)
-      .eq("konsekvens_manuell", false)
-      .order("opprettet", { ascending: true })
-      .limit(grense);
-  }
-
-  let liste = await hentUklassifisert(KOLONNER);
-  if (liste.error && manglerKolonne(liste.error.message, "manuelt_redigert")) {
-    liste = await hentUklassifisert(KOLONNER_UTEN_MANUELT);
-  }
+  const liste = await supabase
+    .from("varsler")
+    .select(KOLONNER)
+    .is("konsekvens", null)
+    .eq("konsekvens_manuell", false)
+    .eq("manuelt_redigert", false)
+    .order("opprettet", { ascending: true })
+    .limit(grense);
   if (liste.error) {
     console.error("backfill-les:", liste.error.message);
     return json({ feil: "Sakene kunne ikke hentes." }, 503);
@@ -119,7 +149,8 @@ Deno.serve(async (req: Request) => {
     .from("varsler")
     .select("id", { count: "exact", head: true })
     .is("konsekvens", null)
-    .eq("konsekvens_manuell", false);
+    .eq("konsekvens_manuell", false)
+    .eq("manuelt_redigert", false);
   if (tellFeil) {
     console.error("backfill-tell:", tellFeil.message);
     return json({ feil: "Gjenstående saker kunne ikke telles." }, 503);
@@ -142,7 +173,7 @@ Deno.serve(async (req: Request) => {
       instans: rad.instans ?? "",
       frist: rad.frist ?? null,
       dagensDato: iDag,
-    }, apiKey, { oppgave: "konsekvens-backfill" });
+    }, apiKey, { oppgave: "konsekvens-backfill", timeoutMs: KONSEKVENS_TIMEOUT_MS });
 
     if (!svar.ok) {
       utsatt.push(rad.id);
@@ -156,6 +187,7 @@ Deno.serve(async (req: Request) => {
       .update(svar.felt)
       .eq("id", rad.id)
       .eq("konsekvens_manuell", false)
+      .eq("manuelt_redigert", false)
       .is("konsekvens", null)
       .select("id");
     if (skrivFeil) {
@@ -176,6 +208,6 @@ Deno.serve(async (req: Request) => {
     utsatt,
     gjenstaar: count ?? null,
     feil: feil.length ? feil : undefined,
-    merk: "Backfill er ikke kjørt mot prod fra denne endringen.",
+    merk: "Backfill skriver bare ulåste rader uten konsekvens.",
   });
 });

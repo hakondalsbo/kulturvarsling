@@ -1,12 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   byggKonsekvensPrompt,
   erKonsekvensLåst,
   erMobiliserNaa,
+  EVAL_TIDSBUDSJETT_MS,
   fallbackVurdering,
   forsideRang,
   kanKlassifisereRad,
+  kjørFasitEval,
+  KONSEKVENS_NAVN,
+  KONSEKVENS_TIMEOUT_MS,
+  MAKS_KONSEKVENS_PER_KJORING,
   matcherKonsekvensFilter,
   osloDato,
   synligKonsekvens,
@@ -14,6 +20,8 @@ import {
   treffrate,
 } from "./konsekvens.ts";
 import { klassifiserKonsekvens } from "./konsekvens-kall.ts";
+import { oppfriskMobiliserNaa } from "./konsekvens-lager.ts";
+import { FASIT_SAKER } from "./konsekvens-fasit.ts";
 
 const IDAG = "2026-10-20";
 
@@ -222,4 +230,122 @@ test("Haiku-kall: ugyldig svar blir fallback, HTTP-feil blir ikke skrevet", asyn
 
   const http = await kall("{}", 529);
   assert.deepEqual(http, { ok: false, grunn: "http", status: 529 });
+});
+
+test("merketekstene er språkguidens navn, uten «på vanlig norsk»", () => {
+  assert.deepEqual(KONSEKVENS_NAVN, {
+    kutt_innstramming: "Kutt og innstramming",
+    stor_endring: "Stor endring for bransjen",
+    ny_mulighet: "Ny mulighet",
+    til_orientering: "Til orientering",
+  });
+  const prompt = byggKonsekvensPrompt({
+    tittel: "T",
+    sammendrag: "S",
+    kildetekst: "K",
+    instans: "I",
+    frist: null,
+    dagensDato: IDAG,
+  });
+  assert.equal(prompt.includes("på vanlig norsk"), false);
+  const sql = fs.readFileSync(
+    new URL("../../migrations/20261027010000_konsekvens_dimensjon.sql", import.meta.url),
+    "utf8",
+  );
+  assert.equal(sql.includes("på vanlig norsk"), false);
+  assert.match(sql, /manuelt_redigert is not true/);
+  assert.match(sql, /konsekvens_manuell is not true/);
+  assert.match(sql, /revoke all on function privat\.oppdater_mobiliser_naa\(\) from public/);
+  assert.match(sql, /from anon, authenticated, service_role/);
+  assert.match(sql, /grant execute on function privat\.oppdater_mobiliser_naa\(\) to postgres/);
+  assert.equal(/grant execute on function privat\.oppdater_mobiliser_naa\(\) to (anon|authenticated|service_role)/.test(sql), false);
+});
+
+test("konsekvenstaket får plass i veggklokken på 150 sekunder", () => {
+  const vegg = 150_000;
+  const relevansOgInnhenting = 70_000;
+  const klartekst = 8 * 6_000;
+  const igjen = vegg - relevansOgInnhenting - klartekst;
+  assert.equal(MAKS_KONSEKVENS_PER_KJORING, 4);
+  assert.equal(KONSEKVENS_TIMEOUT_MS, 8_000);
+  assert.ok(MAKS_KONSEKVENS_PER_KJORING * KONSEKVENS_TIMEOUT_MS <= igjen);
+  assert.equal(EVAL_TIDSBUDSJETT_MS, 120_000);
+  assert.ok(EVAL_TIDSBUDSJETT_MS < vegg);
+});
+
+test("fasiten har 30 saker og eval stopper ved tidsbudsjettet uten å skrive", async () => {
+  assert.equal(FASIT_SAKER.length, 30);
+  const verdier = new Set(["kutt_innstramming", "stor_endring", "ny_mulighet", "til_orientering"]);
+  assert.equal(new Set(FASIT_SAKER.map((s) => s.id)).size, 30);
+  for (const sak of FASIT_SAKER) assert.equal(verdier.has(sak.forventet), true);
+
+  let kall = 0;
+  const rapport = await kjørFasitEval(
+    [
+      { id: "1", forventet: "til_orientering" },
+      { id: "2", forventet: "kutt_innstramming" },
+      { id: "3", forventet: "ny_mulighet" },
+    ],
+    async () => {
+      kall++;
+      return kall === 1 ? "til_orientering" : null;
+    },
+    (() => {
+      let t = 0;
+      return () => {
+        t += 50;
+        return t;
+      };
+    })(),
+    80,
+  );
+  assert.equal(kall, 1);
+  assert.equal(rapport.vurdert, 1);
+  assert.equal(rapport.treff, 1);
+  assert.equal(rapport.per_verdi.til_orientering.treff, 1);
+  assert.equal(rapport.per_verdi.kutt_innstramming.antall, 0);
+  assert.deepEqual(rapport.utsatt, ["2", "3"]);
+  assert.equal(rapport.saker[2]?.grunn, "tidsbudsjett");
+});
+
+test("oppfrisk skriver ikke mobiliser_naa på låste rader", async () => {
+  const skrevet: string[] = [];
+  const supabase = {
+    from() {
+      return {
+        select() {
+          return {
+            or: async () => ({
+              data: [
+                { id: "låst-manuelt", mobiliser_dato: "2026-10-21", mobiliser_naa: false, manuelt_redigert: true, konsekvens_manuell: false },
+                { id: "låst-konsekvens", mobiliser_dato: "2026-10-21", mobiliser_naa: false, manuelt_redigert: false, konsekvens_manuell: true },
+                { id: "åpen", mobiliser_dato: "2026-10-21", mobiliser_naa: false, manuelt_redigert: false, konsekvens_manuell: false },
+              ],
+              error: null,
+            }),
+          };
+        },
+        update() {
+          const filter: Record<string, unknown> = {};
+          const api = {
+            eq(k: string, v: unknown) {
+              filter[k] = v;
+              return api;
+            },
+            select: async () => {
+              if (filter.manuelt_redigert === false && filter.konsekvens_manuell === false && filter.id === "åpen") {
+                skrevet.push(String(filter.id));
+                return { data: [{ id: "åpen" }], error: null };
+              }
+              return { data: [], error: null };
+            },
+          };
+          return api;
+        },
+      };
+    },
+  };
+  const antall = await oppfriskMobiliserNaa(supabase, IDAG);
+  assert.equal(antall, 1);
+  assert.deepEqual(skrevet, ["åpen"]);
 });

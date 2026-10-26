@@ -23,8 +23,34 @@ export type Sikkerhet = (typeof SIKKERHET_VERDIER)[number];
 /** Samme vindu som statusregelen viktig ≤ 21. */
 export const MOBILISER_DAGER = 21;
 
-/** Egne Haiku-kall per kjøring, i tillegg til relevansfilterets tak. */
-export const MAKS_KONSEKVENS_PER_KJORING = 20;
+/**
+ * Egne Haiku-kall per hent-saker-kjøring, bare på saker som blir publisert.
+ *
+ * Gratisplanens veggklokke er 150 s. kallClaude avbryter etter 25 s og
+ * prøver ikke et tidsavbrudd på nytt. Relevanskjøringen er allerede
+ * dokumentert til omtrent ett minutt ved 25 Haiku-kall, innhenting inkludert.
+ * Klartekst legger til inntil 8 Sonnet-kall. Budsjettet under er et planlagt
+ * nattløp, ikke summen av alle tidsavbrudd (den summen sprenger 150 s allerede
+ * uten konsekvens):
+ *
+ *   relevans + innhenting     70 s
+ *   klartekst, 8 × 6 s        48 s
+ *   igjen                     32 s
+ *   konsekvens, tak 8 s       4 kall = 32 s
+ *
+ * Fire trege kall fyller resten. Flere venter til neste kjøring eller backfill.
+ */
+export const MAKS_KONSEKVENS_PER_KJORING = 4;
+
+/** Tidsavbrudd for ett konsekvens-kall i pipelinen. Fire slike er 32 s. */
+export const KONSEKVENS_TIMEOUT_MS = 8_000;
+
+/**
+ * Eval-kjøringen er ett eget funksjonskall, ikke en del av hent-saker.
+ * 30 korte sammendrag rekker vanligvis. Vi stopper før plattformens 150 s
+ * så svaret blir JSON og ikke et avbrudd uten kropp. Ingenting skrives.
+ */
+export const EVAL_TIDSBUDSJETT_MS = 120_000;
 
 export const KONSEKVENS_BACKFILL_BATCH = 8;
 export const KONSEKVENS_BACKFILL_MAKS = 20;
@@ -336,6 +362,14 @@ export function tekstFraClaude(data: unknown): string {
 
 export type TreffRad = { forventet: string; faktisk: string };
 
+export type EvalRad = {
+  id: string;
+  forventet: string;
+  /** null når kallet ikke ga en verdi. Telles ikke som feil klasse. */
+  faktisk: string | null;
+  grunn: "ok" | "utsatt" | "tidsbudsjett";
+};
+
 export type TreffVerdi = { antall: number; treff: number; rate: number | null };
 
 /** Treffrate per fasitverdi (recall): andel av fasitens saker som fikk riktig verdi. */
@@ -361,5 +395,56 @@ export function treffrate(par: TreffRad[]): {
     treff,
     rate: par.length === 0 ? null : treff / par.length,
     per_verdi,
+  };
+}
+
+/**
+ * Klassifiserer fasiten innenfor tidsbudsjettet. Et kall som ikke gir verdi,
+ * eller som ikke rekker å starte, blir utsatt og inngår ikke i treffraten.
+ */
+export async function kjørFasitEval<T extends { id: string; forventet: string }>(
+  saker: readonly T[],
+  klassifiser: (sak: T) => Promise<string | null>,
+  nå: () => number = Date.now,
+  budsjettMs: number = EVAL_TIDSBUDSJETT_MS,
+): Promise<{
+  antall: number;
+  vurdert: number;
+  treff: number;
+  rate: number | null;
+  per_verdi: Record<Konsekvens, TreffVerdi>;
+  utsatt: string[];
+  saker: EvalRad[];
+}> {
+  const start = nå();
+  const sakerUt: EvalRad[] = [];
+  for (const sak of saker) {
+    if (nå() - start >= budsjettMs) {
+      sakerUt.push({ id: sak.id, forventet: sak.forventet, faktisk: null, grunn: "tidsbudsjett" });
+      continue;
+    }
+    let faktisk: string | null = null;
+    try {
+      faktisk = await klassifiser(sak);
+    } catch {
+      faktisk = null;
+    }
+    sakerUt.push({
+      id: sak.id,
+      forventet: sak.forventet,
+      faktisk,
+      grunn: faktisk ? "ok" : "utsatt",
+    });
+  }
+  const vurdert = sakerUt.filter((s) => s.faktisk != null) as Array<{ forventet: string; faktisk: string }>;
+  const rapport = treffrate(vurdert);
+  return {
+    antall: sakerUt.length,
+    vurdert: vurdert.length,
+    treff: rapport.treff,
+    rate: rapport.rate,
+    per_verdi: rapport.per_verdi,
+    utsatt: sakerUt.filter((s) => s.grunn !== "ok").map((s) => s.id),
+    saker: sakerUt,
   };
 }

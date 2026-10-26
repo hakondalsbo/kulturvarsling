@@ -1,4 +1,11 @@
 import { kallClaude } from "../_shared/claude.ts";
+import { klassifiserKonsekvens } from "../_shared/konsekvens-kall.ts";
+import { oppfriskMobiliserNaa } from "../_shared/konsekvens-lager.ts";
+import {
+  KONSEKVENS_TIMEOUT_MS,
+  MAKS_KONSEKVENS_PER_KJORING,
+  osloDato,
+} from "../_shared/konsekvens.ts";
 import { kildegrunnlag, loggUdokumenterteTall, publiseresEtterKontroll } from "../_shared/kildekontroll.ts";
 import {
   genererGenerellKlartekst,
@@ -491,6 +498,21 @@ async function lagreHoringOppfolging(
   }
 }
 
+const KONSEKVENS_FELT = [
+  "konsekvens",
+  "konsekvens_begrunnelse",
+  "konsekvens_sikkerhet",
+  "mobiliser_naa",
+  "mobiliser_grunn",
+  "mobiliser_dato",
+] as const;
+
+function utenKonsekvensfelt(rad: Record<string, unknown>): Record<string, unknown> {
+  const kopi = { ...rad };
+  for (const nøkkel of KONSEKVENS_FELT) delete kopi[nøkkel];
+  return kopi;
+}
+
 async function lagreVarsel(
   supabase: { from: (t: string) => any },
   rad: Record<string, unknown>,
@@ -731,6 +753,8 @@ Deno.serve(async (req: Request) => {
     let klartekstLagret = 0;
     let klartekstFeilet = 0;
     let klartekstUtsatt = 0;
+    let konsekvensVurdert = 0;
+    let konsekvensUtsatt = 0;
 
     for (const item of nye) {
       if (item.adapter === "regjeringen-rss") {
@@ -864,8 +888,53 @@ Deno.serve(async (req: Request) => {
         const hoved = hovedsakForHoring(item.sakIder, stortingSakVarsel);
         if (hoved) rad.hovedsak_id = hoved;
       }
+      // Konsekvens etter relevans, bare på saker som publiseres. Feil og taket
+      // stopper aldri lagringen. Nye rader er ikke låst. ignoreDuplicates gjør
+      // at en senere kjøring ikke skriver over eksisterende rader.
+      // Tak og tidsavbrudd: se MAKS_KONSEKVENS_PER_KJORING.
+      if (publisert && anthropicKey) {
+        const kort = String(item.tittel ?? "").slice(0, 60);
+        if (konsekvensVurdert + konsekvensUtsatt >= MAKS_KONSEKVENS_PER_KJORING) {
+          konsekvensUtsatt++;
+          driftFeil.push(`${kort}: konsekvens utsatt (tak per kjøring)`);
+        } else {
+          try {
+            const svar = await klassifiserKonsekvens({
+              tittel: String(item.tittel ?? ""),
+              sammendrag,
+              kildetekst: typeof item.sammendrag_raa === "string" && item.sammendrag_raa
+                ? item.sammendrag_raa
+                : sammendrag,
+              instans: String(item.instans ?? ""),
+              frist: item.frist ?? null,
+              dagensDato: osloDato(),
+            }, anthropicKey, { oppgave: "konsekvens", timeoutMs: KONSEKVENS_TIMEOUT_MS });
+            if (svar.ok) {
+              Object.assign(rad, svar.felt);
+              konsekvensVurdert++;
+            } else {
+              konsekvensUtsatt++;
+              driftFeil.push(`${kort}: konsekvens utsatt (${svar.grunn})`);
+            }
+          } catch (e) {
+            konsekvensUtsatt++;
+            driftFeil.push(`${kort}: konsekvens utsatt`);
+            console.error("konsekvens:", e);
+          }
+        }
+      }
       merkManglendeKilde(item.adapter, rad.kilde_id);
-      const lagret = await lagreVarsel(supabase, rad);
+      let lagret = await lagreVarsel(supabase, rad);
+      if (
+        lagret.error &&
+        rad.konsekvens &&
+        /konsekvens|mobiliser_/.test(lagret.error.message)
+      ) {
+        lagret = await lagreVarsel(supabase, utenKonsekvensfelt(rad));
+        if (!lagret.error) {
+          driftFeil.push(`${String(item.tittel).slice(0, 60)}: lagret uten konsekvens (kolonne mangler)`);
+        }
+      }
 
       if (lagret.error) {
         driftFeil.push(`${item.tittel}: ${lagret.error.message}`);
@@ -1029,6 +1098,14 @@ Deno.serve(async (req: Request) => {
         .eq("id", kildeId);
     }
 
+    let mobiliserOppdatert: number | null = null;
+    try {
+      mobiliserOppdatert = await oppfriskMobiliserNaa(supabase, osloDato());
+    } catch (e) {
+      console.error("mobiliser-oppfrisk feilet, innhentingen fortsetter:", e);
+      driftFeil.push("mobiliser_naa ble ikke oppdatert i denne kjøringen");
+    }
+
     const feil = [...kildeFeil, ...driftFeil];
     const respons = {
       kjørt: new Date().toISOString(),
@@ -1047,6 +1124,9 @@ Deno.serve(async (req: Request) => {
       klartekst_lagret: klartekstLagret,
       klartekst_feilet: klartekstFeilet || undefined,
       klartekst_utsatt: klartekstUtsatt || undefined,
+      konsekvens_vurdert: konsekvensVurdert,
+      konsekvens_utsatt: konsekvensUtsatt,
+      mobiliser_oppdatert: mobiliserOppdatert,
       feil: feil.length > 0 ? feil.slice(0, 10) : undefined,
       kilde_status: kildeStatus,
     };
