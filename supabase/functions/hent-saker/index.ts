@@ -40,9 +40,13 @@ import {
 } from "./datofilter.ts";
 import { geografiSomLagres, hentEInnsynKultursaker } from "./einnsyn.ts";
 import {
+  EINNSYN_V2_BOLK_MAKS_CLAUDE,
+  EINNSYN_V2_BOLK_MAKS_KLARTEKST,
+  avbruddsKjoringRad,
   einnsynV2Aktiv,
   einnsynValg,
   hentEInnsynV2,
+  lesBolk,
   lesKildeutvalg,
   skalKjoreKilde,
 } from "./einnsyn-v2.ts";
@@ -381,8 +385,10 @@ async function lesJobb(req: Request): Promise<{
   modus: string | null;
   kilder: string[] | null;
   kildeFeil: string | null;
+  bolk: number | null;
+  bolkFeil: string | null;
 }> {
-  let data: { utlost_av?: unknown; backfill?: unknown; modus?: unknown; kilder?: unknown } = {};
+  let data: { utlost_av?: unknown; backfill?: unknown; modus?: unknown; kilder?: unknown; bolk?: unknown } = {};
   try {
     const tekst = await req.text();
     if (tekst.trim()) data = JSON.parse(tekst) ?? {};
@@ -390,6 +396,7 @@ async function lesJobb(req: Request): Promise<{
     data = {};
   }
   const utvalg = lesKildeutvalg(data?.kilder);
+  const bolk = lesBolk(data?.bolk);
   return {
     kjoertAv: utledKjoertAv({
       utlostAv: data?.utlost_av,
@@ -402,6 +409,8 @@ async function lesJobb(req: Request): Promise<{
     modus: typeof data?.modus === "string" && data.modus.trim() ? data.modus.trim() : null,
     kilder: utvalg.kilder,
     kildeFeil: utvalg.feil,
+    bolk: bolk.bolk,
+    bolkFeil: bolk.feil,
   };
 }
 
@@ -484,12 +493,74 @@ function jsonSvar(body: unknown, status = 200): Response {
   });
 }
 
-function edgeWaitUntil(): ((p: Promise<unknown>) => void) | null {
-  const rt = (globalThis as {
-    EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
-  }).EdgeRuntime;
-  return typeof rt?.waitUntil === "function" ? rt.waitUntil.bind(rt) : null;
+type BeforeUnloadEvent = Event & {
+  detail?: {
+    reason?: string;
+    waitUntil?: (p: Promise<unknown>) => void;
+  };
+};
+
+type PaagaendeKjoring = {
+  supabase: {
+    from: (tabell: string) => {
+      insert: (rad: Record<string, unknown>) => Promise<{ error: { message?: string } | null }>;
+    };
+  };
+  kildeId: string;
+  startetMs: number;
+  bolk: number | null;
+  kjoertAv: string;
+  kjoeringstype: Kjoeringstype;
+  ferdig: boolean;
+};
+
+let paagaende: PaagaendeKjoring | null = null;
+
+function skrivAvbrudd(): Promise<void> {
+  const jobb = paagaende;
+  if (!jobb || jobb.ferdig) return Promise.resolve();
+  jobb.ferdig = true;
+  const rad = avbruddsKjoringRad({
+    kildeId: jobb.kildeId,
+    bolk: jobb.bolk,
+    varighetMs: Date.now() - jobb.startetMs,
+    kjoertAv: jobb.kjoertAv,
+    kjoeringstype: jobb.kjoeringstype,
+  });
+  return jobb.supabase.from("kilde_kjoringer").insert(rad).then(({ error }) => {
+    if (error) console.error("kilde_kjoringer avbrudd:", error.message);
+  }).catch((e: unknown) => {
+    console.error("kilde_kjoringer avbrudd:", String(e).slice(0, 200));
+  });
 }
+
+function registrerAvbruddLytter(): void {
+  const g = globalThis as typeof globalThis & {
+    __hentSakerAvbrudd?: boolean;
+    addEventListener?: (type: string, fn: (ev: BeforeUnloadEvent) => void) => void;
+  };
+  if (g.__hentSakerAvbrudd || typeof g.addEventListener !== "function") return;
+  g.__hentSakerAvbrudd = true;
+  g.addEventListener("beforeunload", (ev) => {
+    try {
+      const vent = skrivAvbrudd();
+      const medVent = ev as BeforeUnloadEvent & { waitUntil?: (p: Promise<unknown>) => void };
+      const hold = ev.detail?.waitUntil ?? medVent.waitUntil;
+      if (typeof hold === "function") {
+        hold(vent);
+        return;
+      }
+      const rt = (globalThis as {
+        EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
+      }).EdgeRuntime;
+      rt?.waitUntil?.(vent);
+    } catch (e) {
+      console.error("beforeunload:", String(e).slice(0, 200));
+    }
+  });
+}
+
+registrerAvbruddLytter();
 
 // ON CONFLICT (kilde_nokkel) DO NOTHING. kilde_nokkel er generert og skal
 // ikke sendes med. Duplikat i samme kjøring er allerede fjernet før innsetting.
@@ -597,6 +668,7 @@ Deno.serve(async (req: Request) => {
   try {
     const jobb = await lesJobb(req);
     if (jobb.kildeFeil) return jsonSvar({ feil: jobb.kildeFeil }, 400);
+    if (jobb.bolkFeil) return jsonSvar({ feil: jobb.bolkFeil }, 400);
     const kjoertAv = jobb.kjoertAv;
     const avklart = avklarKjoering({
       kjoertAv,
@@ -664,14 +736,30 @@ Deno.serve(async (req: Request) => {
       ? new Map<string, string | null>()
       : await lesSisteVellykkede(supabase, kilderMap);
 
+    if (valg === "v2" && jobb.bolk == null) {
+      console.warn("eInnsyn v2 uten bolk kjører alle organ. Nattjobben skal sende bolk 1-4.");
+    }
+    const einnsynKilde = kilderMap.get("einnsyn")?.id;
+    if (valg === "v2" && einnsynKilde) {
+      paagaende = {
+        supabase,
+        kildeId: einnsynKilde,
+        startetMs: Date.now(),
+        bolk: jobb.bolk,
+        kjoertAv,
+        kjoeringstype,
+        ferdig: false,
+      };
+    }
+
     // Hent fra valgte kilder parallelt. Én adapter som kaster, stopper ikke de andre.
-    // Morgenkjøring med v2 på hopper over eInnsyn. Nattjobben sender bare einnsyn og kjører v2.
+    // Morgenkjøring med v2 på hopper over eInnsyn. Nattjobben sender bare einnsyn, med bolk.
     const alleAdaptere: Array<[string, () => Promise<AdapterUtfall>]> = [
       ["stortinget-saker", () => hentStortingetSaker(eksKilder)],
       ["stortinget-horinger", () => hentStortingetHoringer()],
       ["regjeringen-rss", () => hentRegjeringenRSS()],
       ["stortinget-ventede", () => hentVentedeSaker()],
-      ["einnsyn", () => valg === "v2" ? hentEInnsynV2() : hentEInnsynKultursaker()],
+      ["einnsyn", () => valg === "v2" ? hentEInnsynV2({ bolk: jobb.bolk ?? undefined }) : hentEInnsynKultursaker()],
       ["bergen", () => hentBergenSaker()],
       ["kulturdirektoratet", () => hentKulturdirektoratetTildelinger()],
       ["sametinget", () => hentSametingetSaker()],
@@ -773,11 +861,12 @@ Deno.serve(async (req: Request) => {
 
     // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
     // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke
-    // lagret). 25 holder kjøringen på ~1 min — trygt under Supabase-workerens
-    // regnekvote (80 ga WORKER_RESOURCE_LIMIT/546) og under Claude API-ets
-    // rate-grense for nye kontoer (50 kall/min).
+    // lagret). 25 holder en vanlig kjøring på ~1 min. En eInnsyn-bolk har
+    // allerede brukt det meste av gratisplanens 150 s, så den tar færre
+    // Claude-kall og skal være ferdig under 110 s.
     // kallClaude har allerede ett kontrollert nytt forsøk. Ikke legg på et til.
-    const MAKS_CLAUDE_SAKER = 25;
+    const maksClaude = jobb.bolk != null ? EINNSYN_V2_BOLK_MAKS_CLAUDE : 25;
+    const maksKlartekst = jobb.bolk != null ? EINNSYN_V2_BOLK_MAKS_KLARTEKST : MAKS_KLARTEKST_PER_KJORING;
     let claudeSaker = 0;
     const claudeUtsatt = new Map<string, number>();
     let claudeHttp: number | null = null;
@@ -809,7 +898,7 @@ Deno.serve(async (req: Request) => {
 
       // Bruk Claude for bedre analyse hvis API-nøkkel er satt
       if (anthropicKey) {
-        if (claudeSaker >= MAKS_CLAUDE_SAKER) {
+        if (claudeSaker >= maksClaude) {
           driftFeil.push(`${item.tittel.slice(0, 60)}: utsatt (kostnadstak per kjøring)`);
           continue;
         }
@@ -973,7 +1062,7 @@ Deno.serve(async (req: Request) => {
         // Klartekst fra #6, bare på publisert innsetting. Upubliserte rader
         // og koblinger bruker ikke Sonnet-kvoten.
         if (publisert && anthropicKey && lagret.id) {
-          if (klartekstForsok >= MAKS_KLARTEKST_PER_KJORING) {
+          if (klartekstForsok >= maksKlartekst) {
             klartekstUtsatt++;
           } else {
             klartekstForsok++;
@@ -1090,6 +1179,9 @@ Deno.serve(async (req: Request) => {
         console.error(`Ingen rad i kilder for adapter ${k.navn} — kjøring logges ikke`);
         continue;
       }
+      const feilmelding = k.navn === "einnsyn" && jobb.bolk != null && klass.feilmelding
+        ? `Bolk ${jobb.bolk}: ${klass.feilmelding}`.slice(0, 2000)
+        : klass.feilmelding;
       const { error: loggFeil } = await supabase.from("kilde_kjoringer").insert(
         byggKildeKjoringRad({
           kildeId,
@@ -1097,7 +1189,7 @@ Deno.serve(async (req: Request) => {
           antallFunnet: k.utfall.raattAntall,
           antallEtterFilter: k.utfall.antallEtterFilter,
           antallNye,
-          feilmelding: klass.feilmelding,
+          feilmelding,
           httpStatus: klass.httpStatus,
           varighetMs: k.varighetMs,
           kjoertAv,
@@ -1117,6 +1209,7 @@ Deno.serve(async (req: Request) => {
       kjørt: new Date().toISOString(),
       kjoert_av: kjoertAv,
       kjoeringstype,
+      bolk: jobb.bolk ?? undefined,
       hoppet_over_gamle: datoFilter.forGamle.length,
       hoppet_over_uten_pubdate: datoFilter.stoppetUtenPubDate.length,
       uten_dato: datoFilter.utenDato.length,
@@ -1136,24 +1229,27 @@ Deno.serve(async (req: Request) => {
     };
 
     console.log("Ferdig:", respons);
+    if (paagaende) paagaende.ferdig = true;
     return jsonSvar(respons);
     };
-    const vent = edgeWaitUntil();
-    if (valg === "v2" && vent) {
-      vent(arbeid().catch((e) => {
-        console.error("Kritisk feil i bakgrunn:", e);
-      }));
-      return jsonSvar({
-        startet: true,
-        bakgrunn: true,
-        kilder: jobb.kilder,
-        kjoert_av: kjoertAv,
-        kjørt: new Date().toISOString(),
-      });
-    }
     return await arbeid();
   } catch (e) {
     console.error("Kritisk feil:", e);
+    if (paagaende && !paagaende.ferdig) {
+      paagaende.ferdig = true;
+      try {
+        const { error } = await paagaende.supabase.from("kilde_kjoringer").insert(avbruddsKjoringRad({
+          kildeId: paagaende.kildeId,
+          bolk: paagaende.bolk,
+          varighetMs: Date.now() - paagaende.startetMs,
+          kjoertAv: paagaende.kjoertAv,
+          kjoeringstype: paagaende.kjoeringstype,
+        }));
+        if (error) console.error("kilde_kjoringer avbrudd:", error.message);
+      } catch (logg) {
+        console.error("kilde_kjoringer avbrudd:", String(logg).slice(0, 200));
+      }
+    }
     return jsonSvar({ feil: String(e) }, 500);
   }
 });

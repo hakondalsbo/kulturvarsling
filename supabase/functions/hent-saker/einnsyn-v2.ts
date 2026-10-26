@@ -2,8 +2,8 @@
 //
 // Digdir (servicedesk) 26.10.2026: det åpne søket på api.einnsyn.no krever
 // ingen nøkkel. robots.txt gjelder søkemotorer. Vi omgår ikke 403, og vi
-// følger ikke next til andre vertsnavn. Kjøringen er nattlig, én gang i
-// døgnet, atskilt fra hent-saker-daglig.
+// følger ikke next til andre vertsnavn. Kjøringen er nattlig, i fire bolker,
+// atskilt fra hent-saker-daglig.
 //
 // Kallbudsjett mot api.einnsyn.no, målt 26.10.2026 etter organfilteret
 // (43 enheter: 16 kommuner, 5 fylkeskommuner, 15 bydeler,
@@ -13,12 +13,19 @@
 //   søk           430    10 søkeord × 43 enheter, én side, siste 30 dager
 //   geo            43    ett /enhet/{id} per treff-enhet, øvre anslag
 //   sum           478    Brreg kommer i tillegg, inntil to kall per enhet
-// Pause 400 ms mellom kall (~2,5 kall/s). Med ~150 ms svar er veggtiden
-// om lag 260 s. Det er under betalt plans veggklokke på 400 s, og over
-// grensen på 150 s for å sende HTTP-svaret. Nattjobben svarer derfor
-// med en gang og fortsetter i EdgeRuntime.waitUntil.
-// Absolutt tak: 600 kall mot api.einnsyn.no per natt, inkludert nye
-// forsøk. Da avbrytes kjøringen pent, og kilde_alarmer får en rad.
+//
+// Gratisplanen har veggklokke på 150 s, også for EdgeRuntime.waitUntil.
+// Hele natten er om lag 260 s og blir drept uten rad i kilde_kjoringer.
+// Nattjobben er derfor fire bolker (01:00, 01:10, 01:20, 01:30 UTC).
+// Hver bolk oppdager organene på nytt og tar sin andel, round-robin på
+// sortert id. Verste bolk er 11 enheter: 5 + 110 + 11 = 126 eInnsyn-kall.
+// 125 pauser à 400 ms pluss ~150 ms svar er ~69 s. Brreg inntil 22 kall
+// uten den pausen er ~5 s. Claude-helsesjekk, 3 analyser og 1 klartekst
+// er ~20 s. Summen er om lag 95 s, under 110 s. Kall over taket lagres
+// ikke og prøves neste natt. Dedup gjør en ny kjøring av samme bolk
+// idempotent. En bolk som feiler, stopper ikke de andre.
+// Absolutt tak: 600 kall mot api.einnsyn.no per kjøring, inkludert nye
+// forsøk. Da avbrytes bolken pent.
 // 429 og 5xx: inntil 3 forsøk, eksponentiell backoff med jitter,
 // Retry-After respekteres opp til 15 s. Lengre ventetid avbryter.
 
@@ -29,6 +36,7 @@ import {
   slåOppGeo,
   type EInnsynMoetesak,
 } from "./einnsyn.ts";
+import { byggKildeKjoringRad, type Kjoeringstype } from "./datofilter.ts";
 import {
   feilFraStatus,
   feilFraUnntak,
@@ -41,11 +49,18 @@ import {
 import { erKulturRelevant, erRenIdrett } from "./logikk.ts";
 
 const API = "https://api.einnsyn.no";
+/** Publisert kontrakt. Dokumentasjon og CI på main endrer ikke denne filen. */
+export const EINNSYN_SPEC_FIL = "openapi/einnsyn.openapi.yml";
 const SPEC_COMMITS =
-  "https://api.github.com/repos/felleslosninger/einnsyn-api-spec/commits/main";
+  "https://api.github.com/repos/felleslosninger/einnsyn-api-spec/commits?path="
+  + encodeURIComponent(EINNSYN_SPEC_FIL)
+  + "&sha=main&per_page=1";
 
-/** Siste commit på main i einnsyn-api-spec, lest 26.10.2026. */
-export const EINNSYN_SPEC_KJENT_SHA = "10f2b418fdbd7eb7cb523364a793549c37fff6fb";
+/**
+ * Siste commit som endret openapi/einnsyn.openapi.yml, lest 26.10.2026.
+ * Ikke HEAD på main (den var en CI-endring, 10f2b418…).
+ */
+export const EINNSYN_SPEC_KJENT_SHA = "cedf5edc8cb5ae27cff4b8e03c989af7928bd531";
 
 export const EINNSYN_V2_SOKEORD = [
   "kultur",
@@ -70,9 +85,14 @@ export const EINNSYN_V2_BACKOFF_BASIS_MS = 500;
 export const EINNSYN_V2_BACKOFF_TAK_MS = 8_000;
 /** Retry-After over dette avbryter kjøringen i stedet for å sove. */
 export const EINNSYN_V2_RETRY_AFTER_MAKS_MS = 15_000;
-/** Hardt tak per natt mot api.einnsyn.no. Forventet vanlig natt er 478. */
+/** Hardt tak per kjøring mot api.einnsyn.no. Forventet bolk er 126, hel natt uten bolk 478. */
 export const EINNSYN_V2_MAKS_KALL = 600;
 export const EINNSYN_V2_FORVENTET_ENHETER = 43;
+/** Fire cron-kall. Verste bolk har 11 av 43 enheter. */
+export const EINNSYN_V2_BOLKER = 4;
+/** Så bolken holder seg under 110 s inkludert Claude. Resten venter til neste natt. */
+export const EINNSYN_V2_BOLK_MAKS_CLAUDE = 3;
+export const EINNSYN_V2_BOLK_MAKS_KLARTEKST = 1;
 
 export const HENT_SAKER_KILDER = [
   "stortinget-saker",
@@ -105,22 +125,97 @@ export function einnsynV2Aktiv(
 }
 
 /**
- * Planestimat. 5 + 430 + 0 + 129 = 564 ved 43 enheter, der geo teller
- * ett eInnsyn-kall og inntil to Brreg-kall. Taket på 600 gjelder bare
- * api.einnsyn.no.
+ * Planestimat mot api.einnsyn.no. 5 + 430 + 0 + 43 = 478 ved 43 enheter.
+ * Brreg er inntil to kall per enhet og inngår ikke i totalt eller i taket.
  */
 export function forventetEinnsynV2Kall(antallEnheter = EINNSYN_V2_FORVENTET_ENHETER): {
   oppdagelse: number;
   sok: number;
   kulturUtvalg: number;
   geo: number;
+  brreg: number;
   totalt: number;
 } {
   const oppdagelse = 5;
   const sok = EINNSYN_V2_SOKEORD.length * antallEnheter;
   const kulturUtvalg = 0;
-  const geo = antallEnheter * 3;
-  return { oppdagelse, sok, kulturUtvalg, geo, totalt: oppdagelse + sok + kulturUtvalg + geo };
+  const geo = antallEnheter;
+  const brreg = antallEnheter * 2;
+  return { oppdagelse, sok, kulturUtvalg, geo, brreg, totalt: oppdagelse + sok + kulturUtvalg + geo };
+}
+
+/** Verste bolk: oppdagelse gjentas, søk og geo bare for de største 11 enhetene. */
+export function forventetEinnsynV2BolkKall(antallEnheter = EINNSYN_V2_FORVENTET_ENHETER): {
+  bolker: number;
+  enheter: number;
+  oppdagelse: number;
+  sok: number;
+  geo: number;
+  brreg: number;
+  einnsyn: number;
+  claude: number;
+  klartekst: number;
+} {
+  const enheter = Math.ceil(antallEnheter / EINNSYN_V2_BOLKER);
+  const oppdagelse = 5;
+  const sok = EINNSYN_V2_SOKEORD.length * enheter;
+  const geo = enheter;
+  return {
+    bolker: EINNSYN_V2_BOLKER,
+    enheter,
+    oppdagelse,
+    sok,
+    geo,
+    brreg: enheter * 2,
+    einnsyn: oppdagelse + sok + geo,
+    claude: EINNSYN_V2_BOLK_MAKS_CLAUDE,
+    klartekst: EINNSYN_V2_BOLK_MAKS_KLARTEKST,
+  };
+}
+
+/**
+ * Fire bolker deler sortert id med rest. Samme organliste gir samme bolk,
+ * uansett rekkefølgen de ble oppdaget i.
+ */
+export function organerIBolk<T extends { id: string }>(
+  organ: readonly T[],
+  bolk: number,
+  antall = EINNSYN_V2_BOLKER,
+): T[] {
+  const sortert = [...organ].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return sortert.filter((_, i) => i % antall === bolk - 1);
+}
+
+export function lesBolk(verdi: unknown): { bolk: number | null; feil: string | null } {
+  if (verdi == null) return { bolk: null, feil: null };
+  if (typeof verdi !== "number" || !Number.isInteger(verdi) || verdi < 1 || verdi > EINNSYN_V2_BOLKER) {
+    return { bolk: null, feil: "Ukjent bolk" };
+  }
+  return { bolk: verdi, feil: null };
+}
+
+/** Rad når workeren dør før den vanlige kilde_kjoringer-raden er skrevet. */
+export function avbruddsKjoringRad(input: {
+  kildeId: string;
+  bolk: number | null;
+  varighetMs: number;
+  kjoertAv: string;
+  kjoeringstype: Kjoeringstype;
+}): Record<string, unknown> {
+  const ekstra = input.bolk == null ? "" : ` Bolk ${input.bolk}.`;
+  return byggKildeKjoringRad({
+    kildeId: input.kildeId,
+    status: "feil_timeout",
+    antallFunnet: 0,
+    antallEtterFilter: 0,
+    antallNye: 0,
+    feilmelding: `Kjøringen ble avbrutt før den var ferdig.${ekstra}`,
+    httpStatus: null,
+    varighetMs: Math.max(0, input.varighetMs),
+    kjoertAv: input.kjoertAv,
+    kjoeringstype: input.kjoeringstype,
+    jobb: "hent-saker",
+  });
 }
 
 export function lesKildeutvalg(verdi: unknown): { kilder: string[] | null; feil: string | null } {
@@ -337,7 +432,7 @@ async function kallEinnsyn(url: string, ctx: Ctx, medPause: boolean): Promise<Re
         nå: ctx.nå(),
         tilfeldig: ctx.tilfeldig,
       });
-      if (vente === "avbryt") throw new EinnsynStopp(feilFraStatus(429, url));
+      if (vente === "avbryt") throw new EinnsynStopp(feilFraStatus(sist?.status ?? 429, url));
       if (vente > 0) await ctx.vent(vente);
       if (ctx.kall >= EINNSYN_V2_MAKS_KALL) throw new EinnsynStopp(uventetFormat(url, "kallgrense"));
       ctx.kall++;
@@ -463,8 +558,12 @@ async function sjekkSpec(hent: Hent): Promise<HenteFeil | null> {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    if (specShaAvviker(data?.sha)) return uventetFormat(API, "spec-commit avviker");
-    return null;
+    // Liste filtrert på spec-filen. HEAD på main, og et objekt med sha,
+    // er ikke et avvik: dokumentasjonscommits skal ikke gi delvis-alarm.
+    const sha = Array.isArray(data) ? data[0]?.sha : null;
+    if (!specShaAvviker(sha)) return null;
+    console.warn(`eInnsyn spec-fil ${EINNSYN_SPEC_FIL} avviker fra pin: ${sha}`);
+    return uventetFormat(API, "spec-commit avviker");
   } catch {
     return null;
   }
@@ -477,6 +576,8 @@ export async function hentEInnsynV2(opts?: {
   nå?: number;
   tilfeldig?: () => number;
   sjekkSpec?: boolean;
+  /** 1–4. Uten bolk søkes alle organ, som i testene. */
+  bolk?: number;
 }): Promise<AdapterUtfall> {
   const hent = opts?.hent ?? fetch;
   const ctx: Ctx = {
@@ -523,6 +624,13 @@ export async function hentEInnsynV2(opts?: {
 
   if (organ.size === 0 && ctx.kall > 0) {
     return feilUtfall(uventetFormat(API, "fant ingen organ"), ctx.kall);
+  }
+
+  const oppdagetAntall = organ.size;
+  if (opts?.bolk != null) {
+    const valgt = organerIBolk([...organ.values()], opts.bolk);
+    organ.clear();
+    for (const enhet of valgt) organ.set(enhet.id, enhet);
   }
 
   const saker = new Map<string, EInnsynMoetesak>();
@@ -597,7 +705,7 @@ export async function hentEInnsynV2(opts?: {
 
   const feil = [stopp, specFeil].filter((f): f is HenteFeil => !!f);
   console.log(
-    `eInnsyn v2: kall=${ctx.kall}, organ=${organ.size}, møtesaker=${saker.size}, mappet=${items.length}`,
+    `eInnsyn v2: bolk=${opts?.bolk ?? "-"}, oppdaget=${oppdagetAntall}, organ=${organ.size}, kall=${ctx.kall}, møtesaker=${saker.size}, mappet=${items.length}`,
   );
   if (ctx.kall === 0) return feilUtfall(feil[0] ?? uventetFormat(API, "ingen kall"), 1);
   if (items.length === 0 && feil[0] && saker.size === 0 && organ.size === 0) {

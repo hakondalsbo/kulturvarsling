@@ -50,3 +50,8 @@ revoke all on table public.varsel_sperringer from authenticated;
 
 grant select, insert on table public.varsel_sperringer to service_role;
 grant usage, select on sequence public.varsel_sperringer_id_seq to service_role;
+
+-- Default-privilegier gir service_role alle tabellrettigheter. Den trenger
+-- bare select og insert (og sekvensen over). 
+revoke update, delete, truncate, references, trigger
+  on table public.varsel_sperringer from service_role;

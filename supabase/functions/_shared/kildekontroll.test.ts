@@ -116,6 +116,8 @@ test("varsel_sperringer er ny tabell, ikke en kolonne på kilde_kjoringer", () =
   assert.match(sql, /enable row level security/);
   assert.match(sql, /revoke all on table public\.varsel_sperringer from anon/);
   assert.match(sql, /grant select, insert on table public\.varsel_sperringer to service_role/);
+  assert.match(sql, /revoke update, delete, truncate, references, trigger/);
+  assert.match(sql, /from service_role/);
   assert.equal(/create policy/i.test(sql), false);
   assert.equal(sql.includes("kilde_kjoringer"), true);
   assert.equal(/alter table public\.kilde_kjoringer/.test(sql), false);

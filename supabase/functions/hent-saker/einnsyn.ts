@@ -15,9 +15,12 @@ import {
 const API = "https://api.einnsyn.no";
 const BRREG_API = "https://data.brreg.no/enhetsregisteret/api";
 
-/** Digdir 26.10.2026: navn og kontaktadresse skal stå i User-Agent. */
+/** Digdir 26.10.2026: navn og kontaktadresse skal stå i User-Agent mot api.einnsyn.no. */
 export const EINNSYN_USER_AGENT =
   "Kulturvarsling/1.0 (kulturvarsling.no; post@kulturvarsling.no)";
+
+/** Brreg og andre verter. Digdir-strengen brukes bare mot api.einnsyn.no. */
+export const KULTURVARSLING_USER_AGENT = "Kulturvarsling/1.0";
 
 /** Avbryter nattkjøringen. slåOppGeo skal ikke svelge denne. */
 export class EinnsynStopp extends Error {
@@ -305,7 +308,7 @@ export function mapEInnsynItem(
 async function lesBrreg(orgnr: string, hent: typeof fetch = fetch): Promise<BrregEnhet | null> {
   for (const sti of ["enheter", "underenheter"]) {
     const res = await hent(`${BRREG_API}/${sti}/${orgnr}`, {
-      headers: { Accept: "application/json", "User-Agent": EINNSYN_USER_AGENT },
+      headers: { Accept: "application/json", "User-Agent": KULTURVARSLING_USER_AGENT },
     });
     if (res.ok) return await res.json() as BrregEnhet;
     if (res.status !== 404) return null;

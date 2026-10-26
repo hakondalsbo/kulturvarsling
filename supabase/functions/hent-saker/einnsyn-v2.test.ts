@@ -4,26 +4,33 @@ import { readFileSync } from "node:fs";
 import { EINNSYN_V1_MAKS_GEO, EINNSYN_V1_SOK, hentEInnsynKultursaker } from "./einnsyn.ts";
 import { EINNSYN_USER_AGENT } from "./einnsyn.ts";
 import {
+  EINNSYN_SPEC_FIL,
   EINNSYN_SPEC_KJENT_SHA,
+  EINNSYN_V2_BOLKER,
   EINNSYN_V2_LIMIT,
   EINNSYN_V2_MAKS_FORSOK,
   EINNSYN_V2_MAKS_KALL,
   EINNSYN_V2_SOKEORD,
+  avbruddsKjoringRad,
   einnsynSokUrl,
   einnsynValg,
   einnsynV2Aktiv,
   erEinnsynV2Organ,
   erKulturutvalg,
+  forventetEinnsynV2BolkKall,
   forventetEinnsynV2Kall,
   hentEInnsynV2,
+  lesBolk,
   lesKildeutvalg,
   moetedatoFra,
+  organerIBolk,
   specShaAvviker,
   tryggEinnsynUrl,
   validerEinnsynListe,
   v2ForhandsGodkjent,
   ventetidMs,
 } from "./einnsyn-v2.ts";
+import { KULTURVARSLING_USER_AGENT } from "./einnsyn.ts";
 
 test("flagget er av med mindre verdien er nøyaktig true", () => {
   assert.equal(einnsynV2Aktiv(() => undefined), false);
@@ -36,13 +43,24 @@ test("flagget er av med mindre verdien er nøyaktig true", () => {
   assert.equal(einnsynV2Aktiv(), false);
 });
 
-test("forventet kall med flagget på er 564 ved 43 enheter", () => {
+test("forventet kall med flagget på er 478 eInnsyn-kall ved 43 enheter", () => {
   const tall = forventetEinnsynV2Kall();
   assert.equal(EINNSYN_V2_SOKEORD.length, 10);
-  assert.deepEqual(tall, { oppdagelse: 5, sok: 430, kulturUtvalg: 0, geo: 129, totalt: 564 });
+  assert.deepEqual(tall, { oppdagelse: 5, sok: 430, kulturUtvalg: 0, geo: 43, brreg: 86, totalt: 478 });
   assert.equal(EINNSYN_V2_LIMIT <= 100, true);
-  assert.equal(EINNSYN_V2_MAKS_KALL >= tall.sok + tall.oppdagelse, true);
+  assert.equal(EINNSYN_V2_MAKS_KALL >= tall.totalt, true);
   assert.equal(EINNSYN_V2_MAKS_KALL, 600);
+  const bolk = forventetEinnsynV2BolkKall();
+  assert.equal(bolk.bolker, 4);
+  assert.equal(bolk.enheter, 11);
+  assert.deepEqual(
+    { oppdagelse: bolk.oppdagelse, sok: bolk.sok, geo: bolk.geo, einnsyn: bolk.einnsyn },
+    { oppdagelse: 5, sok: 110, geo: 11, einnsyn: 126 },
+  );
+  assert.equal(bolk.brreg, 22);
+  assert.equal(bolk.claude, 3);
+  assert.equal(bolk.klartekst, 1);
+  assert.equal(bolk.einnsyn < EINNSYN_V2_MAKS_KALL, true);
 });
 
 test("v1-søket og geo-taket er uendret", async () => {
@@ -140,7 +158,7 @@ test("v2 følger next på api.einnsyn.no og hopper over fremmed vert", async () 
   const utfall = await hentEInnsynV2({
     pauseMs: 0,
     nå: Date.parse("2026-10-24T12:00:00+02:00"),
-    hent: async (url) => {
+    hent: async (url, init) => {
       const s = String(url);
       kall.push(s);
       if (s.includes("/enhet?query=kommune")) {
@@ -152,7 +170,11 @@ test("v2 følger next på api.einnsyn.no og hopper over fremmed vert", async () 
         });
       }
       if (s.includes("/enhet?query=")) return svar({ items: [] });
-      if (s.includes("/enhet/enh_")) return svar({ navn: "Stavanger kommune" });
+      if (s.includes("/enhet/enh_")) {
+        const ua = new Headers((init as RequestInit | undefined)?.headers).get("user-agent");
+        assert.equal(ua, EINNSYN_USER_AGENT);
+        return svar({ navn: "Stavanger kommune" });
+      }
       if (s.includes("query=kultur") && s.includes("enh_stavanger") && !s.includes("side=2")) {
         return svar({
           items: Array.from({ length: 50 }, (_, i) => ({
@@ -163,7 +185,11 @@ test("v2 følger next på api.einnsyn.no og hopper over fremmed vert", async () 
           next: "https://evil.example/search?limit=50",
         });
       }
-      if (s.includes("data.brreg.no")) return { ok: false, status: 404, async text() { return ""; } };
+      if (s.includes("data.brreg.no")) {
+        const ua = new Headers((init as RequestInit | undefined)?.headers).get("user-agent");
+        assert.equal(ua, KULTURVARSLING_USER_AGENT);
+        return { ok: false, status: 404, async text() { return ""; } };
+      }
       return svar({ items: [] });
     },
   });
@@ -176,6 +202,11 @@ test("v2 følger next på api.einnsyn.no og hopper over fremmed vert", async () 
 test("hent-saker velger eInnsyn ut fra flagg og kilde-parameter", () => {
   const kilde = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.match(kilde, /einnsynValg\(/);
+  assert.match(kilde, /beforeunload/);
+  assert.match(kilde, /avbruddsKjoringRad/);
+  assert.match(kilde, /hentEInnsynV2\(\{ bolk: jobb\.bolk/);
+  assert.equal(kilde.includes("bakgrunn: true"), false);
+  assert.equal(kilde.includes("400 s"), false);
   assert.equal(einnsynValg({ kilder: null, v2: false }), "v1");
   assert.equal(einnsynValg({ kilder: null, v2: true }), "hopp over");
   assert.equal(einnsynValg({ kilder: ["einnsyn"], v2: true }), "v2");
@@ -185,6 +216,11 @@ test("hent-saker velger eInnsyn ut fra flagg og kilde-parameter", () => {
   assert.deepEqual(lesKildeutvalg(["einnsyn"]), { kilder: ["einnsyn"], feil: null });
   assert.equal(lesKildeutvalg(["ukjent"]).feil, "Ukjent kilde");
   assert.equal(lesKildeutvalg(null).kilder, null);
+  assert.deepEqual(lesBolk(null), { bolk: null, feil: null });
+  assert.deepEqual(lesBolk(2), { bolk: 2, feil: null });
+  assert.equal(lesBolk(0).feil, "Ukjent bolk");
+  assert.equal(lesBolk(5).feil, "Ukjent bolk");
+  assert.equal(lesBolk("1").feil, "Ukjent bolk");
 });
 
 test("User-Agent, 429 med Retry-After og 404 gir alarmgrunnlag", async () => {
@@ -255,14 +291,18 @@ test("backoff respekterer Retry-After og jitter, og spec-sha er pinnet", () => {
   assert.equal(validerEinnsynListe({ items: [{ hei: 1 }] }, "sok").ok, false);
 });
 
-test("ny spec-commit blir en feil uten å skjule treff", async () => {
+test("ny spec-fil-commit blir en feil uten å skjule treff", async () => {
+  let specUrl = "";
   const utfall = await hentEInnsynV2({
     pauseMs: 0,
     sjekkSpec: true,
     nå: Date.parse("2026-10-26T01:00:00Z"),
     hent: async (url) => {
       const s = String(url);
-      if (s.includes("api.github.com")) return svar({ sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" });
+      if (s.includes("api.github.com")) {
+        specUrl = s;
+        return svar([{ sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }]);
+      }
       if (s.includes("/enhet?query=kommune")) {
         return svar({ items: [{ id: "enh_stavanger", navn: "Stavanger kommune" }] });
       }
@@ -283,6 +323,158 @@ test("ny spec-commit blir en feil uten å skjule treff", async () => {
   });
   assert.equal(utfall.items.length, 1);
   assert.equal(utfall.feil.some((f) => f.melding.includes("spec-commit")), true);
+  assert.match(specUrl, new RegExp(encodeURIComponent(EINNSYN_SPEC_FIL)));
+
+  const kjent = await hentEInnsynV2({
+    pauseMs: 0,
+    sjekkSpec: true,
+    hent: async (url) => {
+      const s = String(url);
+      if (s.includes("api.github.com")) return svar([{ sha: EINNSYN_SPEC_KJENT_SHA }]);
+      if (s.includes("/enhet?query=kommune")) {
+        return svar({ items: [{ id: "enh_stavanger", navn: "Stavanger kommune" }] });
+      }
+      if (s.includes("/enhet?query=")) return svar({ items: [] });
+      if (s.includes("/enhet/enh_")) return svar({ navn: "Stavanger kommune" });
+      if (s.includes("query=kultur")) {
+        return svar({
+          items: [{ id: "ms_1", offentligTittel: "Kultursak", journalenhet: "enh_stavanger" }],
+        });
+      }
+      if (s.includes("data.brreg.no")) return { ok: false, status: 404, async text() { return ""; } };
+      return svar({ items: [] });
+    },
+  });
+  assert.equal(kjent.feil.some((f) => f.melding.includes("spec-commit")), false);
+
+  const docs = await hentEInnsynV2({
+    pauseMs: 0,
+    sjekkSpec: true,
+    hent: async (url) => {
+      const s = String(url);
+      if (s.includes("api.github.com")) return svar({ sha: "10f2b418fdbd7eb7cb523364a793549c37fff6fb" });
+      if (s.includes("/enhet?query=kommune")) {
+        return svar({ items: [{ id: "enh_stavanger", navn: "Stavanger kommune" }] });
+      }
+      if (s.includes("/enhet?query=")) return svar({ items: [] });
+      if (s.includes("/enhet/enh_")) return svar({ navn: "Stavanger kommune" });
+      if (s.includes("query=kultur")) {
+        return svar({
+          items: [{ id: "ms_1", offentligTittel: "Kultursak", journalenhet: "enh_stavanger" }],
+        });
+      }
+      if (s.includes("data.brreg.no")) return { ok: false, status: 404, async text() { return ""; } };
+      return svar({ items: [] });
+    },
+  });
+  assert.equal(docs.items.length, 1);
+  assert.equal(docs.feil.some((f) => f.melding.includes("spec-commit")), false);
+});
+
+test("Retry-After over 15 s logger faktisk status, også ved 5xx", async () => {
+  let kultur = 0;
+  const utfall = await hentEInnsynV2({
+    pauseMs: 0,
+    tilfeldig: () => 0,
+    hent: async (url) => {
+      const s = String(url);
+      if (s.includes("/enhet?query=kommune")) {
+        return svar({ items: [{ id: "enh_stavanger", navn: "Stavanger kommune" }] });
+      }
+      if (s.includes("/enhet?query=")) return svar({ items: [] });
+      if (s.includes("query=kultur")) {
+        kultur++;
+        return {
+          ok: false,
+          status: 503,
+          headers: { get: (n: string) => (n === "retry-after" ? "120" : null) },
+          async text() { return ""; },
+        };
+      }
+      throw new Error(`skulle stoppet før ${s}`);
+    },
+  });
+  assert.equal(kultur, 1);
+  assert.equal(utfall.feil[0]?.httpStatus, 503);
+});
+
+test("bolk søker bare sin andel, stabilt på id", async () => {
+  const enheter = [
+    { id: "enh_b", navn: "Stavanger kommune" },
+    { id: "enh_a", navn: "Arendal kommune" },
+  ];
+  const sok = async (bolk: number) => {
+    const treff: string[] = [];
+    await hentEInnsynV2({
+      pauseMs: 0,
+      bolk,
+      hent: async (url) => {
+        const s = String(url);
+        if (s.includes("/enhet?query=kommune")) return svar({ items: enheter });
+        if (s.includes("/enhet?query=")) return svar({ items: [] });
+        if (s.includes("/search")) {
+          treff.push(s);
+          return svar({ items: [] });
+        }
+        return svar({ items: [] });
+      },
+    });
+    return treff;
+  };
+  const forste = await sok(1);
+  const andre = await sok(1);
+  assert.equal(forste.length > 0, true);
+  assert.equal(forste.every((url) => url.includes("administrativEnhet=enh_a")), true);
+  assert.deepEqual(forste, andre);
+  const bolk2 = await sok(2);
+  assert.equal(bolk2.every((url) => url.includes("administrativEnhet=enh_b")), true);
+  assert.equal(bolk2.some((url) => url.includes("enh_a")), false);
+
+  const ids = Array.from({ length: 43 }, (_, i) => ({ id: String(i).padStart(2, "0") }));
+  const storrelser = [1, 2, 3, 4].map((bolk) => organerIBolk(ids, bolk).length);
+  assert.deepEqual(storrelser, [11, 11, 11, 10]);
+  assert.equal(EINNSYN_V2_BOLKER, 4);
+  const sett = new Set([1, 2, 3, 4].flatMap((bolk) => organerIBolk(ids, bolk).map((o) => o.id)));
+  assert.equal(sett.size, 43);
+  assert.deepEqual(
+    organerIBolk([{ id: "b" }, { id: "a" }], 1).map((o) => o.id),
+    organerIBolk([{ id: "a" }, { id: "b" }], 1).map((o) => o.id),
+  );
+});
+
+test("avbrudd skriver feil_timeout med bolk, og cron-migrasjonen feiler hardt", () => {
+  const rad = avbruddsKjoringRad({
+    kildeId: "kilde-1",
+    bolk: 2,
+    varighetMs: 140_000,
+    kjoertAv: "supabase_cron",
+    kjoeringstype: "vanlig",
+  });
+  assert.equal(rad.status, "feil_timeout");
+  assert.equal(rad.kilde_id, "kilde-1");
+  assert.equal(rad.jobb, "hent-saker");
+  assert.match(String(rad.feilmelding), /Bolk 2/);
+  assert.equal(String(rad.feilmelding).includes("http"), false);
+
+  const sql = readFileSync("supabase/migrations/20261026220000_einnsyn_v2_nattlig_cron.sql", "utf8");
+  assert.match(sql, /raise exception/i);
+  assert.equal(/raise warning/i.test(sql), false);
+  assert.match(sql, /hent_saker_platform_jwt/);
+  assert.match(sql, /hent_saker_cron_secret/);
+  assert.match(sql, /\/functions\/v1\/hent-saker/);
+  assert.match(sql, /jsonb_build_array\('einnsyn'\)/);
+  assert.match(sql, /timeout_milliseconds := 120000/);
+  assert.match(sql, /'einnsyn-v2-nattlig'/);
+  for (const [navn, tid] of [
+    ["einnsyn-v2-bolk-1", "0 1 * * *"],
+    ["einnsyn-v2-bolk-2", "10 1 * * *"],
+    ["einnsyn-v2-bolk-3", "20 1 * * *"],
+    ["einnsyn-v2-bolk-4", "30 1 * * *"],
+  ] as const) {
+    assert.equal(sql.includes(`'${navn}'`) || sql.includes("'einnsyn-v2-bolk-'"), true, navn);
+    assert.equal(sql.includes(`'${tid}'`), true, tid);
+  }
+  assert.match(sql, /'bolk', %s/);
 });
 
 function svar(data: unknown) {
