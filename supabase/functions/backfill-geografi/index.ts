@@ -7,6 +7,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { oppdaterVarsel } from "../_shared/varselvern.ts";
+import { EINNSYN_USER_AGENT } from "../hent-saker/einnsyn.ts";
 
 const EINNSYN = "https://api.einnsyn.no";
 const BRREG = "https://data.brreg.no/enhetsregisteret/api/enheter";
@@ -36,7 +37,9 @@ function geografiFraBrreg(enhet: any): Geografi {
 
 async function jsonEllerNull(url: string): Promise<any | null> {
   try {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (new URL(url).hostname === "api.einnsyn.no") headers["User-Agent"] = EINNSYN_USER_AGENT;
+    const res = await fetch(url, { headers });
     return res.ok ? await res.json() : null;
   } catch (_) {
     return null;

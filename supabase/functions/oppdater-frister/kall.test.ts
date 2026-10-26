@@ -1,11 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { byggKildeKjoringRad } from "../hent-saker/datofilter.ts";
 import {
   harKildeAlarm,
   klassifiserKildeKall,
   planleggDatoSkriving,
+  svarForFristjobb,
   tolkSkriving,
+  userAgentForUrl,
   utfallFeil,
   utfallOk,
 } from "./kall.ts";
@@ -169,4 +172,36 @@ test("oppdaterte frister er ikke nye saker", () => {
   assert.equal(ingen.status, "ok_ingen_oppdatering");
   assert.equal(ingen.oppdatert, 0);
   assert.equal(klassifiserKildeKall([]), null);
+});
+
+test("delvis fristjobb er 200 med advarsel, totalfeil er 502", () => {
+  assert.deepEqual(svarForFristjobb([], null), { status: 200, advarsel: null });
+  assert.deepEqual(
+    svarForFristjobb([{ alarm: true }, { alarm: false }], null),
+    { status: 200, advarsel: "Minst én kilde feilet. Se kilde_alarmer_frister." },
+  );
+  assert.deepEqual(svarForFristjobb([{ alarm: true }, { alarm: true }], null), {
+    status: 502,
+    advarsel: null,
+  });
+  const medLogg = svarForFristjobb([{ alarm: false }], "skrivefeil");
+  assert.equal(medLogg.status, 200);
+  assert.match(medLogg.advarsel ?? "", /kilde_alarmer_frister/);
+  assert.equal(svarForFristjobb([], "skrivefeil").status, 502);
+});
+
+test("bare api.einnsyn.no får navn og kontakt i User-Agent", () => {
+  assert.equal(
+    userAgentForUrl("https://api.einnsyn.no/moetesak/abc"),
+    "Kulturvarsling/1.0 (kulturvarsling.no; post@kulturvarsling.no)",
+  );
+  assert.equal(
+    userAgentForUrl("https://api.einnsyn.no/moetemappe/abc"),
+    "Kulturvarsling/1.0 (kulturvarsling.no; post@kulturvarsling.no)",
+  );
+  assert.equal(userAgentForUrl("https://data.stortinget.no/eksport/sak?sakid=1"), "Kulturvarsling/1.0");
+  assert.equal(userAgentForUrl("https://www.regjeringen.no/no/dokumenter/horing/id1/"), "Kulturvarsling/1.0");
+  const kilde = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  assert.match(kilde, /svarForFristjobb\(/);
+  assert.match(kilde, /userAgentForUrl\(/);
 });

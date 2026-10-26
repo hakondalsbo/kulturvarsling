@@ -11,6 +11,7 @@ import {
   horingTidspunkt,
   klassifiserHoring,
   planleggHoringLagring,
+  sammenlignUsikkerHoring,
   skalViseHoring,
   stortingSakIdFraUrl,
 } from "./stortinget-horinger.ts";
@@ -281,8 +282,21 @@ test("henting stopper ved feil, tar med vurderte treff og kaller ikke programmet
   assert.equal(urls.some((u) => u.includes("2025-2026")), false);
 });
 
-test("sak-oppslag stopper på 10 og prioriterer andre komiteer", async () => {
+test("usikre høringer sorterer FAMKULT foran andre komiteer", () => {
+  const fam = { rå: horing({ komite: FAM }) };
+  const kont = { rå: horing({ komite: KONT }) };
+  assert.ok(sammenlignUsikkerHoring(fam, kont) < 0);
+  assert.ok(sammenlignUsikkerHoring(kont, fam) > 0);
+  assert.equal(sammenlignUsikkerHoring(fam, { rå: horing({ komite: FAM }) }), 0);
+});
+
+test("sak-oppslag stopper på 10 og prioriterer FAMKULT", async () => {
   const urls: string[] = [];
+  const logg: string[] = [];
+  const opprinnelig = console.log;
+  console.log = (...args: unknown[]) => {
+    logg.push(args.map(String).join(" "));
+  };
   const andre = Array.from({ length: 10 }, (_, i) => horing({
     id: 3000 + i,
     komite: FAM,
@@ -293,34 +307,46 @@ test("sak-oppslag stopper på 10 og prioriterer andre komiteer", async () => {
     komite: KONT,
     horing_sak_info_liste: [{ sak_id: 8000, sak_korttittel: "Ukjent kontrolltema" }],
   });
-  const utfall = await hentStortingetHoringer({
-    nå: NÅ,
-    pause: async () => {},
-    hent: async (url) => {
-      urls.push(url);
-      if (url.includes("/eksport/horinger")) {
+  try {
+    const utfall = await hentStortingetHoringer({
+      nå: NÅ,
+      pause: async () => {},
+      hent: async (url) => {
+        urls.push(url);
+        if (url.includes("/eksport/horinger")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({
+              sesjon_id: "2026-2027",
+              horinger_liste: [kontroll, ...andre],
+            }),
+          };
+        }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({
-            sesjon_id: "2026-2027",
-            horinger_liste: [...andre, kontroll],
-          }),
+          text: async () => JSON.stringify({ emne_liste: [{ id: 6, navn: "Kultur" }] }),
         };
-      }
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ emne_liste: [{ id: 6, navn: "Kultur" }] }),
-      };
-    },
-  });
-  const sakUrl = urls.filter((u) => u.includes("/eksport/sak"));
-  assert.equal(sakUrl.length, 10);
-  assert.equal(sakUrl.some((u) => u.includes("sakid=8000")), true);
-  assert.equal(sakUrl.some((u) => u.includes("sakid=7009")), false);
-  assert.equal(utfall.items.some((i) => i.kilde_id === "stortinget-horing-4000"), true);
-  assert.equal(urls.some((u) => u.includes("horingsprogram")), false);
+      },
+    });
+    const sakUrl = urls.filter((u) => u.includes("/eksport/sak"));
+    assert.equal(sakUrl.length, 10);
+    assert.equal(sakUrl.some((u) => u.includes("sakid=8000")), false);
+    assert.equal(sakUrl.some((u) => u.includes("sakid=7000")), true);
+    assert.equal(sakUrl.some((u) => u.includes("sakid=7009")), true);
+    assert.equal(utfall.items.some((i) => i.kilde_id === "stortinget-horing-4000"), false);
+    assert.equal(utfall.items.some((i) => i.kilde_id === "stortinget-horing-3000"), true);
+    assert.equal(urls.some((u) => u.includes("horingsprogram")), false);
+    const linje = logg.find((l) => l.includes("usikre"));
+    assert.ok(linje);
+    assert.match(linje, /11 usikre/);
+    assert.match(linje, /7000/);
+    assert.match(linje, /7009/);
+    assert.doesNotMatch(linje, /8000/);
+  } finally {
+    console.log = opprinnelig;
+  }
 });
 
 test("lagring oppdaterer ikke manuelt redigerte rader og flagger avlyst uten å avpublisere", () => {
@@ -376,7 +402,8 @@ test("p=200 matcher ikke p=2004, og nattkjøringen setter handling uten å hente
   assert.equal(stortingSakIdFraUrl("https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=200&x=1"), "200");
   const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   const logikk = readFileSync(new URL("./logikk.ts", import.meta.url), "utf8");
-  assert.match(index, /kjørAdapter\("stortinget-horinger"/);
+  assert.match(index, /"stortinget-horinger", \(\) => hentStortingetHoringer\(\)/);
+  assert.match(index, /kjørAdapter\(navn, fn\)/);
   assert.equal(index.includes("horingsprogram"), false);
   assert.equal(/eksport\/horinger[\s\S]{0,160}er nede|er nede \(500\)|horinger = 500/.test(index), false);
   assert.equal(/eksport\/horinger[\s\S]{0,160}er nede|horinger = 500/.test(logikk), false);
