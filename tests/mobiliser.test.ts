@@ -6,7 +6,9 @@ import { byggSignaturBrev } from "../supabase/functions/_shared/mobilisering.ts"
 import {
   PERSONVERN_EPOST,
   SAMTYKKE_MAL,
+  SAMTYKKE_MAL_2026_10_24,
   SAMTYKKE_VERSJON,
+  SAMTYKKE_VERSJON_2026_10_24,
   anvendSletting,
   bekreftSignatur,
   byggPanel,
@@ -37,10 +39,17 @@ const config = readFileSync("supabase/config.toml", "utf8");
 test("samtykkemalen i databasen er den samme teksten som i koden", () => {
   const treff = migrasjon.match(/\$samtykke\$(.*?)\$samtykke\$/s);
   assert.ok(treff);
-  assert.equal(treff[1], SAMTYKKE_MAL);
-  assert.equal(SAMTYKKE_VERSJON, "felles-innspill-2026-10-24");
+  assert.equal(treff[1], SAMTYKKE_MAL_2026_10_24);
+  assert.equal(SAMTYKKE_VERSJON_2026_10_24, "felles-innspill-2026-10-24");
+  const ny = readFileSync("supabase/migrations/20261026234923_signatur_innsetting_og_frister.sql", "utf8");
+  const nyTekst = ny.match(/\$samtykke\$(.*?)\$samtykke\$/s);
+  assert.ok(nyTekst);
+  assert.equal(nyTekst[1], SAMTYKKE_MAL);
+  assert.equal(SAMTYKKE_VERSJON, "felles-innspill-2026-10-27");
+  assert.match(ny, /on conflict \(versjon\) do nothing/);
   assert.doesNotMatch(SAMTYKKE_MAL, /post@kulturvarsling\.no/);
   assert.doesNotMatch(SAMTYKKE_MAL, /\[KONTAKT-E-POST\]/);
+  assert.equal(PERSONVERN_FELLES_AVSNITT.includes(SAMTYKKE_MAL), true);
 });
 
 test("avkrysning som ikke er satt, avvises", () => {
@@ -221,16 +230,21 @@ test("personvernerklæringen har samtykke, oppbevaring og post@", () => {
   assert.match(personvern, /30 dager etter innsending/);
   assert.match(personvern, /12 måneder etter innsending/);
   assert.match(personvern, /fagfelt, organisasjonstype og fylke/);
-  assert.match(personvern, /sletter vi med en gang navn, e-post/);
+  assert.match(personvern, /sletter med en gang navn, e-post/);
   assert.match(personvern, /Stripe tar betaling for Premium/);
   assert.match(personvern, /e-postadressen din og bruker-id-en din til Stripe/);
-  assert.match(personvern, /saksdata, ikke personopplysninger/);
+  assert.match(personvern, /saksdata fra offentlige kilder, som kan inneholde navn fra offentlige dokumenter, men ingen opplysninger om deg utover fagfelt, organisasjonstype og fylke/);
+  assert.match(personvern, /sammendrag, kildetekst/);
   assert.match(personvern, /backfill av klartekst og konsekvens/);
   assert.match(personvern, /London \(eu-west-2\)/);
-  assert.match(personvern, /standard personvernbestemmelser/);
+  assert.match(personvern, /krever et gyldig grunnlag, som EUs standard personvernbestemmelser/);
   assert.match(personvern, /lokal lagring \(localStorage\)/);
   assert.match(personvern, /Vi sjekker ikke alderen/);
-  assert.match(personvern, /Jobben sletter ikke/);
+  assert.match(personvern, /Den sletter ikke/);
+  assert.match(personvern, /signer-innspill/);
+  assert.match(personvern, /Signering av kampanjer i appen er ikke åpen/);
+  assert.doesNotMatch(personvern, /annen mobilisering/);
+  assert.doesNotMatch(personvern, /Denne teksten sier ikke mer om avtalene enn det/);
   assert.doesNotMatch(personvern, /Slettingen kjører/);
   assert.doesNotMatch(personvern, /forretningsadresse i/);
   assert.doesNotMatch(personvern, /personvern@/);
@@ -273,12 +287,9 @@ test("rutene og funksjonene er koblet uten at mottaket åpnes i cron", () => {
   assert.match(utenKommentar, /and avsluttet_tid is null/);
   assert.equal((utenKommentar.match(/and k\.aktiv/g) ?? []).length, 3);
   const signatur = readFileSync("src/App.tsx", "utf8");
-  const signaturStart = signatur.indexOf("async function signKampanje");
-  const signaturSlutt = signatur.indexOf("async function sendFeedbackDB");
-  const signaturFn = signatur.slice(signaturStart, signaturSlutt);
-  assert.match(signaturFn, /kampanje_id: kampanjeId/);
-  assert.match(signaturFn, /bruker_id: innlogget/);
-  assert.doesNotMatch(signaturFn, /bekreftet_tid|samtykke_gitt_tid/);
+  assert.doesNotMatch(signatur, /rest\/v1\/kampanje_signaturer/);
+  assert.doesNotMatch(signatur, /function signKampanje/);
+  assert.match(signatur, /Signering er ikke åpen/);
   assert.match(config, /\[functions\.signer-innspill\]\s+verify_jwt = false/);
   assert.match(config, /\[functions\.slett-signaturer\]\s+verify_jwt = true/);
   assert.match(config, /\[functions\.mine-innspill\]\s+verify_jwt = true/);
@@ -293,6 +304,9 @@ test("rutene og funksjonene er koblet uten at mottaket åpnes i cron", () => {
   assert.doesNotMatch(skjema, /defaultChecked/);
   assert.match(stotte, /id="stottet"/);
   assert.match(stotte, /Innspill du har støttet/);
+  assert.match(signer, /handling !== "trekk" && !signaturMottakAktiv/);
+  assert.match(signer, /avsluttet_tid/);
+  assert.match(signer, /bruker_id: null/);
   assert.match(signer, /, 403\)/);
   assert.match(signer, /if \(brev\.send\)/);
   assert.match(signer, /MOBILISERING_CAPTCHA_AKTIV/);
@@ -346,6 +360,19 @@ test("sletting av signaturer kjøres kl. 03:00 UTC med tellemodus", () => {
   assert.match(sql, /grant select, insert on table public\.slett_signatur_kjoringer to service_role/);
   const endepunkt = readFileSync("supabase/functions/slett-signaturer/index.ts", "utf8");
   assert.match(endepunkt, /p_dry_run: true/);
+  const frist = readFileSync("supabase/migrations/20261026234923_signatur_innsetting_og_frister.sql", "utf8");
+  assert.match(frist, /coalesce\(p_dry_run, true\)/);
+  assert.match(frist, /sendt_tid \+ interval '30 days'/);
+  assert.match(frist, /sendt_tid \+ interval '12 months'/);
+  assert.match(frist, /avsluttet_tid \+ interval '12 months'/);
+  assert.match(frist, /coalesce\(s\.opprettet, now\(\)\) \+ interval '12 months'/);
+  assert.match(frist, /rad uten slettes_etter/);
+  assert.match(frist, /alter column slettes_etter set not null/);
+  assert.match(frist, /drop policy if exists "Signer"/);
+  assert.match(frist, /revoke insert \(kampanje_id, bruker_id, navn, epost\)/);
+  assert.match(frist, /revoke all on function privat\.sett_innspill_slettefrist\(\) from public, anon, authenticated/);
+  assert.doesNotMatch(frist, /grant execute on function privat\.sett_innspill_slettefrist\(\) to authenticated/);
+  assert.doesNotMatch(frist, /slag = 'felles_innspill'/);
   const trekk = readFileSync("supabase/functions/signer-innspill/index.ts", "utf8");
   assert.match(trekk, /token_hash: null/);
   assert.match(trekk, /samtykke_vist: null/);

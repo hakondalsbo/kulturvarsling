@@ -1,7 +1,8 @@
 // Signering, bekreftelse og trekk for felles innspill.
 // verify_jwt = false: lenken i e-posten og skjemaet uten innlogging
 // har ingen brukersesjon. Rate limit og dobbel opt-in erstatter direkte INSERT.
-// Mottaket er av til MOBILISERING_SIGNATUR_AKTIV er nøyaktig true.
+// Nye signaturer er av til MOBILISERING_SIGNATUR_AKTIV er nøyaktig true.
+// Lenken for å trekke signaturen virker også når flagget er av.
 // E-post sendes bare når UTSENDING_AKTIV også er true. Ellers mockes brevet.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -89,9 +90,6 @@ async function antall(db: ReturnType<typeof admin>, nokkel: string, siden: strin
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return svar({ ok: false, feil: "Ugyldig forespørsel." }, 405);
-  if (!signaturMottakAktiv(Deno.env.get("MOBILISERING_SIGNATUR_AKTIV"))) {
-    return svar({ ok: false, feil: "Signering er ikke åpnet." }, 403);
-  }
 
   let body: Record<string, unknown> = {};
   try {
@@ -102,15 +100,18 @@ Deno.serve(async (req: Request) => {
 
   const db = admin();
   const handling = body.handling === "bekreft" || body.handling === "trekk" ? body.handling : "signer";
+  if (handling !== "trekk" && !signaturMottakAktiv(Deno.env.get("MOBILISERING_SIGNATUR_AKTIV"))) {
+    return svar({ ok: false, feil: "Signering er ikke åpnet." }, 403);
+  }
 
   if (handling === "signer") {
     if (!erUuid(body.kampanje_id)) return svar({ ok: false, feil: "Innspillet er ikke åpent for signering." }, 404);
     const kampanjeId = body.kampanje_id;
     const { data: kampanje, error: kampanjeFeil } = await db.from("kampanjer")
-      .select("id, slag, mottaker, planlagt_dato, sendt_tid, aktiv, sak_id")
+      .select("id, slag, mottaker, planlagt_dato, sendt_tid, avsluttet_tid, aktiv, sak_id")
       .eq("id", kampanjeId)
       .maybeSingle();
-    if (kampanjeFeil || !kampanje || kampanje.slag !== "felles_innspill" || !kampanje.aktiv || kampanje.sendt_tid) {
+    if (kampanjeFeil || !kampanje || kampanje.slag !== "felles_innspill" || !kampanje.aktiv || kampanje.sendt_tid || kampanje.avsluttet_tid) {
       return svar({ ok: false, feil: "Innspillet er ikke åpent for signering." }, 404);
     }
     const dato = kampanje.planlagt_dato
@@ -241,6 +242,7 @@ Deno.serve(async (req: Request) => {
     kommune: null,
     token_hash: null,
     samtykke_vist: null,
+    bruker_id: null,
   };
   if (utfall === "trukket" || utfall === "allerede_trukket") {
     const { error } = await db.from("kampanje_signaturer").update({

@@ -7,16 +7,22 @@
 
 import { finnUdokumenterteTall, kildegrunnlag } from "./kildekontroll.ts";
 
-export const SAMTYKKE_VERSJON = "felles-innspill-2026-10-24";
-
 /** Vedtatt av Håkon 24.10 kl. 17:23. Ikke en del av samtykkemalen. */
 export const PERSONVERN_EPOST = "post@kulturvarsling.no";
 
-/** Ordrett mal. Fet skrift i notatet er utheving, ikke egne ord. */
-export const SAMTYKKE_MAL =
+/** Ligger igjen på rader som alt er signert. Nye signaturer bruker versjonen under. */
+export const SAMTYKKE_VERSJON_2026_10_24 = "felles-innspill-2026-10-24";
+
+export const SAMTYKKE_MAL_2026_10_24 =
   "Jeg vil signere dette innspillet til [mottaker]. Jeg samtykker til at Kulturvarsling AS lagrer navnet mitt, e-postadressen min og det jeg ellers fyller ut, og at navn, [rolle/organisasjon] og kommune sendes til [mottaker] sammen med innspillet rundt [dato].\n" +
   "Jeg forstår at innspill med navn ofte blir offentlige, for eksempel på regjeringen.no eller stortinget.no. E-postadressen min deles aldri. Den brukes bare til å bekrefte signaturen og si fra hvordan det gikk.\n" +
   "Jeg kan trekke signaturen helt til innspillet er sendt, via lenken i e-posten. E-posten min slettes 30 dager etter innsending, og navnet mitt slettes hos oss etter 12 måneder. Du må være minst 16 år. [Les mer i personvernerklæringen]";
+
+export const SAMTYKKE_VERSJON = "felles-innspill-2026-10-27";
+
+/** Ordrett. Plassholderen [mottaker] fylles når teksten vises. */
+export const SAMTYKKE_MAL =
+  "Jeg kan trekke signaturen når som helst via lenken i e-posten. Da sletter Kulturvarsling AS med en gang navnet mitt, e-postadressen min og det jeg har skrevet om meg selv. Er innspillet allerede sendt, kan det ikke hentes tilbake fra [mottaker]. E-postadressen min slettes 30 dager etter innsending, og navnet mitt 12 måneder etter innsending. Blir innspillet ikke sendt, slettes alt 12 måneder etter at det ble avsluttet, eller 12 måneder etter at jeg signerte hvis det aldri avsluttes. Jeg bekrefter at jeg er minst 16 år.";
 
 export const VARSEL_FASER = [
   "tidlig_signal",

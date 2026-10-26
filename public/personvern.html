@@ -19,7 +19,7 @@
       <p>Kontakt: <a href="mailto:post@kulturvarsling.no">post@kulturvarsling.no</a></p>
     </aside>
 
-    <p>Denne erklæringen gjelder kulturvarsling.no: nyhetsbrevet, varslene og kontoen. Den beskriver hvilke opplysninger vi behandler, hvorfor, hvor lenge, og hvilke rettigheter du har.</p>
+    <p>Denne erklæringen gjelder kulturvarsling.no: nyhetsbrevet, varslene, kontoen og felles innspill. Den beskriver hvilke opplysninger vi behandler, hvorfor, hvor lenge, og hvilke rettigheter du har. Signering av kampanjer i appen er ikke åpen. Felles innspill går gjennom funksjonen signer-innspill, og mottaket er stengt.</p>
 
     <h2>Behandlingsansvarlig</h2>
     <p>Behandlingsansvarlig er Kulturvarsling AS, org.nr. 936 282 881, Middelthuns gate 11 B, 0368 Oslo. Henvendelser om personvern sendes til <a href="mailto:post@kulturvarsling.no">post@kulturvarsling.no</a>.</p>
@@ -34,11 +34,11 @@
 
     <h2>Konto</h2>
     <p>For å opprette konto lagrer vi e-post, passord i hash hos innloggingstjenesten, og navnet du oppgir. I oppsettet kan du i tillegg oppgi organisasjon, type aktør, fagfelt og varselfrekvens. Når du krysser av for personvernerklæringen, lagrer vi tidspunkt og versjon (personvern-2026-10).</p>
-    <p>Hvis du signerer en kampanje, skriver et høringssvar eller sender en tilbakemelding, lagres innholdet sammen med kontoen. Betalingsstatus for Premium styres av betalingsleverandøren og knyttes til kontoen. Vi ber ikke om kortnummer i Kulturvarsling.</p>
+    <p>Høringssvar du skriver, og tilbakemeldinger, lagres sammen med kontoen. Et felles innspill lagres av funksjonen signer-innspill, ikke av et skjema som skriver rett i databasen. Betalingsstatus for Premium styres av betalingsleverandøren og knyttes til kontoen. Vi ber ikke om kortnummer i Kulturvarsling.</p>
 
     <h2>Behandlingsgrunnlag</h2>
     <p>Nyhetsbrev og e-postvarsler du selv har slått på, bygger på samtykke. Du kan trekke samtykket tilbake uten at det påvirker lovligheten av behandling som skjedde før tilbaketrekkingen.</p>
-    <p>Signaturer, felles innspill og annen mobilisering bygger på ditt uttrykkelige samtykke, personvernforordningen artikkel 6 nr. 1 bokstav a. En signatur kan også vise et politisk standpunkt, og da gjelder artikkel 9 nr. 2 bokstav a. Du kan trekke samtykket tilbake. Tilbaketrekkingen påvirker ikke lovligheten av behandling som skjedde før den.</p>
+    <p>Felles innspill bygger på ditt uttrykkelige samtykke, personvernforordningen artikkel 6 nr. 1 bokstav a. En signatur kan også vise et politisk standpunkt, og da gjelder artikkel 9 nr. 2 bokstav a. Du kan trekke samtykket tilbake. Tilbaketrekkingen påvirker ikke lovligheten av behandling som skjedde før den. Signering av kampanjer i appen er ikke åpen.</p>
     <p>Kontoen og det som trengs for å levere tjenesten du ber om – innlogging, saker du følger og høringssvar du selv skriver – behandles for å oppfylle avtalen med deg, artikkel 6 nr. 1 bokstav b. Der loven krever at vi tar vare på opplysninger, gjør vi det.</p>
 
     <h2>Hvem som behandler opplysningene</h2>
@@ -48,23 +48,23 @@
       <li>Vercel leverer nettstedet.</li>
       <li>Resend sender bekreftelses-e-post, nyhetsbrev og kvitteringer. Sendingen kan skje utenfor EU/EØS.</li>
       <li>Stripe tar betaling for Premium. Når du starter betaling, sendes e-postadressen din og bruker-id-en din til Stripe, slik at abonnementet kan knyttes til kontoen. Kortnummeret oppgis hos Stripe. Vi ber ikke om kortnummer i Kulturvarsling.</li>
-      <li>Anthropic (Claude) får saksdata, ikke personopplysninger. Det gjelder også når saker fylles ut i ettertid, inkludert backfill av klartekst og konsekvens. Navn og e-post sendes ikke til Anthropic så lenge høringshjelpen er av.
+      <li>Anthropic (Claude) får saksdata fra offentlige kilder, som kan inneholde navn fra offentlige dokumenter, men ingen opplysninger om deg utover fagfelt, organisasjonstype og fylke. Det gjelder også når saker fylles ut i ettertid, inkludert backfill av klartekst og konsekvens. Navn og e-post sendes ikke til Anthropic så lenge høringshjelpen er av.
         <ul>
           <li>Nyhetsbrevfunksjonen er av og sender ingenting til Anthropic. Den er laget for å kunne sende tittel, kort sammendrag, kategori, nivå, instans og frist fra offentlige saker. E-postlisten er ikke med.</li>
-          <li>AI-sammendrag når en sak hentes inn, og når saker fylles ut i ettertid: tittel, kildens beskrivelse, instans og frist. Ingen opplysninger om brukere.</li>
+          <li>AI-sammendrag når en sak hentes inn, og når saker fylles ut i ettertid: tittel, sammendrag, kildetekst, kildens beskrivelse, instans og frist. Ingen opplysninger om brukere.</li>
           <li>Klartekst («Hva betyr dette for deg?»): tittel, sammendrag, instans, frist, nivå og sted. Når forklaringen lages for deg som er innlogget, følger et lukket utvalg fra profilen med: fagfelt, organisasjonstype og fylke. Navn, e-post og fritekst sendes ikke. Klartekst som lages idet saken hentes inn, og backfill av klartekst, bruker tom profil, altså alle fagfelt og hele landet.</li>
           <li>Budsjettsiden: offentlige tall fra SSB og navnet på kommunen, fylket eller staten. Innloggingen brukes bare til å slippe deg inn, og sendes ikke til Anthropic.</li>
         </ul>
       </li>
     </ul>
     <p>Høringshjelpen er av. Den sender ikke noe før den slås på, og så lenge den er av, får Anthropic verken navn eller e-post. Hvis den slås på, går høringsteksten og svarene du selv skriver, inkludert organisasjonsnavn, til Anthropic for å lage et utkast. Utkastet sendes ikke videre av seg selv.</p>
-    <p>Behandlingsansvarlig er Kulturvarsling AS, org.nr. 936 282 881, Middelthuns gate 11 B, 0368 Oslo. Databasen ligger hos Supabase i London (eu-west-2). Storbritannia har et tilstrekkelighetsvedtak fra EU-kommisjonen, og overføring dit kan skje på det grunnlaget. Anthropic behandler i USA. Overføring dit krever et annet grunnlag, som EUs standard personvernbestemmelser, der leverandøren bruker dem. Resend kan også behandle utenfor EU/EØS. Denne teksten sier ikke mer om avtalene enn det.</p>
+    <p>Behandlingsansvarlig er Kulturvarsling AS, org.nr. 936 282 881, Middelthuns gate 11 B, 0368 Oslo. Databasen ligger hos Supabase i London (eu-west-2). Storbritannia har et tilstrekkelighetsvedtak fra EU-kommisjonen, og overføring dit kan skje på det grunnlaget. Anthropic behandler i USA. Overføring dit krever et gyldig grunnlag, som EUs standard personvernbestemmelser. Resend kan også behandle utenfor EU/EØS.</p>
 
     <h2>Lagringstid</h2>
     <p>Nyhetsbrevlisten ligger hos oss til du melder deg av eller ber om sletting. Etter avmelding beholder vi e-postadressen og tidspunktet, slik at vi ikke sender på nytt. Du kan likevel be om at også den resten slettes.</p>
     <p>Kontoen og det som hører til den, ligger så lenge kontoen finnes. Når du sletter kontoen, sletter vi profilen, sakene du følger, komiteene du følger, aktiviteten, varselloggen, høringssvar, tilbakemeldinger og en eventuell nyhetsbrevrad med samme e-post. Utsendingsloggen for den raden slettes sammen med den.</p>
     <p>Utsendingsloggen for øvrige sendinger beholdes i inntil 24 måneder, slik at vi kan se at et brev gikk ut. Den inneholder en referanse til påmeldingen, ikke hele brevteksten.</p>
-    <p>For signaturer og felles innspill er fristene slik: e-postadressen skal bort 30 dager etter innsending, og navn, rolle, organisasjon og kommune 12 måneder etter innsending. Et innspill som verken blir sendt eller merket avsluttet, får begge fristene 12 måneder etter at signaturen ble opprettet. Er det avsluttet uten å bli sendt, er fristen 12 måneder etter avslutningen. Hver natt kl. 03:00 UTC teller en jobb hvor mange rader som har passert fristen, og logger antallet uten personopplysninger. Jobben sletter ikke. Ekte sletting slås på senere, etter at tellingen er sjekket. Trekker du deg, slettes likevel navn, e-post og det du skrev om deg selv med en gang, i vår kopi.</p>
+    <p>For felles innspill er fristene slik: e-postadressen skal bort 30 dager etter innsending, og navnet 12 måneder etter innsending. Blir innspillet ikke sendt, skal alt bort 12 måneder etter at det ble avsluttet, eller 12 måneder etter at du signerte hvis det aldri avsluttes. Signaturer på en kampanje som ikke er et felles innspill, har frist 12 måneder etter at de ble opprettet, med mindre kampanjen er merket sendt eller avsluttet. Er den sendt, er fristen 30 dager for e-post og 12 måneder for navn, regnet fra innsendingen. Sletting etter fristen er ikke slått på, verken før eller etter at tellingen er satt opp. Tellingen, når den kjører, skriver bare hvor mange rader som har passert fristen, uten personopplysninger. Den sletter ikke.</p>
 
     <h2 id="folg-komite">Komiteer du følger</h2>
     <p>Når du følger en stortingskomité, lagrer vi bruker-id-en din og hvilken komité du valgte. Formålet er å vise relevante saker i appen, blant annet åpne høringer i komiteene du følger.</p>
@@ -74,12 +74,13 @@
     <p>Behandlingsansvarlig er Kulturvarsling AS, org.nr. 936 282 881, Middelthuns gate 11 B, 0368 Oslo. Kontakt: <a href="mailto:post@kulturvarsling.no">post@kulturvarsling.no</a>.</p>
 
     <h2 id="felles-innspill">Felles innspill og signaturer</h2>
-    <p>Når du signerer et felles innspill eller en kampanje, lagrer vi navnet ditt, e-postadressen din og det du velger å oppgi om rolle, organisasjon og kommune. Vi lagrer også når du ga samtykke, og hvilken tekst du godtok.</p>
-    <p>Innspillet og navn, rolle eller organisasjon og kommune sendes til mottakeren som står på kampanjen. Høringssvar og innspill blir ofte offentlige hos mottakeren. E-postadressen din deles aldri. Den brukes til å bekrefte signaturen og si fra hvordan det gikk. På kulturvarsling.no viser vi hvor mange som har signert.</p>
-    <p>Du kan trekke samtykket via lenken i e-posten. Da sletter vi med en gang navn, e-post og det du har skrevet om deg selv, i vår kopi. Signaturen teller ikke lenger. Er innspillet allerede sendt, kan vi ikke slette det mottakeren har fått. Vi kan stanse videre bruk hos oss. Du kan også be om innsyn, retting eller sletting, og klage til Datatilsynet. Du bekrefter selv at du er minst 16 år når du signerer. Vi sjekker ikke alderen.</p>
+    <p>Felles innspill tas imot av funksjonen signer-innspill. Appen skriver ikke signaturen rett i databasen. Mottaket er stengt, så ingen ny signatur lagres herfra før det åpnes. Når det er åpent, lagrer vi navnet ditt, e-postadressen din og det du velger å oppgi om rolle, organisasjon og kommune, og hvilken samtykketekst du godtok.</p>
+    <p>Innspillet og navn, rolle eller organisasjon og kommune sendes til mottakeren som står på innspillet. Høringssvar og innspill blir ofte offentlige hos mottakeren. E-postadressen din deles aldri. Den brukes til å bekrefte signaturen og si fra hvordan det gikk. På kulturvarsling.no viser vi hvor mange som har signert.</p>
+    <p>Samtykketeksten for nye signaturer er: «Jeg kan trekke signaturen når som helst via lenken i e-posten. Da sletter Kulturvarsling AS med en gang navnet mitt, e-postadressen min og det jeg har skrevet om meg selv. Er innspillet allerede sendt, kan det ikke hentes tilbake fra [mottaker]. E-postadressen min slettes 30 dager etter innsending, og navnet mitt 12 måneder etter innsending. Blir innspillet ikke sendt, slettes alt 12 måneder etter at det ble avsluttet, eller 12 måneder etter at jeg signerte hvis det aldri avsluttes. Jeg bekrefter at jeg er minst 16 år.» [mottaker] byttes ut med navnet på mottakeren. Eldre signaturer beholder teksten de godtok. Du bekrefter selv at du er minst 16 år. Vi sjekker ikke alderen.</p>
+    <p>Lenken i e-posten er måten du trekker signaturen på. Med funksjonen som legges ut sammen med denne teksten, virker lenken også når nye signaturer er stengt, og den sletter med en gang navn, e-post, det du har skrevet om deg selv, og koblingen til kontoen, i vår kopi. Inntil den funksjonen er ute, registrerer lenken tilbaketrekkingen når signering er åpen, og den er avvist når signering er stengt. Er innspillet allerede sendt, kan det mottakeren har fått, ikke hentes tilbake. Du kan også be om innsyn, retting eller sletting, og klage til Datatilsynet.</p>
 
     <h2>Dine rettigheter</h2>
-    <p>Du kan be om innsyn, retting, sletting, begrensning og dataportabilitet, og du kan klage til Datatilsynet. Samtykke trekker du tilbake ved å melde deg av nyhetsbrevet, skru av varsler, trekke en signatur, eller slette kontoen. Når du trekker en signatur, sletter vi navn, e-post og det du skrev om deg selv med en gang, i vår kopi.</p>
+    <p>Du kan be om innsyn, retting, sletting, begrensning og dataportabilitet, og du kan klage til Datatilsynet. Samtykke trekker du tilbake ved å melde deg av nyhetsbrevet, skru av varsler, bruke lenken i e-posten på et felles innspill, eller slette kontoen.</p>
     <p>I appen, under Min profil og Innstillinger, sletter «Slett min konto» kontoen og dataene som er knyttet til den. Knappen gjør ingenting hvis slettingen feiler. Du kan også skrive til <a href="mailto:post@kulturvarsling.no">post@kulturvarsling.no</a>.</p>
 
     <h2>Lokal lagring</h2>

@@ -226,43 +226,6 @@ async function hentAktivitet(brukerId: any) {
   return data ?? [];
 }
 
-const SIGNATUR_INNLOGGING = "Logg inn for å signere kampanjen. Signaturen lagres på kontoen din.";
-
-// return=minimal: anon og authenticated har ikke SELECT på tabellen.
-// return=representation (RETURNING) ville feilet, og raden ble ikke lagret.
-async function signKampanje(kampanjeId: any, brukerId: any, navn: any, epost: any) {
-  const { data } = await sb.auth.getSession();
-  const token = data?.session?.access_token ?? null;
-  const innlogget = data?.session?.user?.id ?? null;
-  if (!token || !innlogget || !brukerId || brukerId !== innlogget) return "feil";
-  let res;
-  try {
-    res = await fetch(`${SUPABASE_URL}/rest/v1/kampanje_signaturer`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON,
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        kampanje_id: kampanjeId,
-        bruker_id: innlogget,
-        navn,
-        epost,
-      }),
-    });
-  } catch {
-    return "feil";
-  }
-  if (res.status === 409) return "allerede";
-  if (!res.ok) {
-    console.error("Signatur-feil:", res.status);
-    return "feil";
-  }
-  return "ok";
-}
-
 async function sendFeedbackDB(brukerId: any, type: any, tekst: any, sakTittel: any) {
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token ?? null;
@@ -1569,30 +1532,7 @@ export function VarselKort({v,compact=false,onClick,fulgte=[],toggleFølg=()=>{}
   );
 }
 
-function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevInnlogging}:{k:any;compact?:boolean;user?:any;relSak?:any;onÅpneSak?:()=>void;onKrevInnlogging?:(grunn:string)=>void}) {
-  const [sig,setSig]=useState(k.sig);
-  const [vis,setVis]=useState(false);
-  const [signert,setSignert]=useState(false);
-  const [laster,setLaster]=useState(false);
-  const [navn,setNavn]=useState(user?.navn||"");
-  const [epost,setEpost]=useState(user?.epost||"");
-
-  function beOmSignatur() {
-    if(user?.id) { setVis(true); return; }
-    onKrevInnlogging?.(SIGNATUR_INNLOGGING);
-  }
-
-  async function signer() {
-    if(!user?.id) { onKrevInnlogging?.(SIGNATUR_INNLOGGING); return; }
-    if(!navn||!epost) return;
-    setLaster(true);
-    const utfall = await signKampanje(k.id, user.id, navn, epost);
-    if(utfall==="ok") { setSig((s: any)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
-    else if(utfall==="allerede") { setSignert(true); setVis(false); showToast("Du har allerede signert"); }
-    else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
-    setLaster(false);
-  }
-
+function KampanjeKort({k,compact=false,user: _user=null,relSak=null,onÅpneSak,onKrevInnlogging: _inn=undefined}:{k:any;compact?:boolean;user?:any;relSak?:any;onÅpneSak?:()=>void;onKrevInnlogging?:(grunn:string)=>void}) {
   return (
     <article className="kv-kort">
       {(k.tags||[]).length>0 && <p className="kv-meta">{(k.tags||[]).join(", ")}</p>}
@@ -1601,21 +1541,8 @@ function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevIn
       {relSak && onÅpneSak && (
         <button type="button" className="kv-knapp stille" onClick={onÅpneSak}>Sak: {relSak.tittel}</button>
       )}
-      <p className="kv-meta">{sig} av {k.mal}{k.dager!=null?` · ${k.dager} dager igjen`:""}</p>
-      {signert?(
-        <p className="kv-brod">Signaturen er registrert.</p>
-      ):vis && user?.id?(
-        <div>
-          <Felt id={`kamp-navn-${k.id}`} label="Navn" value={navn} onChange={e=>setNavn(e.target.value)} />
-          <Felt id={`kamp-epost-${k.id}`} label="E-post" type="email" value={epost} onChange={e=>setEpost(e.target.value)} />
-          <div className="kv-klynge">
-            <Knapp onClick={signer} disabled={laster}>{laster?"Lagrer":"Signer"}</Knapp>
-            <Knapp variant="linje" onClick={()=>setVis(false)}>Avbryt</Knapp>
-          </div>
-        </div>
-      ):(
-        <Knapp onClick={beOmSignatur}>Signer kampanjen</Knapp>
-      )}
+      <p className="kv-meta">{k.sig} av {k.mal}{k.dager!=null?` · ${k.dager} dager igjen`:""}</p>
+      <p className="kv-brod">Signering er ikke åpen.</p>
     </article>
   );
 }
@@ -1860,39 +1787,8 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
   );
 }
 
-function KampanjeSignerMini({k,user=null,onKrevInnlogging}:{k:any;user?:any;onKrevInnlogging?:(grunn:string)=>void}) {
-  const [sig,setSig]=useState(k.sig);
-  const [signert,setSignert]=useState(false);
-  const [vis,setVis]=useState(false);
-  const [laster,setLaster]=useState(false);
-  const [navn,setNavn]=useState(user?.navn||"");
-  const [epost,setEpost]=useState(user?.epost||"");
-  function beOmSignatur() {
-    if(user?.id) { setVis(true); return; }
-    onKrevInnlogging?.(SIGNATUR_INNLOGGING);
-  }
-  async function signer() {
-    if(!user?.id) { onKrevInnlogging?.(SIGNATUR_INNLOGGING); return; }
-    if(!navn||!epost) return;
-    setLaster(true);
-    const utfall = await signKampanje(k.id, user.id, navn, epost);
-    if(utfall==="ok") { setSig((s:number)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
-    else if(utfall==="allerede") { setSignert(true); setVis(false); showToast("Du har allerede signert"); }
-    else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
-    setLaster(false);
-  }
-  if(signert) return <p className="kv-brod">Signaturen er registrert. {sig} av {k.mal}.</p>;
-  if(vis && user?.id) return (
-    <div>
-      <Felt id={`mini-navn-${k.id}`} label="Navn" value={navn} onChange={e=>setNavn(e.target.value)} />
-      <Felt id={`mini-epost-${k.id}`} label="E-post" type="email" value={epost} onChange={e=>setEpost(e.target.value)} />
-      <div className="kv-klynge">
-        <Knapp onClick={signer} disabled={laster}>{laster?"Lagrer":"Signer"}</Knapp>
-        <Knapp variant="linje" onClick={()=>setVis(false)}>Avbryt</Knapp>
-      </div>
-    </div>
-  );
-  return <Knapp onClick={beOmSignatur}>Signer denne kampanjen</Knapp>;
+function KampanjeSignerMini({k,user: _user=null,onKrevInnlogging: _inn}:{k:any;user?:any;onKrevInnlogging?:(grunn:string)=>void}) {
+  return <p className="kv-brod">Signering er ikke åpen. {k.sig} av {k.mal}.</p>;
 }
 
 function DelMini({sak}: any) {
@@ -2131,7 +2027,7 @@ function BrukerMobiliser({loggAktivitet: _loggAktivitet=()=>{},user=null,varsler
     {tittel:"Skriv høringssvar",tekst:"Utkast til en åpen sak. Det sendes ikke inn herfra.",type:"horing_oversikt"},
     {tittel:"Skriv pressemelding",tekst:"Tomt felt. Det ligger ingen mal, og ingenting sendes herfra.",type:"pressem"},
     {tittel:"Del på sosiale medier",tekst:"Tekst til deling, med tittel, sammendrag og frist.",type:"sosiale"},
-    {tittel:"Signer kampanjer",tekst:`${kampanjerData.length} åpne kampanjer.`,type:"kampanje"},
+    {tittel:"Signer kampanjer",tekst:"Signering er ikke åpen.",type:"kampanje"},
   ];
   function åpneHandling(type: string){
     if(type==="komite") setMalModal({type:"komite",kontekst:KOMITEER_DATA[0]});
