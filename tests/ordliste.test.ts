@@ -131,6 +131,18 @@ test("innledningen og tittelen er hele fasiten", () => {
   assert.doesNotMatch(readFileSync("src/statsbudsjett.tsx", "utf8"), /ORDLISTE/);
 });
 
+test("sluttbehandling har et eksempel uten dato", () => {
+  const o = ORDLISTE.find((x) => x.id === "sluttbehandling");
+  assert.equal(
+    o?.eksempel,
+    "Bergen bystyre sluttbehandler reguleringsplanen for Kulturkvartalet Verftet.",
+  );
+  assert.equal((o?.eksempel ?? "").includes("2026"), false);
+  const ord = readFileSync("src/ord.tsx", "utf8");
+  assert.match(ord, /forklaringMedLenke\(o\.forklaring, "\/ordliste"\)/);
+  assert.doesNotMatch(ord, /\{o\.forklaring\}/);
+});
+
 test("siste eksempel er uten skillestrek fra utkastet", () => {
   const o = ORDLISTE.find((x) => x.id === "okonomiplan-og-arsbudsjett");
   assert.equal(

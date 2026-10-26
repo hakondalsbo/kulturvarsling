@@ -232,17 +232,40 @@ Deno.serve(async (req: Request) => {
     trukketTid: rad.trukket_tid,
     trekkForespurtTid: rad.trekk_forespurt_tid,
   }, !!kampanje?.sendt_tid);
-  if (utfall === "trukket") {
-    await db.from("kampanje_signaturer").update({ trukket_tid: new Date().toISOString() }).eq("id", rad.id);
-    return svar({ ok: true, trukket: true, melding: "Signaturen er trukket tilbake og teller ikke." });
-  }
-  if (utfall === "forespurt") {
-    await db.from("kampanje_signaturer").update({ trekk_forespurt_tid: new Date().toISOString() }).eq("id", rad.id);
+  const naa = new Date().toISOString();
+  const personSlettet = {
+    navn: null,
+    epost: null,
+    rolle: null,
+    organisasjonsnavn: null,
+    kommune: null,
+    token_hash: null,
+    samtykke_vist: null,
+  };
+  if (utfall === "trukket" || utfall === "allerede_trukket") {
+    const { error } = await db.from("kampanje_signaturer").update({
+      ...personSlettet,
+      trukket_tid: rad.trukket_tid ?? naa,
+    }).eq("id", rad.id);
+    if (error) return svar({ ok: false, feil: "Tilbaketrekkingen ble ikke lagret." }, 500);
     return svar({
       ok: true,
-      trukket: false,
-      melding: "Innspillet er allerede sendt. Vi kan ikke hente signaturen tilbake hos mottakeren. Ønsket om å si fra er registrert. Ingen e-post er sendt.",
+      trukket: true,
+      melding: utfall === "trukket"
+        ? "Signaturen er trukket tilbake og teller ikke. Navn, e-post og det du skrev om deg selv er slettet hos oss."
+        : "Tilbaketrekkingen er allerede registrert. Navn, e-post og det du skrev om deg selv er slettet hos oss.",
     });
   }
-  return svar({ ok: true, melding: "Tilbaketrekkingen er allerede registrert." });
+  const { error } = await db.from("kampanje_signaturer").update({
+    ...personSlettet,
+    trekk_forespurt_tid: rad.trekk_forespurt_tid ?? naa,
+  }).eq("id", rad.id);
+  if (error) return svar({ ok: false, feil: "Tilbaketrekkingen ble ikke lagret." }, 500);
+  return svar({
+    ok: true,
+    trukket: false,
+    melding: utfall === "forespurt"
+      ? "Innspillet er allerede sendt. Vi kan ikke hente signaturen tilbake hos mottakeren. Navn, e-post og det du skrev om deg selv er slettet i vår kopi. Ingen e-post er sendt."
+      : "Tilbaketrekkingen er allerede registrert. Navn, e-post og det du skrev om deg selv er slettet hos oss. Ingen e-post er sendt.",
+  });
 });

@@ -345,7 +345,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     begrep: "Sluttbehandling",
     synonymer: [],
     forklaring: "Den siste behandlingen av en sak, der det endelige vedtaket blir gjort. For en reguleringsplan skjer det i kommunestyret eller bystyret. Etter vedtaket kan de som er berørt, som regel klage.",
-    eksempel: "Bergen bystyre skal sluttbehandle reguleringsplanen for Kulturkvartalet Verftet i møtet 27.–28. oktober 2026.",
+    eksempel: "Bergen bystyre sluttbehandler reguleringsplanen for Kulturkvartalet Verftet.",
     sok: ["sluttbeh"],
   },
   {

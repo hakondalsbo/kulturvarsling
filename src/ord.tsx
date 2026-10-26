@@ -49,7 +49,7 @@ export function Ordforklaring({ id, tekst }: { id: string; tekst: string }) {
       </button>
       {apen ? (
         <span id={panelId} role="note" className="ord-panel">
-          {o.forklaring}
+          {forklaringMedLenke(o.forklaring, "/ordliste")}
           {o.eksempel ? <> Eksempel: {o.eksempel}</> : null}{" "}
           <a href={`/ordliste#${o.id}`}>Se i ordlisten</a>
         </span>
@@ -77,16 +77,16 @@ function bokstavId(b: string): string {
 }
 
 /** Stjernene i fasiten er utheving, ikke ord. De vises som lenke til begrepet. */
-function forklaringMedLenke(tekst: string): ReactNode {
+function forklaringMedLenke(tekst: string, basis = ""): ReactNode {
   const deler = tekst.split(/(\*[^*]+\*)/g);
   return deler.map((del, i) => {
     const merket = del.match(/^\*([^*]+)\*$/);
     if (!merket) return <span key={i}>{del}</span>;
     const ord = merket[1];
     const maal = ORDLISTE.find((o) => o.begrep === ord);
-    if (!maal) return <span key={i}>{ord}</span>;
+    if (!maal) return <em key={i}>{ord}</em>;
     return (
-      <a key={i} href={`#${maal.id}`}>
+      <a key={i} href={`${basis}#${maal.id}`}>
         {ord}
       </a>
     );

@@ -1,8 +1,9 @@
 # Funksjonskonfigurasjon for samtykke og avmelding.
 # Øvrige innstillinger bruker CLI-standarder.
 #
-# IKKE deploy nyhetsbrev fra denne branchen før live-kilden (v5) er hentet
-# og sammenlignet med repoet. En deploy overskriver det som kjører.
+# nyhetsbrev er en stubb som svarer 410, lik prod. En deploy skal holde
+# funksjonen av. Den gamle utsendingen ligger i supabase/arkiv/nyhetsbrev.ts
+# og er ikke en edge-funksjon.
 #
 # send-bekreftelser er manuell. Ikke legg den i pg_cron eller annen tidsplan,
 # og ikke kall den før kulturvarsling.no er verifisert som avsender i Resend.

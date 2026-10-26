@@ -1771,7 +1771,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
             {visNyKampanje&&!nyKampOpprettet&&(
               <div>
                 <Felt id="ny-kamp-tittel" label="Tittel" value={nyKampTittel} onChange={e=>setNyKampTittel(e.target.value)} />
-                <Tekstfelt id="ny-kamp-beskr" label="Hva krever dere?" value={nyKampBeskr} onChange={e=>setNyKampBeskr(e.target.value)} rows={3} placeholder={`Vi krever at ${sak.instans} trekker tilbake forslaget og sikrer...`} />
+                <Tekstfelt id="ny-kamp-beskr" label="Hva krever dere?" value={nyKampBeskr} onChange={e=>setNyKampBeskr(e.target.value)} rows={3} placeholder="Skriv kort hva dere ber om og hvorfor" />
                 <div className="kv-klynge">
                   <Knapp onClick={()=>{if(nyKampTittel)setNyKampOpprettet(true);}}>Opprett kampanje</Knapp>
                   <Knapp variant="linje" onClick={()=>setVisNyKampanje(false)}>Avbryt</Knapp>
@@ -2129,7 +2129,7 @@ function BrukerMobiliser({loggAktivitet: _loggAktivitet=()=>{},user=null,varsler
     {tittel:"Kontakt stortingskomité",tekst:"Åpner et tomt utkast til Familie- og kulturkomiteen. Det sendes ikke herfra.",type:"komite"},
     {tittel:"Skriv til en politiker",tekst:"Det finnes ingen politikerliste.",type:"politiker_oversikt"},
     {tittel:"Skriv høringssvar",tekst:"Utkast til en åpen sak. Det sendes ikke inn herfra.",type:"horing_oversikt"},
-    {tittel:"Skriv pressemelding",tekst:"Mal for pressemelding.",type:"pressem"},
+    {tittel:"Skriv pressemelding",tekst:"Tomt felt. Det ligger ingen mal, og ingenting sendes herfra.",type:"pressem"},
     {tittel:"Del på sosiale medier",tekst:"Tekst til deling, med tittel, sammendrag og frist.",type:"sosiale"},
     {tittel:"Signer kampanjer",tekst:`${kampanjerData.length} åpne kampanjer.`,type:"kampanje"},
   ];

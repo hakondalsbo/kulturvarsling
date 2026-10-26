@@ -1,5 +1,7 @@
-// Manuelt kall av slett_utlopte_signaturer. Den daglige jobben er
-// pg_cron i 20261026230016_slett_signaturer_cron.sql, ikke dette endepunktet.
+// Manuelt kall av slett_utlopte_signaturer, bare telling.
+// Den daglige jobben er pg_cron i 20261026230016_slett_signaturer_cron.sql,
+// kl. 03:00 UTC, etter eInnsyn 01:00–02:10 UTC. Den kaller også med true.
+// Ekte sletting kommer i en senere migrasjon. Ikke kall med false herfra.
 // verify_jwt = true er ikke nok alene. Krever x-cron-secret.
 // Sender ingen e-post.
 
@@ -28,7 +30,7 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
-  const { data, error } = await db.rpc("slett_utlopte_signaturer");
+  const { data, error } = await db.rpc("slett_utlopte_signaturer", { p_dry_run: true });
   if (error) {
     return new Response(JSON.stringify({ ok: false }), {
       status: 500,

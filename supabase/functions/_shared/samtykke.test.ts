@@ -185,7 +185,7 @@ test("organisasjon er lik i funksjoner og nettleser", () => {
   const ui = readFileSync("src/selskap.ts", "utf8");
   const html = readFileSync("public/personvern.html", "utf8");
   const meldPa = readFileSync("supabase/functions/meld-pa/index.ts", "utf8");
-  const nyhetsbrev = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
+  const nyhetsbrev = readFileSync("supabase/arkiv/nyhetsbrev.ts", "utf8");
   assert.deepEqual(lesOrgKonstanter(js), lesOrgKonstanter(ts));
   assert.deepEqual(lesOrgKonstanter(js), lesOrgKonstanter(ui));
   assert.equal(lesOrgKonstanter(js).behandlingsansvarlig, behandlingsansvarlig);
@@ -272,7 +272,7 @@ test("dry-run er standard og logger uten å sende", () => {
   assert.equal(logg.status, "dry_run");
   assert.deepEqual(logg.rader, [{ pamelding_id: 1, status: "dry_run" }]);
 
-  const kilde = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
+  const kilde = readFileSync("supabase/arkiv/nyhetsbrev.ts", "utf8");
   const dry = kilde.indexOf('status: rad.status');
   const resend = kilde.indexOf("https://api.resend.com/emails");
   assert.ok(dry > 0 && resend > dry);
@@ -341,10 +341,14 @@ test("alle utgående e-poster har avmeldingslenke og List-Unsubscribe", () => {
   }
   assert.deepEqual(sendere.sort(), [
     "supabase/functions/meld-pa/index.ts",
-    "supabase/functions/nyhetsbrev/index.ts",
     "supabase/functions/send-bekreftelser/index.ts",
     "supabase/functions/signer-innspill/index.ts",
   ]);
+  const arkiv = readFileSync("supabase/arkiv/nyhetsbrev.ts", "utf8");
+  assert.match(arkiv, /api\.resend\.com\/emails/);
+  assert.match(arkiv, /lagEpost\(/);
+  assert.match(arkiv, /headers: brev\.headers/);
+  assert.doesNotMatch(readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8"), /api\.resend\.com/);
   for (const sti of sendere) {
     if (sti.endsWith("signer-innspill/index.ts")) continue;
     const kilde = readFileSync(sti, "utf8");
@@ -532,17 +536,23 @@ test("appen lagrer samtykket og sletter via funksjonen", () => {
   assert.match(app, /!\s*data\?\.ok/);
 });
 
-test("nyhetsbrev kan ikke trigges med anon-nøkkelen alene", () => {
+test("nyhetsbrev i repoet er stubben som svarer 410", () => {
   const kilde = readFileSync("supabase/functions/nyhetsbrev/index.ts", "utf8");
+  const arkiv = readFileSync("supabase/arkiv/nyhetsbrev.ts", "utf8");
   const config = readFileSync("supabase/config.toml", "utf8");
-  assert.match(kilde, /x-nyhetsbrev-nokkel/);
-  assert.match(kilde, /planleggUtsendelse/);
-  assert.match(kilde, /utsendingErAktiv/);
-  assert.match(kilde, /List-Unsubscribe/);
-  assert.match(kilde, /nyhetsbrev_utsendelser/);
-  assert.match(kilde, /Adressen er ikke bekreftet, samtykkende og aktiv/);
-  assert.doesNotMatch(kilde, /avmeldings_token:\s*data\?/);
-  assert.doesNotMatch(kilde, /avmeldt:\s*true/);
+  assert.match(kilde, /status: 410/);
+  assert.match(kilde, /Nyhetsbrevet er av/);
+  assert.doesNotMatch(kilde, /api\.resend\.com/);
+  assert.doesNotMatch(kilde, /UTSENDING_AKTIV/);
+  assert.doesNotMatch(kilde, /planleggUtsendelse/);
+  assert.match(arkiv, /x-nyhetsbrev-nokkel/);
+  assert.match(arkiv, /planleggUtsendelse/);
+  assert.match(arkiv, /utsendingErAktiv/);
+  assert.match(arkiv, /List-Unsubscribe/);
+  assert.match(arkiv, /nyhetsbrev_utsendelser/);
+  assert.match(arkiv, /Adressen er ikke bekreftet, samtykkende og aktiv/);
+  assert.doesNotMatch(arkiv, /avmeldings_token:\s*data\?/);
+  assert.doesNotMatch(arkiv, /avmeldt:\s*true/);
   assert.match(config, /\[functions\.avmeld\]\s+verify_jwt = false/);
   assert.match(config, /\[functions\.meld-pa\]\s+verify_jwt = false/);
   assert.match(config, /\[functions\.slett-konto\]\s+verify_jwt = true/);

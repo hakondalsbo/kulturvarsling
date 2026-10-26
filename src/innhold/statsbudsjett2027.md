@@ -134,7 +134,7 @@ Budsjettet for kultur behandles av **familie- og kulturkomiteen** på Stortinget
 ## Ordliste
 
 - **Prop. 1 S:** Regjeringens budsjettforslag til Stortinget. Hvert departement har sin egen proposisjon. «S» viser at Stortinget skal gjøre et vedtak som ikke er en lov.
-- **Kapittel og post:** Slik er budsjettet delt opp. Et kapittel er et område, for eksempel kap. 320 Kulturdirektoratet og Kulturrådet. En post er et beløp med et bestemt formål innenfor kapittelet, for eksempel post 55 Norsk kulturfond. Viser du til kapittel og post i et innspill, ser politikerne med en gang hva du mener.
+- **Kapittel og post:** Slik er budsjettet delt opp. Et kapittel er et område, for eksempel kap. 320 Kulturdirektoratet og Kulturrådet m.m. En post er et beløp med et bestemt formål innenfor kapittelet, for eksempel post 55 Norsk kulturfond. Viser du til kapittel og post i et innspill, ser politikerne med en gang hva du mener.
 - **Ramme:** Den samlede summen et område kan bruke. Stortinget vedtar først rammene, og komiteene fordeler pengene innenfor dem etterpå. Derfor er det vanskelig å få flere penger til noe uten at det tas fra noe annet.
 - **Nominell og reell økning:** Den nominelle økningen er hvor mange kroner mer det blir. Den reelle økningen er hva som er igjen når prisvekst er trukket fra. Et beløp som står stille i kroner, blir i praksis mindre verdt.
 - **Innst. (innstilling):** Komiteens forslag til vedtak, etter at den har behandlet saken. For kultur er det Innst. 14 S (2026–2027).
