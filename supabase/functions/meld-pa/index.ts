@@ -21,7 +21,6 @@ import {
   bekreftelsesBrev,
   bekreftelsesSide,
   bekreftelsesutfall,
-  erBlokkert,
   erUuid,
   escapeHtml,
   lagEpost,
@@ -33,6 +32,13 @@ import {
   validerPamelding,
 } from "../_shared/samtykke.ts";
 import { corsHeadere } from "../_shared/cors.ts";
+import {
+  FART_EPOST,
+  FART_IP,
+  klientIp,
+  registrerFartsgrense,
+  sha256Hex,
+} from "../_shared/fartsgrense.ts";
 
 function fraAdresse(): string {
   return lesAvsender(behandlingsansvarlig, Deno.env);
@@ -54,31 +60,6 @@ function admin() {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
-}
-
-async function sha256(tekst: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(tekst));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function klientIp(req: Request): string {
-  return req.headers.get("cf-connecting-ip")
-    || req.headers.get("x-real-ip")
-    || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || "ukjent";
-}
-
-async function antallSiden(
-  db: ReturnType<typeof admin>,
-  nokkel: string,
-  siden: string,
-): Promise<number | null> {
-  const { count, error } = await db.from("meld_pa_forsok")
-    .select("id", { count: "exact", head: true })
-    .eq("nokkel", nokkel)
-    .gte("opprettet_at", siden);
-  if (error) return null;
-  return count ?? 0;
 }
 
 type SendResultat = {
@@ -229,30 +210,16 @@ Deno.serve(async (req: Request) => {
     return svar(req, { ok: true, melding: "Sjekk e-posten din og klikk på bekreftelseslenken." });
   }
 
-  const timeSiden = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const epostNokkel = `epost:${await sha256(validert.verdi.epost)}`;
-  const ipNokkel = `ip:${await sha256(klientIp(req))}`;
-  const [epostAntall, ipAntall] = await Promise.all([
-    antallSiden(db, epostNokkel, timeSiden),
-    antallSiden(db, ipNokkel, timeSiden),
+  const fart = await registrerFartsgrense(db, "meld-pa", [
+    { nokkel: `epost:${await sha256Hex(validert.verdi.epost)}`, grense: FART_EPOST },
+    { nokkel: `ip:${await sha256Hex(klientIp(req))}`, grense: FART_IP },
   ]);
-  if (epostAntall == null || ipAntall == null) {
+  if (fart === "utilgjengelig") {
     return svar(req, { ok: false, feil: "Påmeldingen er midlertidig utilgjengelig. Prøv igjen." }, 503);
   }
-  if (erBlokkert(epostAntall, ipAntall)) {
+  if (fart === "blokkert") {
     return svar(req, { ok: false, feil: "For mange forsøk. Prøv igjen senere." }, 429);
   }
-  const { error: loggFeil } = await db.from("meld_pa_forsok").insert([
-    { nokkel: epostNokkel },
-    { nokkel: ipNokkel },
-  ]);
-  if (loggFeil) {
-    console.error("rate-limit logg", loggFeil.message);
-    return svar(req, { ok: false, feil: "Påmeldingen er midlertidig utilgjengelig. Prøv igjen." }, 503);
-  }
-  await db.from("meld_pa_forsok").delete()
-    .lt("opprettet_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-    .then(() => undefined, () => undefined);
 
   const { data: treff, error: lesFeil } = await db.from("pamelding")
     .select("id, bekreftet_at, avmeldt_at, avmeldings_token")

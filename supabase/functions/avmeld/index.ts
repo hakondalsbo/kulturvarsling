@@ -4,7 +4,7 @@
 // skriver avmeldt_at. Suksess vises bare når skrivingen lykkes.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import {
   erUuid,
   lesToken,
@@ -12,6 +12,12 @@ import {
   svarEtterSkriving,
 } from "../_shared/samtykke.ts";
 import { corsHeadere } from "../_shared/cors.ts";
+import {
+  FART_IP,
+  klientIp,
+  registrerFartsgrense,
+  sha256Hex,
+} from "../_shared/fartsgrense.ts";
 
 function svar(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -41,6 +47,15 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  const fart = await registrerFartsgrense(db, "avmeld", [
+    { nokkel: `ip:${await sha256Hex(klientIp(req))}`, grense: FART_IP },
+  ]);
+  if (fart === "utilgjengelig") {
+    return svar(req, { ok: false, feil: "Kunne ikke melde deg av. Ingenting er endret." }, 503);
+  }
+  if (fart === "blokkert") {
+    return svar(req, { ok: false, feil: "For mange forsøk. Prøv igjen senere." }, 429);
+  }
   const { data, error } = await db.from("pamelding")
     .select("id, epost_normalisert, avmeldt_at")
     .eq("avmeldings_token", token);

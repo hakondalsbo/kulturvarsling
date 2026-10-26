@@ -21,6 +21,7 @@ import {
   tellerMed,
   trekkSignatur,
   utkastErMerke,
+  svarVedSignaturKonflikt,
   validerSignering,
   vurderCaptcha,
 } from "../supabase/functions/_shared/mobilisering-kjerne.ts";
@@ -276,8 +277,11 @@ test("rutene og funksjonene er koblet uten at mottaket åpnes i cron", () => {
   assert.match(stotte, /Innspill du har støttet/);
   assert.match(signer, /, 403\)/);
   assert.match(signer, /if \(brev\.send\)/);
-  assert.match(signer, /MOBILISERING_CAPTCHA_AKTIV/);
-  assert.match(signer, /mobiliser_forsok/);
+  assert.match(signer, /TURNSTILE_SECRET_KEY/);
+  assert.match(signer, /registrerFartsgrense/);
+  assert.match(signer, /svarVedSignaturKonflikt/);
+  assert.doesNotMatch(signer, /MOBILISERING_CAPTCHA_AKTIV/);
+  assert.doesNotMatch(signer, /mobiliser_forsok/);
   const vercel = readFileSync("vercel.json", "utf8");
   assert.match(vercel, /\/min-side/);
   assert.match(vercel, /\/mobiliser/);
@@ -299,15 +303,19 @@ test("rutene og funksjonene er koblet uten at mottaket åpnes i cron", () => {
   assert.doesNotMatch(utsending, /MOBILISERING/);
 });
 
-test("captcha krever verken nøkkel eller token før flagget er på", () => {
-  assert.deepEqual(vurderCaptcha({ flagg: undefined, hemmelighet: undefined, token: undefined }), { krev: false });
-  assert.equal(vurderCaptcha({ flagg: "true", hemmelighet: "", token: "" }).krev, true);
-  const utenNokkel = vurderCaptcha({ flagg: "true", hemmelighet: "  ", token: "x" });
-  assert.equal("status" in utenNokkel && utenNokkel.status, 503);
-  const utenToken = vurderCaptcha({ flagg: "true", hemmelighet: "hemmelig", token: "" });
+test("captcha er av uten hemmelighet og krever token når den er satt", () => {
+  assert.deepEqual(vurderCaptcha({ hemmelighet: undefined, token: undefined }), { krev: false });
+  assert.deepEqual(vurderCaptcha({ hemmelighet: "  ", token: "x" }), { krev: false });
+  const utenToken = vurderCaptcha({ hemmelighet: "hemmelig", token: "" });
   assert.equal("status" in utenToken && utenToken.status, 400);
-  const klar = vurderCaptcha({ flagg: "true", hemmelighet: "hemmelig", token: "a".repeat(20) });
+  const klar = vurderCaptcha({ hemmelighet: "hemmelig", token: "a".repeat(20) });
   assert.deepEqual(klar, { krev: true, token: "a".repeat(20) });
+  assert.equal(
+    svarVedSignaturKonflikt({ code: "23505", message: "duplicate key" }).feil,
+    "Du har allerede signert dette innspillet.",
+  );
+  assert.equal(svarVedSignaturKonflikt({ code: "23505" }).status, 409);
+  assert.equal(svarVedSignaturKonflikt({ message: "timeout" }).status, 500);
 });
 
 test("støttekilden leser bare feltene Min side trenger", () => {

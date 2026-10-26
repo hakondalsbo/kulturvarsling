@@ -375,6 +375,7 @@ test("Oslo kommune og fylkesting får nivå fra organet, ikke fra Claude", async
   assert.equal(akershus.niva, "fylke");
   assert.equal(akershus.sted, "Akershus fylkesting");
   assert.equal(akershus.kommunenr, null);
+  assert.equal(akershus.fylkesnr, "32");
 
   const lagret = geografiSomLagres(
     { niva: "kommune", sted: "Oslo", instans: "Bystyrets sekretariat" },

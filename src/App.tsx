@@ -27,6 +27,7 @@ import { signaturKanSigneres } from "./mobiliser/miljo.ts";
 import { stotteFraSvar, type StottetInnspill as StotteRad } from "./mobiliser/stotte.ts";
 import { DEMO_SKRIFTLIG, erStortingetHoring, folgKomiteAktiv, komiteIdFraInstans, lagreFulgteKomite } from "./horing.ts";
 import { FolgKomiteStyring, HoringFristBlokker, HoringOmSak, KomiteSide, MineKomiteer } from "./horing.tsx";
+import { TurnstileFelt, turnstileNokkel } from "./turnstile.tsx";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
 // Bytt ut disse to verdiene med dine egne fra Supabase, Settings, API
@@ -673,11 +674,29 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
   const [laster,setLaster]=useState(false);
   const [bekreftSendt,setBekreftSendt]=useState(false);
   const [glemtModus,setGlemtModus]=useState(false);
+  const [captchaToken,setCaptchaToken]=useState("");
+  const [captchaOmstart,setCaptchaOmstart]=useState(0);
+  const krevCaptcha = turnstileNokkel() !== "";
+  const captchaValg = captchaToken ? { captchaToken } : {};
+
+  function nullstillCaptcha() {
+    setCaptchaToken("");
+    setCaptchaOmstart((n) => n + 1);
+  }
 
   async function loggInn() {
     setLaster(true); setFeil("");
-    const { data, error } = await sb.auth.signInWithPassword({ email:epost, password:pw });
-    if(error) { setFeil("Feil e-post eller passord."); setLaster(false); return; }
+    if (krevCaptcha && !captchaToken) {
+      setFeil("Bekreft at du ikke er en robot.");
+      setLaster(false);
+      return;
+    }
+    const { data, error } = await sb.auth.signInWithPassword({
+      email:epost,
+      password:pw,
+      options: captchaValg,
+    });
+    if(error) { setFeil("Feil e-post eller passord."); nullstillCaptcha(); setLaster(false); return; }
     const profil = await hentProfil(data.user.id);
     setUser(brukerFraSesjon(data.user, profil));
     setScreen("bruker-app");
@@ -687,13 +706,22 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
   async function registrer() {
     setLaster(true); setFeil("");
     if(!epost||!pw||!navn) { setFeil("Fyll inn alle felt."); setLaster(false); return; }
+    if (krevCaptcha && !captchaToken) {
+      setFeil("Bekreft at du ikke er en robot.");
+      setLaster(false);
+      return;
+    }
     const { data, error } = await sb.auth.signUp({
       email: epost, password: pw,
-      options: { data: { navn } }
+      options: {
+        data: { navn },
+        emailRedirectTo: "https://www.kulturvarsling.no/app",
+        ...captchaValg,
+      }
     });
-    if(error) { setFeil(error.message); setLaster(false); return; }
+    if(error) { setFeil(error.message); nullstillCaptcha(); setLaster(false); return; }
     if(data?.user?.identities?.length === 0) {
-      setFeil("E-post allerede registrert."); setLaster(false); return;
+      setFeil("E-post allerede registrert."); nullstillCaptcha(); setLaster(false); return;
     }
     if(data.user) {
       await upsertProfil(data.user.id, { navn, onboarding_done: false });
@@ -706,11 +734,16 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
 
   async function nullstillPassord() {
     if(!epost) { setFeil("Fyll inn e-postadresse først."); return; }
+    if (krevCaptcha && !captchaToken) {
+      setFeil("Bekreft at du ikke er en robot.");
+      return;
+    }
     setLaster(true); setFeil("");
     const { error } = await sb.auth.resetPasswordForEmail(epost, {
-      redirectTo: "https://www.kulturvarsling.no/app"
+      redirectTo: "https://www.kulturvarsling.no/app",
+      ...captchaValg,
     });
-    if(error) { setFeil("Kunne ikke sende tilbakestillingslenke."); setLaster(false); }
+    if(error) { setFeil("Kunne ikke sende tilbakestillingslenke."); nullstillCaptcha(); setLaster(false); }
     else { setBekreftSendt(true); setLaster(false); }
   }
 
@@ -746,12 +779,13 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
             Ved å opprette konto aksepterer du <a className="kv-lenke" href="/personvern" target="_blank" rel="noopener noreferrer">personvernerklæringen</a>.
           </p>
         )}
+        <TurnstileFelt key={captchaOmstart} onToken={setCaptchaToken} />
         {feil&&<p className="kv-feil" role="alert">{feil}</p>}
-        <Knapp className="bred" onClick={mode==="login"?loggInn:registrer} disabled={laster}>
+        <Knapp className="bred" onClick={mode==="login"?loggInn:registrer} disabled={laster || (krevCaptcha && !captchaToken)}>
           {laster?"Laster":(mode==="login"?"Logg inn":"Opprett konto")}
         </Knapp>
         {mode==="login"&&(
-          <Knapp variant="stille" onClick={()=>{setGlemtModus(true);nullstillPassord();}}>Glemt passordet?</Knapp>
+          <Knapp variant="stille" onClick={()=>{setGlemtModus(true);nullstillPassord();}} disabled={laster || (krevCaptcha && !captchaToken)}>Glemt passordet?</Knapp>
         )}
         <p className="kv-meta">
           {mode==="login"?"Har du ikke konto?":"Har du allerede konto?"}{" "}

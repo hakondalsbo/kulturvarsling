@@ -65,7 +65,9 @@ test("komponentoversikten ligger på /design", () => {
   assert.match(vercel, /"source": "\/design", "destination": "\/index.html"/);
   assert.match(vercel, /\{ "source": "\/statsbudsjett", "destination": "\/index.html" \}/);
   assert.match(vercel, /\{ "source": "\/statsbudsjett\/", "destination": "\/index.html" \}/);
-  assert.doesNotMatch(vercel, /challenges\.cloudflare\.com/);
+  assert.match(vercel, /script-src 'self' https:\/\/vercel\.live https:\/\/challenges\.cloudflare\.com/);
+  assert.match(vercel, /connect-src[^;]*https:\/\/challenges\.cloudflare\.com/);
+  assert.match(vercel, /frame-src https:\/\/vercel\.live https:\/\/challenges\.cloudflare\.com/);
   assert.match(vercel, /Content-Security-Policy/);
   assert.match(vercel, /frame-ancestors 'none'/);
   assert.match(vercel, /X-Frame-Options/);
