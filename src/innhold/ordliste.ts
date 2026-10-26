@@ -1,15 +1,14 @@
 /**
- * Ordliste fra språkansvarlig, 24.10.2026.
- * Teksten er gjengitt ordrett. Søkemønstrene (sok) brukes bare til å finne
- * ord i sakstekst og skal ikke vises.
+ * Ordliste godkjent av Varselredaktør og Kildevakt.
+ * Teksten er gjengitt ordrett. Søkemønstrene (sok) vises ikke.
+ * De brukes bare til å finne ord i sakstekst.
  *
- * Budsjettordene (budsjettord: true) er samme forklaringer som ordlisten på
- * statsbudsjett-siden. Den siden lages i en egen PR og skal importere
- * BUDSJETTORD herfra, ikke kopiere teksten. Endres den ene, må den andre følge.
+ * Budsjettordene (budsjettord: true) er de seks begrepene statsbudsjett-siden
+ * kan lese herfra. Selve budsjettsiden er ikke endret i denne runden.
  */
 
 export const ORDLISTE_TITTEL = "Ordliste: ord du møter i sakene";
-export const ORDLISTE_INNLEDNING = "Mange av sakene våre bruker ord fra forvaltningen og politikken. Her forklarer vi de vanligste, og hva de betyr for deg som jobber med kunst og kultur.";
+export const ORDLISTE_INNLEDNING = "Mange av sakene våre bruker ord fra forvaltningen og politikken. Her forklarer vi de vanligste: hva ordet betyr, og hva det betyr for deg som jobber med kunst og kultur. Ordene står i alfabetisk rekkefølge. Ord i parentes er andre former eller nynorske former av samme ord.";
 
 export type OrdlisteInnslag = {
   id: string;
@@ -19,7 +18,7 @@ export type OrdlisteInnslag = {
   eksempel?: string;
   /** Internt søkemønster. Vises ikke. */
   sok: readonly string[];
-  /** Samme tekst skal brukes på statsbudsjett-siden. */
+  /** Samme begrep kan leses av statsbudsjett-siden. Teksten der er ikke byttet. */
   budsjettord?: boolean;
 };
 
@@ -28,7 +27,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "arbeidsstipend",
     begrep: "Arbeidsstipend",
     synonymer: [],
-    forklaring: "Et stipend fra Statens kunstnerstipend som skal gi kunstnere en fast inntekt i en periode, slik at de kan jobbe med kunsten sin. Beløpet fastsettes i statsbudsjettet hvert år.",
+    forklaring: "Et stipend fra Statens kunstnerstipend, slik at kunstnere kan jobbe med kunsten sin. Stipendet gis for ett til fem år og utbetales månedlig, slik at kunstneren får en fast inntekt i perioden. Beløpet fastsettes i statsbudsjettet hvert år.",
     eksempel: "Regjeringen foreslår at et arbeidsstipend øker fra 342 193 til 354 801 kroner i 2027.",
     sok: ["arbeidsstipend"],
   },
@@ -36,8 +35,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "budsjettforlik",
     begrep: "Budsjettforlik",
     synonymer: ["budsjettavtale"],
-    forklaring: "Avtalen partiene inngår for å skaffe flertall for budsjettet. Det er ofte her de siste endringene blir gjort.",
-    eksempel: "Vil du ha en endring i statsbudsjettet, er det lurt å kontakte partiene før de blir enige.",
+    forklaring: "Avtalen partiene inngår for å få flertall for statsbudsjettet. Det er ofte her de siste endringene blir gjort. Vil du ha en endring i budsjettet, må du derfor nå fram til partiene før de blir enige.",
     sok: ["budsjettforlik", "budsjettavtale"],
     budsjettord: true,
   },
@@ -53,8 +51,8 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "byrad-og-byradssak",
     begrep: "Byråd og byrådssak",
     synonymer: ["fylkesråd"],
-    forklaring: "I Oslo og Bergen styres kommunen av et byråd, en slags lokal regjering som får sin makt fra bystyret. En byrådssak er en sak byrådet legger fram for bystyret. Noen fylkeskommuner har en tilsvarende ordning med et fylkesråd.",
-    eksempel: "Oslo byråd har lagt fram sitt forslag til budsjett for 2027, som Kultur- og utdanningsutvalget nå behandler.",
+    forklaring: "I Oslo, Bergen og Trondheim styres kommunen av et byråd. Byrådet er en slags lokal regjering som får makten sin fra bystyret. En byrådssak er en sak byrådet legger fram for bystyret. Noen fylkeskommuner har en tilsvarende ordning med et fylkesråd.",
+    eksempel: "Oslo byråd har lagt fram forslaget sitt til budsjett for 2027, og Kultur- og utdanningsutvalget behandler det nå.",
     sok: ["byråd"],
   },
   {
@@ -69,7 +67,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "driftstilskudd",
     begrep: "Driftstilskudd",
     synonymer: ["driftstilskot", "fast tilskudd"],
-    forklaring: "Penger som går til den daglige driften av en institusjon eller organisasjon, for eksempel lønn og husleie. Driftstilskudd gis ofte år etter år, i motsetning til prosjekttilskudd, som gjelder ett bestemt prosjekt.",
+    forklaring: "Penger til den daglige driften av en institusjon eller organisasjon, for eksempel lønn og husleie. Driftstilskudd gis ofte år etter år. Et prosjekttilskudd gjelder derimot ett bestemt prosjekt.",
     eksempel: "Agder fylkeskommune behandler søknader om økte faste driftstilskudd til kultur og kulturarv fra 2027.",
     sok: ["driftstilskudd", "driftstilskot"],
   },
@@ -77,7 +75,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "einnsyn",
     begrep: "eInnsyn",
     synonymer: [],
-    forklaring: "En nasjonal nettside der offentlige virksomheter legger ut postlistene sine, og der mange kommuner også legger ut møter og saksdokumenter. Her kan du lese hva som er sendt inn og hva politikerne skal behandle.",
+    forklaring: "En nasjonal nettside der offentlige virksomheter legger ut postlistene sine. Mange kommuner legger også ut møter og saksdokumenter der. Her kan du se hva som er sendt inn, og hva politikerne skal behandle.",
     eksempel: "I saken om kulturmidlene i Bydel Nordre Aker var saksdokumentene ennå ikke lagt ut i eInnsyn.",
     sok: ["einnsyn"],
   },
@@ -85,22 +83,22 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "formannskap",
     begrep: "Formannskap",
     synonymer: [],
-    forklaring: "Et politisk utvalg i kommuner som ikke har byråd. Formannskapet forbereder blant annet budsjettet før kommunestyret vedtar det, og kan selv avgjøre enkelte saker. Oslo og Bergen har byråd og derfor ikke formannskap.",
+    forklaring: "Et politisk utvalg i kommunen. Formannskapet forbereder blant annet budsjettet før kommunestyret vedtar det, og kan selv avgjøre enkelte saker. Kommuner med byråd (Oslo, Bergen og Trondheim) har ikke formannskap.",
     sok: ["formannskap"],
   },
   {
     id: "forskrift",
     begrep: "Forskrift",
     synonymer: [],
-    forklaring: "Regler som utfyller en lov. En forskrift vedtas av regjeringen, et departement eller en kommune, og gjelder like mye som loven. Endringer i en forskrift sendes som regel på høring først.",
-    eksempel: "Kulturdepartementet har foreslått endringer i kringkastingsforskriften som gjelder lokalradioer på FM.",
+    forklaring: "Regler som utfyller en lov. En forskrift vedtas for eksempel av regjeringen, et departement eller en kommune. En forskrift gis med hjemmel i en lov og er bindende for alle den gjelder for, men den kan ikke gå imot loven. Endringer i en forskrift sendes som regel på høring først, og da kan du si din mening.",
+    eksempel: "Kultur- og likestillingsdepartementet har foreslått endringer i kringkastingsforskriften som gjelder lokalradioer på FM.",
     sok: ["forskrift"],
   },
   {
     id: "forvaltningsrevisjon",
     begrep: "Forvaltningsrevisjon",
     synonymer: [],
-    forklaring: "En grundig gjennomgang av om kommunen gjør jobben sin slik den skal, etter reglene og uten å sløse. Den bestilles av kontrollutvalget.",
+    forklaring: "En grundig gjennomgang av om kommunen gjør jobben sin slik den skal, følger reglene og bruker pengene fornuftig. Forvaltningsrevisjonen bestilles av kontrollutvalget.",
     eksempel: "Bergen kommune har fått en forvaltningsrevisjon av hvordan tilskuddsordningene på kulturområdet er laget og blir fulgt opp.",
     sok: ["forvaltningsrevisjon"],
   },
@@ -108,15 +106,15 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "fredning",
     begrep: "Fredning",
     synonymer: [],
-    forklaring: "Et vedtak om å verne et kulturminne, et bygg eller et område for framtiden. Det blir da strenge krav til hva man kan endre. Et forslag om fredning sendes vanligvis på høring før det blir vedtatt.",
-    eksempel: "Bergen kommune har skrevet en høringsuttalelse til forslaget om fredning av området rundt Bergenhus festning, Sverresborg og Skuteviken.",
+    forklaring: "Et vedtak om å verne et kulturminne, et bygg eller et område for framtiden. Da blir det strenge krav til hva som kan endres. Et forslag om fredning sendes vanligvis på høring før det blir vedtatt.",
+    eksempel: "Området rundt Bergenhus festning, Sverresborg og Skuteviken er foreslått fredet, og forslaget er sendt på høring.",
     sok: ["fredning", "fredet"],
   },
   {
     id: "fylkesting",
     begrep: "Fylkesting",
     synonymer: [],
-    forklaring: "Det øverste folkevalgte organet i en fylkeskommune. Fylkestinget vedtar fylkeskommunens budsjett, som blant annet gjelder regionale kulturtilskudd og kulturminnevern.",
+    forklaring: "Det øverste folkevalgte organet i en fylkeskommune. Fylkestinget vedtar budsjettet til fylkeskommunen, blant annet regionale kulturtilskudd og penger til kulturminnevern.",
     eksempel: "Fylkestinget i Akershus gjør det endelige vedtaket om budsjettet for 2027 10.–11. desember 2026.",
     sok: ["fylkesting"],
   },
@@ -124,30 +122,30 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "forstegangsbehandling",
     begrep: "Førstegangsbehandling",
     synonymer: [],
-    forklaring: "Første gang politikerne behandler et planforslag, for eksempel en reguleringsplan. Som regel vedtar de da å legge forslaget ut på offentlig ettersyn, slik at alle kan si sin mening før planen blir endelig vedtatt.",
+    forklaring: "Første gang politikerne behandler et planforslag, for eksempel en reguleringsplan. Som regel vedtar de da å legge forslaget ut på offentlig ettersyn. Da kan alle si sin mening før planen blir endelig vedtatt.",
     sok: ["førstegangsbeh"],
   },
   {
     id: "gjennomforingsvedtak",
     begrep: "Gjennomføringsvedtak",
     synonymer: [],
-    forklaring: "Et vedtak om å sette i gang et byggeprosjekt eller et tiltak etter at det er planlagt og kostnadsberegnet. Etter dette vedtaket starter selve arbeidet.",
-    eksempel: "Bergen har gjort gjennomføringsvedtak for å utbedre Klostergarasjen og for en arkeologisk undersøkelse i Vågen.",
+    forklaring: "Et vedtak om å sette i gang et byggeprosjekt eller et annet tiltak etter at det er planlagt og kostnadsberegnet. Etter dette vedtaket starter selve arbeidet.",
+    eksempel: "Bergens byråd har gjort gjennomføringsvedtak for en arkeologisk undersøkelse i Vågen, og bystyret skal behandle gjennomføringsvedtak for å utbedre Klostergarasjen.",
     sok: ["gjennomføringsvedtak"],
   },
   {
     id: "horing",
     begrep: "Høring",
     synonymer: ["høyring"],
-    forklaring: "Når en myndighet sender et forslag ut og ber om meninger før det bestemmes noe. Som regel kan alle sende inn svar, også de som ikke står på listen over dem som er invitert. Stortingets komiteer har også egne høringer om saker de behandler.",
-    eksempel: "Kulturdepartementet har sendt endringer i kringkastingsforskriften på høring.",
+    forklaring: "En myndighet sender ut et forslag og ber om meninger før noe blir bestemt. Som regel kan alle svare, også de som ikke står på listen over dem som er invitert. Stortingets komiteer holder også egne høringer om saker de behandler.",
+    eksempel: "Kultur- og likestillingsdepartementet har sendt endringer i kringkastingsforskriften på høring.",
     sok: ["høring", "høyring"],
   },
   {
     id: "horingsfrist",
     begrep: "Høringsfrist",
     synonymer: [],
-    forklaring: "Siste dag for å sende inn svar på en høring. For høringer fra staten er fristen normalt tre måneder, og ikke kortere enn seks uker uten særlige grunner. Svar som kommer for sent, blir ikke alltid tatt med.",
+    forklaring: "Siste dag for å sende inn svar på en høring. For høringer fra departementer og andre statlige organer er fristen normalt tre måneder og ikke kortere enn seks uker. Høringer i Stortinget og i kommunene har ofte kortere frister. Svar som kommer for sent, blir ikke alltid tatt med.",
     eksempel: "Høringsfristen for utredningen om lootbokser og andre pengespill-lignende elementer i dataspill er 12. januar 2027.",
     sok: ["høringsfrist", "frist for høringssvar"],
   },
@@ -171,15 +169,15 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "innspill",
     begrep: "Innspill",
     synonymer: ["innspel"],
-    forklaring: "Et bredere ord for meningene du sender til en myndighet eller politikere. Det kan være et svar på en høring, men også et svar på en mer åpen invitasjon.",
-    eksempel: "Kulturdepartementet ber om innspill til hvordan kunstnerstipendene for 2027 skal fordeles mellom kunstnergruppene, med frist 20. november 2026.",
+    forklaring: "Et videre ord for meningene du sender til en myndighet eller til politikere. Det kan være et svar på en høring, men også et svar på en mer åpen invitasjon.",
+    eksempel: "Kultur- og likestillingsdepartementet ber om innspill til hvordan kunstnerstipendene for 2027 skal fordeles mellom kunstnergruppene. Fristen er 20. november 2026.",
     sok: ["innspill", "innspel"],
   },
   {
     id: "innstilling",
     begrep: "Innstilling",
     synonymer: ["Innst."],
-    forklaring: "På Stortinget er innstillingen komiteens forslag til vedtak, etter at den har behandlet saken. For kultur er det Innst. 14 S (2026–2027). I kommunene brukes ordet om forslaget til vedtak som et utvalg eller administrasjonen sender videre.",
+    forklaring: "På Stortinget er innstillingen komiteens forslag til vedtak etter at den har behandlet saken. For kulturbudsjettet gir familie- og kulturkomiteen en budsjettinnstilling. For budsjettet for 2027 er det Innst. 14 S (2026–2027), som etter planen avgis 10. desember 2026. I kommunene brukes ordet om forslaget til vedtak som et utvalg eller administrasjonen sender videre.",
     sok: ["innstilling", "innst."],
     budsjettord: true,
   },
@@ -187,7 +185,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "kapittel-og-post",
     begrep: "Kapittel og post",
     synonymer: ["kap. og post"],
-    forklaring: "Slik er budsjettet delt opp. Et kapittel er et område, for eksempel kap. 320 Kulturdirektoratet og Kulturrådet. En post er et beløp med et bestemt formål innenfor kapittelet, for eksempel post 55 Norsk kulturfond. Viser du til kapittel og post i et innspill, ser politikerne med en gang hva du mener.",
+    forklaring: "Slik er statsbudsjettet delt opp. Et kapittel er et område, for eksempel kap. 320 Kulturdirektoratet og Kulturrådet m.m. En post er et beløp med et bestemt formål innenfor kapittelet, for eksempel post 55 Norsk kulturfond. Viser du til kapittel og post i et innspill, ser politikerne med en gang hva du mener.",
     sok: ["kap.", "kapittel", "post + tall"],
     budsjettord: true,
   },
@@ -195,7 +193,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "klage",
     begrep: "Klage",
     synonymer: [],
-    forklaring: "Får du avslag på en søknad, for eksempel om tilskudd, kan du som regel klage. Fristen er vanligvis tre uker fra du fikk svaret, og svarbrevet skal si hvordan du klager.",
+    forklaring: "Får du avslag på en søknad, for eksempel om tilskudd, kan du som regel klage. Fristen er vanligvis tre uker fra du fikk svaret. Svarbrevet skal si hvordan du klager.",
     eksempel: "Vestland fylkeskommune behandler en klage på driftstilskudd til kultur og folkehelse for 2026.",
     sok: ["klage"],
   },
@@ -203,7 +201,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "komite",
     begrep: "Komité",
     synonymer: ["komite"],
-    forklaring: "En gruppe folkevalgte som forbereder saker innenfor et fagområde før de avgjøres. På Stortinget behandles kultursaker i familie- og kulturkomiteen. Fylkeskommuner og bydeler har også komiteer.",
+    forklaring: "En gruppe folkevalgte som forbereder saker innenfor et fagområde før de avgjøres. På Stortinget behandles kultursaker i familie- og kulturkomiteen. Fylkeskommuner og bydeler kan også ha komiteer. Se også *Utvalg*.",
     eksempel: "Akershus fylkeskommunes komité for kultur, mangfold, næring og tannhelse behandler budsjettet for 2027.",
     sok: ["komite", "komité"],
   },
@@ -212,7 +210,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     begrep: "Kommunedelplan og temaplan",
     synonymer: [],
     forklaring: "En plan som sier hva kommunen vil prioritere på ett område de neste årene, for eksempel kultur. Planen bestemmer ikke pengene direkte, men den blir brukt når budsjettene lages. Mens planen lages, er det ofte mulig å komme med innspill.",
-    eksempel: "Arendal har en kommunedelplan for kunst, kultur, friluft og idrett for 2026–2035, og Stavanger lager en temaplan for kunst og kultur for 2027–2035.",
+    eksempel: "Arendal har en kommunedelplan for kunst, kultur, friluft og idrett for 2026–2035. Stavanger lager en temaplan for kunst og kultur for 2027–2035.",
     sok: ["kommunedelplan", "temaplan", "regional plan", "kulturplan"],
   },
   {
@@ -227,7 +225,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "meld-st",
     begrep: "Meld. St.",
     synonymer: ["stortingsmelding"],
-    forklaring: "En rapport fra regjeringen til Stortinget om et politisk område. Den beskriver hvordan regjeringen ser på feltet og hva den vil gjøre framover. En stortingsmelding har vanligvis ikke ferdige forslag til vedtak, men den legger føringer for politikken i årene etter.",
+    forklaring: "En rapport fra regjeringen til Stortinget om et politisk område. Den beskriver hvordan regjeringen ser på feltet, og hva den vil gjøre framover. En stortingsmelding har vanligvis ikke ferdige forslag til vedtak, men den legger føringer for politikken i årene etter.",
     eksempel: "Regjeringen vil legge fram en ny stortingsmelding om film.",
     sok: ["stortingsmelding", "meld. st"],
   },
@@ -243,8 +241,8 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "nominell-og-reell-okning",
     begrep: "Nominell og reell økning",
     synonymer: [],
-    forklaring: "Den nominelle økningen er hvor mange kroner mer det blir. Den reelle økningen er hva som er igjen når prisvekst er trukket fra. Et beløp som står stille i kroner, blir i praksis mindre verdt.",
-    eksempel: "Når regjeringen skriver at filmfeltet får 75 millioner kroner mer, er justering for prisvekst regnet med.",
+    forklaring: "Den nominelle økningen er hvor mange kroner mer det blir. Den reelle økningen er det som er igjen når prisveksten er trukket fra. Et beløp som står stille i kroner, blir i praksis mindre verdt.",
+    eksempel: "Når regjeringen skriver at bevilgningene til film og dataspill øker med om lag 75 millioner kroner, er prisomregningen regnet med. Selve styrkingen er 45 millioner kroner. Den reelle økningen er altså mindre.",
     sok: ["nominell", "reell", "prisjuster", "prisvekst"],
     budsjettord: true,
   },
@@ -252,21 +250,21 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "nou",
     begrep: "NOU",
     synonymer: ["Norges offentlige utredninger"],
-    forklaring: "En utredning laget av et utvalg som regjeringen har satt ned for å se på et bestemt tema. En NOU sendes som regel på høring, og den kan senere bli til lovforslag eller nye ordninger.",
+    forklaring: "En utredning fra et utvalg som regjeringen har satt ned for å se på et bestemt tema. En NOU sendes som regel på høring, og den kan senere bli til lovforslag eller nye ordninger. Høringen er en god anledning til å si din mening tidlig.",
     sok: ["nou"],
   },
   {
     id: "offentlig-ettersyn",
     begrep: "Offentlig ettersyn",
     synonymer: [],
-    forklaring: "Når et planforslag, for eksempel en reguleringsplan, legges ut slik at alle kan lese det og sende inn merknader. Fristen er minst seks uker. Det er den beste muligheten til å påvirke planen før den blir vedtatt.",
+    forklaring: "Et planforslag, for eksempel en reguleringsplan, legges ut slik at alle kan lese det og sende inn merknader. Fristen er minst seks uker. Dette er ofte den beste muligheten til å påvirke planen før den blir vedtatt.",
     sok: ["offentlig ettersyn"],
   },
   {
     id: "oversendelsesforslag",
     begrep: "Oversendelsesforslag",
     synonymer: [],
-    forklaring: "Et forslag fra en politiker som ikke stemmes over i møtet, men sendes videre til administrasjonen for å bli vurdert. Administrasjonen svarer som regel i en egen sak senere.",
+    forklaring: "Et forslag fra en politiker som ikke blir stemt over i møtet, men sendes videre til administrasjonen for å bli vurdert. Administrasjonen svarer som regel i en egen sak senere.",
     eksempel: "Stavanger kommune har svart på et oversendelsesforslag om mandatet for den nye temaplanen for kunst og kultur.",
     sok: ["oversendelsesforslag"],
   },
@@ -274,7 +272,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "prop-s-og-prop-1-s",
     begrep: "Prop. S og Prop. 1 S",
     synonymer: ["proposisjon"],
-    forklaring: "En proposisjon er et forslag fra regjeringen til Stortinget. «S» viser at Stortinget skal gjøre et vedtak som ikke er en lov. Prop. 1 S er regjeringens budsjettforslag til Stortinget, og hvert departement har sin egen.",
+    forklaring: "En proposisjon er et forslag fra regjeringen til Stortinget. «S» betyr at Stortinget skal gjøre et vedtak som ikke er en lov. Prop. 1 S er regjeringens budsjettforslag til Stortinget, og hvert departement har sin egen.",
     eksempel: "Endringer i statsbudsjettet i løpet av året kommer også som en Prop. S.",
     sok: ["prop. … s", "proposisjon"],
     budsjettord: true,
@@ -283,7 +281,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "ramme",
     begrep: "Ramme",
     synonymer: [],
-    forklaring: "Den samlede summen et område kan bruke. Stortinget vedtar først rammene, og komiteene fordeler pengene innenfor dem etterpå. Derfor er det vanskelig å få flere penger til noe uten at det tas fra noe annet.",
+    forklaring: "Den samlede summen et område i statsbudsjettet kan bruke. Stortinget vedtar først rammene, og etterpå fordeler komiteene pengene innenfor dem. Derfor er det vanskelig å få mer penger til noe uten at det tas fra noe annet.",
     sok: ["ramme(n/ne)", "budsjettramme"],
     budsjettord: true,
   },
@@ -299,7 +297,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "redegjorelse",
     begrep: "Redegjørelse",
     synonymer: [],
-    forklaring: "En orientering fra en statsråd til Stortinget om et tema. Den følges av en debatt, men Stortinget gjør vanligvis ikke vedtak.",
+    forklaring: "En orientering fra en statsråd til Stortinget om et tema. Etterpå er det debatt, men Stortinget gjør vanligvis ikke vedtak.",
     eksempel: "Kulturministeren skal holde en redegjørelse om mediepolitikk og ytringsfrihet. Datoen er ikke kjent ennå.",
     sok: ["redegjørelse"],
   },
@@ -307,7 +305,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "reguleringsplan",
     begrep: "Reguleringsplan",
     synonymer: [],
-    forklaring: "En plan som bestemmer hva et område kan brukes til, og hva som kan bygges der. For kulturlivet kan det avgjøre om et lokale eller en scene kan bli værende, eller om tomten skal brukes til noe annet.",
+    forklaring: "En plan som bestemmer hva et område kan brukes til, og hva som kan bygges der. For kulturlivet kan den avgjøre om et lokale eller en scene kan bli værende, eller om tomten skal brukes til noe annet.",
     eksempel: "Bergen behandler en reguleringsplan som regulerer området rundt USF og Kjødehallene på Verftet til kulturformål.",
     sok: ["reguleringsplan", "regulering"],
   },
@@ -315,7 +313,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "representantforslag",
     begrep: "Representantforslag",
     synonymer: [],
-    forklaring: "Et forslag fra én eller flere folkevalgte, ikke fra regjeringen eller administrasjonen. På Stortinget går forslaget til en komité, som kan holde høring før den gir sin innstilling. Også i Bergen bystyre kan representanter fremme slike forslag.",
+    forklaring: "Et forslag fra én eller flere folkevalgte, ikke fra regjeringen eller administrasjonen. På Stortinget går forslaget til en komité, som kan holde høring før den gir innstillingen sin. Ordet brukes også i noen kommuner, for eksempel i Bergen bystyre.",
     eksempel: "En stortingsrepresentant har foreslått å etablere et skulpturmuseum i Nasjonalgalleriet.",
     sok: ["representantforslag"],
   },
@@ -331,7 +329,7 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "revidert-budsjett-og-tertialrapport",
     begrep: "Revidert budsjett og tertialrapport",
     synonymer: [],
-    forklaring: "I løpet av året justeres budsjettet når inntekter og utgifter blir annerledes enn planlagt. Kommunene rapporterer tre ganger i året i tertialrapporter, og staten justerer sitt budsjett i mai med revidert nasjonalbudsjett.",
+    forklaring: "I løpet av året justeres budsjettet når inntekter og utgifter blir annerledes enn planlagt. Etter kommuneloven skal kommunen rapportere til kommunestyret minst to ganger i året, ofte i tertialrapporter. En tertial er fire måneder. Staten justerer budsjettet sitt i mai med revidert nasjonalbudsjett.",
     eksempel: "Bergen behandler revidert budsjett for 2026 sammen med første tertialrapport.",
     sok: ["revidert budsjett", "tertial"],
   },
@@ -339,52 +337,51 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "saksframlegg",
     begrep: "Saksframlegg",
     synonymer: ["saksfremlegg", "saksdokumenter"],
-    forklaring: "Dokumentet som beskriver en sak før politikerne behandler den, med bakgrunn, vurderinger og et forslag til vedtak. Det blir som regel lagt ut sammen med møteinnkallingen, og er det beste stedet å se hva som faktisk foreslås.",
+    forklaring: "Dokumentet som beskriver en sak før politikerne behandler den, med bakgrunn, vurderinger og et forslag til vedtak. Det blir som regel lagt ut sammen med møteinnkallingen. Her ser du best hva som faktisk er foreslått.",
     sok: ["saksframlegg", "saksfremlegg", "saksdokument"],
   },
   {
     id: "sluttbehandling",
     begrep: "Sluttbehandling",
     synonymer: [],
-    forklaring: "Den siste behandlingen av en sak, der det endelige vedtaket blir gjort. For en reguleringsplan skjer det i kommunestyret eller bystyret. Etter vedtaket kan berørte som regel klage.",
-    eksempel: "Bergen bystyre sluttbehandler reguleringsplanen for Kulturkvartalet Verftet 27. oktober 2026.",
+    forklaring: "Den siste behandlingen av en sak, der det endelige vedtaket blir gjort. For en reguleringsplan skjer det i kommunestyret eller bystyret. Etter vedtaket kan de som er berørt, som regel klage.",
+    eksempel: "Bergen bystyre skal sluttbehandle reguleringsplanen for Kulturkvartalet Verftet i møtet 27.–28. oktober 2026.",
     sok: ["sluttbeh"],
   },
   {
     id: "spillemidler",
     begrep: "Spillemidler",
     synonymer: [],
-    forklaring: "Overskuddet fra Norsk Tippings spill. Pengene fordeles til idrett, kultur og andre samfunnsnyttige formål, og en del av dem går til tilskuddsordninger på kulturfeltet.",
+    forklaring: "Overskuddet fra Norsk Tippings spill. Pengene fordeles til idrett, kultur og andre samfunnsnyttige formål, og en del går til tilskuddsordninger på kulturfeltet.",
     sok: ["spillemid"],
   },
   {
     id: "statsbudsjett",
     begrep: "Statsbudsjett",
     synonymer: [],
-    forklaring: "Statens plan for inntekter og utgifter for ett år. Regjeringen legger fram forslaget i oktober, og Stortinget vedtar det i desember. Det er her pengene til kunstnerstipend, Kulturrådet og de statlige kulturinstitusjonene blir bestemt.",
+    forklaring: "Statens plan for inntekter og utgifter for ett år. Regjeringen legger fram forslaget i oktober, og Stortinget vedtar det i desember. Her blir pengene til kunstnerstipend, Kulturrådet og de statlige kulturinstitusjonene bestemt.",
     sok: ["statsbudsjett"],
   },
   {
     id: "soknadsfrist",
     begrep: "Søknadsfrist",
     synonymer: [],
-    forklaring: "Siste dag for å sende inn en søknad til en tilskuddsordning. Mange ordninger har faste frister, mens noen tar imot søknader hele året og behandler dem fortløpende.",
-    eksempel: "Kulturrådet har flere runder i året, og vi varsler når en runde med en bestemt søknadsfrist er avgjort.",
+    forklaring: "Siste dag for å sende inn en søknad til en tilskuddsordning. Mange ordninger har faste frister. Noen tar imot søknader hele året og behandler dem fortløpende.",
+    eksempel: "Kulturrådet har flere søknadsrunder i året. Vi varsler når en runde med en bestemt søknadsfrist er avgjort.",
     sok: ["søknadsfrist"],
   },
   {
     id: "tildeling",
     begrep: "Tildeling",
     synonymer: ["innvilget"],
-    forklaring: "Avgjørelsen om hvem som får penger i en søknadsrunde. Tildelingslistene viser hvem som fikk støtte og hvor mye, og de er nyttige for å se hva slags prosjekter en ordning gir penger til.",
-    eksempel: "Kulturrådet innvilget 183 søknader innen musikk og scenekunst i en runde i april 2026.",
+    forklaring: "Avgjørelsen om hvem som får penger i en søknadsrunde. Tildelingslistene viser hvem som fikk støtte, og hvor mye. De er nyttige for å se hva slags prosjekter en ordning gir penger til.",
     sok: ["tildel", "innvilg"],
   },
   {
     id: "tilskudd",
     begrep: "Tilskudd",
     synonymer: ["tilskot", "støtte"],
-    forklaring: "Penger fra det offentlige som ikke skal betales tilbake. Et tilskudd kan gå til drift eller til et bestemt prosjekt, og det følger ofte krav om å rapportere hva pengene er brukt til.",
+    forklaring: "Penger fra det offentlige som ikke skal betales tilbake. Et tilskudd kan gå til drift eller til et bestemt prosjekt. Ofte må du rapportere hva pengene er brukt til.",
     eksempel: "Bydel Ullern behandler en rapport om hvordan tilskuddene til kultur- og idrettsaktiviteter ble brukt i 2025.",
     sok: ["tilskudd", "tilskot"],
   },
@@ -392,15 +389,15 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
     id: "tilskuddsordning",
     begrep: "Tilskuddsordning",
     synonymer: [],
-    forklaring: "En fast ordning der man kan søke om penger til et bestemt formål, med egne regler og frister. Kommuner, fylkeskommuner og staten har hver sine ordninger.",
-    eksempel: "Buskerud fylkeskommune har laget en oversikt over alle sine tilskuddsordninger for kultur, kulturarv, idrett og friluftsliv.",
+    forklaring: "En fast ordning der du kan søke om penger til et bestemt formål, med egne regler og frister. Kommuner, fylkeskommuner og staten har hver sine ordninger.",
+    eksempel: "Buskerud fylkeskommune har laget en oversikt over alle tilskuddsordningene sine for kultur, kulturarv, idrett og friluftsliv.",
     sok: ["tilskuddsordning", "tilskotsordning"],
   },
   {
     id: "utvalg",
     begrep: "Utvalg",
     synonymer: ["hovedutvalg", "hovudutval"],
-    forklaring: "En gruppe folkevalgte i en kommune eller fylkeskommune som har ansvar for et fagområde, for eksempel kultur. Utvalget forbereder saker for kommunestyret og kan selv avgjøre noen. Det er ofte her en sak blir diskutert grundigst.",
+    forklaring: "En gruppe folkevalgte i en kommune eller fylkeskommune som har ansvar for et fagområde, for eksempel kultur. Utvalget forbereder saker for kommunestyret og kan selv avgjøre noen. Det er ofte her en sak blir diskutert grundigst. Se også *Komité*.",
     eksempel: "I Bergen behandles kultursaker i Utvalg for finans, kultur og næring, og i Oslo i Kultur- og utdanningsutvalget.",
     sok: ["utvalg", "utvalget"],
   },
@@ -422,10 +419,10 @@ export const ORDLISTE: readonly OrdlisteInnslag[] = [
   },
 ];
 
-/** De seks budsjettordene. Budsjettsiden skal lese disse, ikke en kopi. */
+/** De seks budsjettordene. Budsjettsiden leser dem ikke i denne runden. */
 export const BUDSJETTORD = ORDLISTE.filter((o) => o.budsjettord);
 
+/** Fasiten står allerede i godkjent rekkefølge. Sorteringen bekrefter den. */
 export function ordlisteAlfabetisk(): OrdlisteInnslag[] {
   return [...ORDLISTE].sort((a, b) => a.begrep.localeCompare(b.begrep, "nb", { sensitivity: "base" }));
 }
-

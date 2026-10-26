@@ -1,11 +1,9 @@
 import { PERSONVERN_EPOST } from "../../supabase/functions/_shared/mobilisering-kjerne.ts";
 
 /**
- * UTKAST til tillegg på /personvern.
- * Ligger ikke i public/personvern.html.
- * Vises bare når visningen for MOBILISERING_SIGNATUR_AKTIV er på
- * (Vercel-preview eller VITE_MOBILISER_DEMO). Prod-teksten endres ikke.
- * Samme flagg som signeringen, ikke et eget flagg.
+ * Tekst for felles innspill. Samme regler står i public/personvern.html.
+ * Vite-pluginen injiserer HTML-en bare når id="felles-innspill" mangler,
+ * så prodfilen ikke får avsnittet to ganger.
  */
 
 export const PERSONVERN_FELLES_TITTEL = "Felles innspill og signaturer";

@@ -18,7 +18,7 @@ function svar(req: Request, body: unknown, status = 200): Response {
   });
 }
 
-const IKKE_SLETTET = "Kontoen ble ikke slettet. Prøv igjen, eller skriv til personvern@kulturvarsling.no.";
+const IKKE_SLETTET = "Kontoen ble ikke slettet. Prøv igjen, eller skriv til post@kulturvarsling.no.";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeadere(req) });

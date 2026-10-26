@@ -52,17 +52,17 @@ test("saken viser at det er høring, og komité leses av instans", () => {
   assert.equal(komiteIdFraInstans("Næringskomiteen, Stortinget"), "NÆRING");
 });
 
-test("følg komité er av og spør ikke databasen", async () => {
-  assert.equal(folgKomiteAktiv(), false);
-  let kalt = false;
+test("følg komité er på og skriver egen rad uten e-post", async () => {
+  assert.equal(folgKomiteAktiv(), true);
+  let tabell = "";
   const ok = await lagreFulgteKomite({
-    from: () => {
-      kalt = true;
-      return {};
+    from: (navn: string) => {
+      tabell = navn;
+      return { insert: () => ({ error: null }) };
     },
   }, "bruker", "FAMKULT", true);
-  assert.equal(ok, false);
-  assert.equal(kalt, false);
+  assert.equal(ok, true);
+  assert.equal(tabell, "fulgte_komiteer");
   const ui = readFileSync(new URL("../src/horing.tsx", import.meta.url), "utf8");
   const tekst = readFileSync(new URL("../src/horing.ts", import.meta.url), "utf8");
   assert.equal(ui.includes("påmeldingsfrist"), false);
@@ -72,9 +72,29 @@ test("følg komité er av og spør ikke databasen", async () => {
   assert.match(ui, /Hovedregelen er at kun landsomfattende organisasjoner inviteres\./);
   assert.match(ui, /Det er høring i denne saken\./);
   assert.match(ui, /Følg komiteen/);
+  assert.match(ui, /Du følger ingen komiteer/);
+  assert.match(ui, /Ingen høringer er registrert for komiteen/);
+  assert.match(ui, /Logg inn for å følge komiteen/);
+  assert.match(ui, /Vi sender ikke e-post/);
+  const personvern = readFileSync("public/personvern.html", "utf8");
+  assert.match(personvern, /id="folg-komite"/);
+  assert.match(personvern, /bruker-id/);
+  assert.match(personvern, /post@kulturvarsling\.no/);
+  assert.match(personvern, /Kulturvarsling AS, org\.nr\. 936 282 881, Middelthuns gate 11 B, 0368 Oslo/);
+  assert.match(personvern, /artikkel 6 nr\. 1 bokstav b/);
+  assert.doesNotMatch(personvern, /Åndsverkstedet/);
+  assert.equal(personvern.toLowerCase().includes("på vanlig norsk"), false);
+  const flagg = readFileSync("supabase/migrations/20261026100000_folg_komite_pa.sql", "utf8");
+  assert.match(flagg, /set aktiv = true/);
+  assert.match(flagg, /nokkel = 'folg_komite'/);
+  assert.doesNotMatch(flagg, /UTSENDING_AKTIV/);
+  const gammel = readFileSync("supabase/migrations/20261024221000_fulgte_komiteer.sql", "utf8");
+  assert.match(gammel, /'folg_komite', false/);
   assert.equal(ui.includes("siden forrige besøk"), false);
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const vercel = readFileSync(new URL("../vercel.json", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /Knut Storberget|Marianne Lunde|Geir Pollestad|Iselin Nybø|Lorem|Liste over politikere kommer/);
+  assert.match(app, /Det finnes ingen politikerliste/);
   assert.match(app, /if \(komiteFraSti\(\)\) return "komite"/);
   assert.match(vercel, /"source": "\/komite\/:id"/);
 });

@@ -1,5 +1,5 @@
-// Manuell slettejobb for felles innspill.
-// Ikke planlegg denne i prod. Ingen pg_cron og ingen kall herfra til cron.
+// Manuelt kall av slett_utlopte_signaturer. Den daglige jobben er
+// pg_cron i 20261026230016_slett_signaturer_cron.sql, ikke dette endepunktet.
 // verify_jwt = true er ikke nok alene. Krever x-cron-secret.
 // Sender ingen e-post.
 

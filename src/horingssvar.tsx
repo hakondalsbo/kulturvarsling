@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { demoTillatt } from "./minside/demo.ts";
 import { Felt, Knapp, Tekstfelt, Velger } from "./ui.tsx";
 
 export type HoringSak = {
@@ -299,6 +300,7 @@ Takk for muligheten til å svare.
 UTKAST – må gjennomgås og eventuelt endres av Eksempelorganisasjon før innsending`;
 
 export function HoringForhandsvisning() {
+  if (!demoTillatt()) return null;
   return (
     <article className="avis-wrap avis-annet">
       <p className="kv-steg">Høring</p>

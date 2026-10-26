@@ -72,26 +72,56 @@ function bokstav(begrep: string): string {
   return c === "É" ? "E" : c;
 }
 
+function bokstavId(b: string): string {
+  return `bokstav-${b.toLocaleLowerCase("nb")}`;
+}
+
+/** Stjernene i fasiten er utheving, ikke ord. De vises som lenke til begrepet. */
+function forklaringMedLenke(tekst: string): ReactNode {
+  const deler = tekst.split(/(\*[^*]+\*)/g);
+  return deler.map((del, i) => {
+    const merket = del.match(/^\*([^*]+)\*$/);
+    if (!merket) return <span key={i}>{del}</span>;
+    const ord = merket[1];
+    const maal = ORDLISTE.find((o) => o.begrep === ord);
+    if (!maal) return <span key={i}>{ord}</span>;
+    return (
+      <a key={i} href={`#${maal.id}`}>
+        {ord}
+      </a>
+    );
+  });
+}
+
 export function OrdlisteSide() {
   const liste = ordlisteAlfabetisk();
   const bokstaver = [...new Set(liste.map((o) => bokstav(o.begrep)))];
   return (
-    <article className="avis-wrap budsjett ordliste">
+    <article className="avis-wrap ordliste">
       <h1>{ORDLISTE_TITTEL}</h1>
-      <p className="kv-ingress">{ORDLISTE_INNLEDNING}</p>
-      <nav className="ordliste-nav" aria-label="Bokstaver">
+      <p className="ordliste-innledning">{ORDLISTE_INNLEDNING}</p>
+      <nav className="ordliste-nav" aria-label="Bokstavindeks">
         {bokstaver.map((b) => (
-          <a key={b} href={`#bokstav-${b.toLocaleLowerCase("nb")}`}>{b}</a>
+          <a key={b} href={`#${bokstavId(b)}`}>
+            {b}
+            <span className="sr">, begreper på {b}</span>
+          </a>
         ))}
       </nav>
       {bokstaver.map((b) => (
-        <section key={b} id={`bokstav-${b.toLocaleLowerCase("nb")}`} aria-labelledby={`tittel-${b}`}>
+        <section key={b} id={bokstavId(b)} aria-labelledby={`tittel-${b}`}>
           <h2 className="ordliste-bokstav" id={`tittel-${b}`}>{b}</h2>
           {liste.filter((o) => bokstav(o.begrep) === b).map((o) => (
-            <article key={o.id} id={o.id} className="ordliste-innslag">
-              <h3>{overskrift(o)}</h3>
-              <p>{o.forklaring}</p>
-              {o.eksempel ? <p className="kilde">Eksempel: {o.eksempel}</p> : null}
+            <article key={o.id} id={o.id} className="ordliste-innslag" aria-labelledby={`begrep-${o.id}`}>
+              <h3 id={`begrep-${o.id}`}>
+                <a href={`#${o.id}`}>{overskrift(o)}</a>
+              </h3>
+              <p>{forklaringMedLenke(o.forklaring)}</p>
+              {o.eksempel ? (
+                <p className="ordliste-eksempel">
+                  <em>Eksempel:</em> {o.eksempel}
+                </p>
+              ) : null}
             </article>
           ))}
         </section>

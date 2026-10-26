@@ -310,6 +310,13 @@ export function MinSide({
         <p className="minside-innledning">
           Her ligger sakene som treffer sted, fag, organ, komité, lagrede søk og sakene du følger. Forsiden viser fortsatt alt.
         </p>
+        {!visOppsett ? (
+          <p className="minside-valg-linje">
+            {valgteSteder.length || valgteFag.length || valg.organ.length || valg.komiteer.length
+              ? [valgteSteder.join(", "), valg.organ.map(organNavn).join(", "), valg.komiteer.map(komiteNavn).join(", "), valgteFag.join(", ")].filter(Boolean).join(" · ")
+              : "Ingen sted eller fag er valgt."}
+          </p>
+        ) : null}
 
         {visOppsett ? (
           <Oppsett
@@ -403,8 +410,21 @@ function Oppsett({
       {steg === 1 ? (
         <>
           <p className="minside-forklaring">
-            Kryss av for kommuner og fylkeskommuner. Stortinget, regjeringen og komiteene ligger her også. Hopper du over, velger du det senere.
+            Søk og kryss av for kommuner og fylkeskommuner. Listen er et utvalg, ikke alle kommuner. Oslo lagres som kommune og stedsnavn. Stortinget, regjeringen og komiteene ligger under listen. Hopper du over, velger du det senere.
           </p>
+          <Felt id={stedFeltId} label="Søk etter sted" type="search" value={stedSok} onChange={(e) => onStedSok(e.target.value)} placeholder="Skriv kommunenavn" />
+          <div className="minside-liste" role="group" aria-label="Kommuner og fylkeskommuner">
+            {steder.length === 0 ? <p className="minside-tom">Ingen treff. Prøv et annet navn.</p> : null}
+            {steder.map((sted) => {
+              const pa = sted.tokens.every((t) => valg.geografisk.includes(t));
+              return (
+                <label className="kv-samtykke" key={sted.id}>
+                  <input type="checkbox" checked={pa} onChange={(e) => onToggleToken(sted.tokens, e.target.checked)} />
+                  <span>{sted.navn}</span>
+                </label>
+              );
+            })}
+          </div>
           <div className="minside-gruppe">
             <p className="kv-feltnavn">Nasjonalt</p>
             <label className="kv-samtykke">
@@ -424,19 +444,6 @@ function Oppsett({
                 <span>{k.navn}{k.id === "famkult" ? ", med høringer" : ""}</span>
               </label>
             ))}
-          </div>
-          <Felt id={stedFeltId} label="Søk etter sted" type="search" value={stedSok} onChange={(e) => onStedSok(e.target.value)} placeholder="For eksempel Oslo" />
-          <div className="minside-liste" role="group" aria-label="Kommuner og fylkeskommuner">
-            {steder.length === 0 ? <p className="minside-tom">Ingen treff. Prøv et annet navn.</p> : null}
-            {steder.map((sted) => {
-              const pa = sted.tokens.every((t) => valg.geografisk.includes(t));
-              return (
-                <label className="kv-samtykke" key={sted.id}>
-                  <input type="checkbox" checked={pa} onChange={(e) => onToggleToken(sted.tokens, e.target.checked)} />
-                  <span>{sted.navn}</span>
-                </label>
-              );
-            })}
           </div>
         </>
       ) : null}

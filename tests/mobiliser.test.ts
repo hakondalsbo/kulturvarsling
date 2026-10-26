@@ -214,8 +214,15 @@ test("bekreftelsesbrevet bruker post@ og sendes bare når begge flagg er på", (
   assert.equal(bareUtsending.send, false);
 });
 
-test("personvernutkastet er ikke i prodteksten og bruker post@", () => {
-  assert.doesNotMatch(personvern, /Felles innspill og signaturer/);
+test("personvernerklæringen har samtykke, oppbevaring og post@", () => {
+  assert.match(personvern, /id="felles-innspill"/);
+  assert.match(personvern, /artikkel 6 nr\. 1 bokstav a/);
+  assert.match(personvern, /trekke samtykket/);
+  assert.match(personvern, /30 dager etter innsending/);
+  assert.match(personvern, /12 måneder etter innsending/);
+  assert.match(personvern, /fagfelt, organisasjonstype og fylke/);
+  assert.doesNotMatch(personvern, /personvern@/);
+  assert.doesNotMatch(personvern, /Utkast – ikke i produksjon/);
   assert.doesNotMatch(personvern, /\[KONTAKT-E-POST\]/);
   assert.match(personvernTilleggHtml(), /post@kulturvarsling\.no/);
   assert.match(personvernTilleggHtml(), /id="felles-innspill"/);
@@ -308,6 +315,21 @@ test("captcha krever verken nøkkel eller token før flagget er på", () => {
   assert.equal("status" in utenToken && utenToken.status, 400);
   const klar = vurderCaptcha({ flagg: "true", hemmelighet: "hemmelig", token: "a".repeat(20) });
   assert.deepEqual(klar, { krev: true, token: "a".repeat(20) });
+});
+
+test("sletting av signaturer kjøres kl. 03:00 UTC med tellemodus", () => {
+  const sql = readFileSync("supabase/migrations/20261026230016_slett_signaturer_cron.sql", "utf8");
+  const gammel = readFileSync("supabase/migrations/20261024210000_mobilisering_fase_og_felles_innspill.sql", "utf8");
+  assert.match(sql, /cron\.schedule\(\s*'slett-utlopte-signaturer-daglig',\s*'0 3 \* \* \*'/);
+  assert.match(sql, /p_dry_run boolean default false/);
+  assert.match(sql, /manuelt_redigert is true/);
+  assert.doesNotMatch(sql, /update\s+public\.varsler/i);
+  assert.match(sql, /slett_signatur_kjoringer/);
+  assert.match(sql, /revoke all on table public\.slett_signatur_kjoringer from public, anon, authenticated/);
+  const tabell = sql.slice(sql.indexOf("create table if not exists public.slett_signatur_kjoringer"), sql.indexOf("comment on table"));
+  assert.doesNotMatch(tabell, /\bepost\b/);
+  assert.doesNotMatch(tabell, /\bnavn\b/);
+  assert.doesNotMatch(gammel.replace(/--.*$/gm, ""), /cron\.schedule/);
 });
 
 test("støttekilden leser bare feltene Min side trenger", () => {

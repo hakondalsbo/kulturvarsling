@@ -33,17 +33,32 @@ test("?demo= er av i production og på i preview", () => {
   assert.equal(tolkDemo("?demo=oppsett", undefined).modus, "oppsett");
 });
 
-test("kulturpolitikk er av, og menyen tar den ikke med", () => {
-  assert.equal(KULTURPOLITIKK_VALGBART, false);
-  assert.equal(kategorierForMeny().some((k) => k.id === "kulturpolitikk"), false);
-  assert.equal(kategorierForMeny(true).some((k) => k.id === "kulturpolitikk"), true);
-  const sql = readFileSync("supabase/migrations/20261024200000_minside_valg.sql", "utf8");
-  assert.match(sql, /create or replace function public\.kulturpolitikk_valgbart\(\)[\s\S]*select false/);
+test("kulturpolitikk er valgbart, og den gamle migrasjonen er urørt", () => {
+  assert.equal(KULTURPOLITIKK_VALGBART, true);
+  assert.equal(kategorierForMeny().some((k) => k.id === "kulturpolitikk"), true);
+  assert.equal(kategorierForMeny(false).some((k) => k.id === "kulturpolitikk"), false);
+  const gammel = readFileSync("supabase/migrations/20261024200000_minside_valg.sql", "utf8");
+  assert.match(gammel, /create or replace function public\.kulturpolitikk_valgbart\(\)[\s\S]*select false/);
+  const ny = readFileSync("supabase/migrations/20261026100100_kulturpolitikk_valgbart.sql", "utf8");
+  assert.match(ny, /select true/);
+  assert.doesNotMatch(ny, /UTSENDING_AKTIV/);
+  const app = readFileSync("src/App.tsx", "utf8");
+  assert.match(app, /const KATEGORIER = kategorierForMeny\(\)/);
+  const ui = readFileSync("src/minside/MinSide.tsx", "utf8");
+  const sok = ui.indexOf("Søk etter sted");
+  const nasjonalt = ui.indexOf(">Nasjonalt<");
+  assert.ok(sok > 0 && nasjonalt > sok);
 });
 
 test("flagget av gjør at kulturpolitikk i fagfelt ikke avgrenser", () => {
-  assert.equal(sakTrefferAbonnement({ kategori: "musikk" }, ["kulturpolitikk"], ["land"]), true);
-  assert.equal(sakTrefferAbonnement({ kategori: "kulturpolitikk" }, ["musikk"], ["land"]), false);
+  assert.equal(
+    sakTrefferAbonnement({ kategori: "musikk" }, ["kulturpolitikk"], ["land"], { kulturpolitikkValgbart: false }),
+    true,
+  );
+  assert.equal(
+    sakTrefferAbonnement({ kategori: "kulturpolitikk" }, ["musikk"], ["land"], { kulturpolitikkValgbart: false }),
+    false,
+  );
   assert.equal(
     sakTrefferAbonnement({ kategori: "musikk" }, ["kulturpolitikk"], ["land"], { kulturpolitikkValgbart: true }),
     false,

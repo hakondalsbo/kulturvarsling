@@ -166,7 +166,7 @@ Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   if (url.searchParams.has("avmeld") || url.searchParams.has("t")) {
     return new Response(
-      "Ingenting er endret. Avmelding skjer ikke i denne funksjonen. Bruk lenken i brevet, eller skriv til personvern@kulturvarsling.no.",
+      "Ingenting er endret. Avmelding skjer ikke i denne funksjonen. Bruk lenken i brevet, eller skriv til post@kulturvarsling.no.",
       { status: 410, headers: { "Content-Type": "text/plain; charset=utf-8" } },
     );
   }
