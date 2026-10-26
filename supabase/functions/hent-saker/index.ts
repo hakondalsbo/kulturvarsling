@@ -1,5 +1,5 @@
 import { kallClaude } from "../_shared/claude.ts";
-import { kildegrunnlag, loggUdokumenterteTall, publiseresEtterKontroll } from "../_shared/kildekontroll.ts";
+import { kildegrunnlag, lagreTallSperring, loggUdokumenterteTall, publiseresEtterKontroll } from "../_shared/kildekontroll.ts";
 import {
   genererGenerellKlartekst,
   lagreKlartekstCache,
@@ -548,6 +548,7 @@ async function skrivKlartekst(
   niva: string,
   sted: string | null,
   apiKey: string,
+  sperret: Array<{ id: string; arsak: "tall_uten_kilde"; oppgave: "hent-saker" | "klartekst" }>,
 ): Promise<"ok" | "feil"> {
   try {
     const generert = await genererGenerellKlartekst({
@@ -563,6 +564,12 @@ async function skrivKlartekst(
     if (cacheFeil) {
       console.error("klartekst_cache:", cacheFeil);
       return "feil";
+    }
+    // Flagget stopper ikke klarteksten. Cachen er skrevet. Raden er sporbar.
+    const sperreFeil = await lagreTallSperring(supabase, varselId, "klartekst", generert.tallavvik);
+    if (sperreFeil) console.error("varsel_sperringer klartekst:", sperreFeil.slice(0, 120));
+    else if (generert.tallavvik.aar.length || generert.tallavvik.tall.length) {
+      sperret.push({ id: varselId, arsak: "tall_uten_kilde", oppgave: "klartekst" });
     }
     return "ok";
   } catch (e) {
@@ -732,6 +739,7 @@ Deno.serve(async (req: Request) => {
     const horingUtenFrist = new Map<string, number>();
     const idEtterKilde = new Map<string, string>();
     const driftFeil: string[] = [];
+    const sperret: Array<{ id: string; arsak: "tall_uten_kilde"; oppgave: "hent-saker" | "klartekst" }> = [];
     const varsletManglendeKilde = new Set<string>();
     const merkManglendeKilde = (adapter: string | undefined, kildeId: unknown) => {
       if (kildeId != null || !adapter || varsletManglendeKilde.has(adapter)) return;
@@ -950,6 +958,11 @@ Deno.serve(async (req: Request) => {
         }
         const innhold = innholdDedupNokkel(item);
         if (innhold) eksInnhold.add(innhold);
+        if (!publisert && lagret.id) {
+          const sperreFeil = await lagreTallSperring(supabase, lagret.id, "hent-saker", tallavvik);
+          if (sperreFeil) driftFeil.push(`${lagret.id}: tall_uten_kilde ble ikke lagret`);
+          else sperret.push({ id: lagret.id, arsak: "tall_uten_kilde", oppgave: "hent-saker" });
+        }
         if (
           item.adapter === "regjeringen-rss" &&
           erRegjeringenHoring(item) &&
@@ -972,6 +985,7 @@ Deno.serve(async (req: Request) => {
               niva,
               (rad.sted as string | null) ?? null,
               anthropicKey,
+              sperret,
             );
             if (utfall === "ok") klartekstLagret++;
             else {
@@ -1116,6 +1130,7 @@ Deno.serve(async (req: Request) => {
       klartekst_lagret: klartekstLagret,
       klartekst_feilet: klartekstFeilet || undefined,
       klartekst_utsatt: klartekstUtsatt || undefined,
+      sperret: sperret.length > 0 ? sperret : undefined,
       feil: feil.length > 0 ? feil.slice(0, 10) : undefined,
       kilde_status: kildeStatus,
     };
