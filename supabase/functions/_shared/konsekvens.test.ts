@@ -14,6 +14,7 @@ import {
   forsideRang,
   kanKlassifisereRad,
   kjørFasitEval,
+  målForOpprinnelig,
   KONSEKVENS_NAVN,
   KONSEKVENS_TIMEOUT_MS,
   MAKS_KONSEKVENS_PER_KJORING,
@@ -360,6 +361,21 @@ test("fasiten har 30 opprinnelige saker og minst 10 holdt utenfor", async () => 
   assert.equal(prompt.includes(holdout.fasit_begrunnelse ?? "mangler"), false);
   assert.equal(prompt.includes("fasit_begrunnelse"), false);
 
+  const bjerke = FASIT_OPPRINNELIG.find((s) => s.id.startsWith("215e0230"));
+  const nordstrand = FASIT_OPPRINNELIG.find((s) => s.id.startsWith("cc11ac17"));
+  assert.equal(bjerke?.forventet, "stor_endring");
+  assert.equal(nordstrand?.forventet, "stor_endring");
+  assert.match(bjerke?.utdrag ?? "", /lokale kultur- og idretts tilskudd/);
+  assert.match(bjerke?.utdrag ?? "", /overføres til bydelene/);
+  assert.equal(
+    FASIT_HOLDOUT.find((s) => s.id.startsWith("104b8405"))?.fasit_begrunnelse,
+    "Utvalgets forslag til kvotefordeling for 2027 er på høring; det viderefører i hovedsak dagens kvoter, men endrer prinsippene for fordelingen innen kunstnergruppene og fordeler nye hjemler og midler.",
+  );
+  assert.equal(
+    FASIT_HOLDOUT.find((s) => s.id.startsWith("9d97fa17"))?.fasit_begrunnelse,
+    "Høringen inviterer til innspill (fanges opp av Mobiliser nå), men endrer ikke rammevilkår.",
+  );
+
   let kall = 0;
   const rapport = await kjørFasitEval(
     [
@@ -419,6 +435,73 @@ test("fasiten har 30 opprinnelige saker og minst 10 holdt utenfor", async () => 
   assert.equal(delt.per_sett.opprinnelig?.treff, 1);
   assert.equal(delt.per_sett.holdt_utenfor?.treff, 1);
   assert.equal(delt.saker[1]?.fasit_begrunnelse, "Fordi listen er ferdig.");
+  assert.equal(delt.maal.bestått, false);
+});
+
+test("målet for det opprinnelige settet er bestått eller ikke bestått", () => {
+  const rader = [
+    ...Array.from({ length: 5 }, (_, i) => ({
+      id: `s${i}`,
+      forventet: "stor_endring",
+      faktisk: i < 3 ? "stor_endring" : "til_orientering",
+      grunn: "ok" as const,
+      begrunnelse: null,
+      tokens: null,
+      sett: "opprinnelig",
+    })),
+    ...Array.from({ length: 21 }, (_, i) => ({
+      id: `o${i}`,
+      forventet: "til_orientering",
+      faktisk: i < 19 ? "til_orientering" : "stor_endring",
+      grunn: "ok" as const,
+      begrunnelse: null,
+      tokens: null,
+      sett: "opprinnelig",
+    })),
+    ...Array.from({ length: 3 }, (_, i) => ({
+      id: `n${i}`,
+      forventet: "ny_mulighet",
+      faktisk: "ny_mulighet",
+      grunn: "ok" as const,
+      begrunnelse: null,
+      tokens: null,
+      sett: "opprinnelig",
+    })),
+    {
+      id: "k",
+      forventet: "kutt_innstramming",
+      faktisk: "kutt_innstramming",
+      grunn: "ok" as const,
+      begrunnelse: null,
+      tokens: null,
+      sett: "opprinnelig",
+    },
+  ];
+  const bestått = målForOpprinnelig(rader);
+  assert.equal(rader.length, 30);
+  assert.equal(bestått.bestått, true);
+  assert.equal(bestått.rate.faktisk, "26/30");
+  assert.equal(bestått.stor_endring.faktisk, "3/5");
+  assert.equal(bestått.til_orientering.faktisk, "19/21");
+
+  const forFåStor = målForOpprinnelig(rader.map((rad, i) =>
+    i === 2 ? { ...rad, faktisk: "til_orientering" } : rad
+  ));
+  assert.equal(forFåStor.stor_endring.faktisk, "2/5");
+  assert.equal(forFåStor.bestått, false);
+
+  const forFåOrientering = målForOpprinnelig(rader.map((rad) =>
+    rad.id === "o18" ? { ...rad, faktisk: "ny_mulighet" } : rad
+  ));
+  assert.equal(forFåOrientering.til_orientering.faktisk, "18/21");
+  assert.equal(forFåOrientering.bestått, false);
+
+  const under85 = målForOpprinnelig(rader.map((rad) =>
+    rad.id === "k" ? { ...rad, faktisk: "til_orientering" } : rad
+  ));
+  assert.equal(under85.rate.faktisk, "25/30");
+  assert.equal(under85.rate.bestått, false);
+  assert.equal(under85.bestått, false);
 });
 
 test("oppfrisk skriver ikke mobiliser_naa på låste rader", async () => {

@@ -5,8 +5,8 @@
   "merknad": "Ingen ANTHROPIC_API_KEY. Treffraten er fra en lokal nøkkelord-mock, ikke fra Haiku. per_sett.opprinnelig er stikkprøven. per_sett.holdt_utenfor er de nye sakene.",
   "antall": 42,
   "vurdert": 42,
-  "treff": 34,
-  "rate": 0.8095238095238095,
+  "treff": 33,
+  "rate": 0.7857142857142857,
   "per_verdi": {
     "kutt_innstramming": {
       "antall": 1,
@@ -15,8 +15,8 @@
     },
     "stor_endring": {
       "antall": 9,
-      "treff": 6,
-      "rate": 0.6666666666666666
+      "treff": 5,
+      "rate": 0.5555555555555556
     },
     "ny_mulighet": {
       "antall": 6,
@@ -33,8 +33,8 @@
     "opprinnelig": {
       "antall": 30,
       "vurdert": 30,
-      "treff": 28,
-      "rate": 0.9333333333333333,
+      "treff": 27,
+      "rate": 0.9,
       "per_verdi": {
         "kutt_innstramming": {
           "antall": 1,
@@ -43,8 +43,8 @@
         },
         "stor_endring": {
           "antall": 5,
-          "treff": 5,
-          "rate": 1
+          "treff": 4,
+          "rate": 0.8
         },
         "ny_mulighet": {
           "antall": 3,
@@ -85,6 +85,25 @@
           "rate": 1
         }
       }
+    }
+  },
+  "maal": {
+    "sett": "opprinnelig",
+    "bestått": true,
+    "rate": {
+      "bestått": true,
+      "krav": "≥85 %",
+      "faktisk": "27/30"
+    },
+    "stor_endring": {
+      "bestått": true,
+      "krav": "≥3/5",
+      "faktisk": "4/5"
+    },
+    "til_orientering": {
+      "bestått": true,
+      "krav": "≥19/21",
+      "faktisk": "21/21"
     }
   },
   "utsatt": [],
@@ -209,7 +228,7 @@
     {
       "id": "215e0230-ee85-4a1c-8774-ca8b395dd72f",
       "forventet": "stor_endring",
-      "faktisk": "stor_endring",
+      "faktisk": "ny_mulighet",
       "grunn": "ok",
       "begrunnelse": null,
       "tokens": null,
@@ -434,7 +453,7 @@
       "begrunnelse": null,
       "tokens": null,
       "sett": "holdt_utenfor",
-      "fasit_begrunnelse": "Saken gjelder hvordan stipendpotten fordeles mellom kunstnergruppene. Det er en endring i fordelingsnøkkel, ikke en ny ordning og ikke et navngitt kutt. Innspillsfristen er 20.11.2026. Beløpene i fordelingen står ikke i sammendraget, derfor middels."
+      "fasit_begrunnelse": "Utvalgets forslag til kvotefordeling for 2027 er på høring; det viderefører i hovedsak dagens kvoter, men endrer prinsippene for fordelingen innen kunstnergruppene og fordeler nye hjemler og midler."
     },
     {
       "id": "ea1876a7-48b3-430b-84b5-85c933109caa",
@@ -474,7 +493,7 @@
       "begrunnelse": null,
       "tokens": null,
       "sett": "holdt_utenfor",
-      "fasit_begrunnelse": "Det er en høring om en grunnlovsparagraf, men forslagsstillerne skriver at den ikke tar sikte på å endre språklige rettigheter eller plikter. Innholdet står allerede i språkloven § 4. Høringen krever innspill, men endrer ikke rammevilkår for en bransje. Derfor til_orientering, ikke stor_endring."
+      "fasit_begrunnelse": "Høringen inviterer til innspill (fanges opp av Mobiliser nå), men endrer ikke rammevilkår."
     },
     {
       "id": "0dbea5c7-2a00-4ee0-804f-5454b98624fc",

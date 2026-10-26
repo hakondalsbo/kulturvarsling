@@ -338,7 +338,12 @@ const BERIKELSE: Record<string, Partial<FasitSak>> = {
     sammendrag: "Kultur- og likestillingsdepartementet har sendt på høring Lotteri- og stiftelsestilsynets utredning om pengespill-lignende elementer i dataspill, blant annet lootbokser. Høringsfristen er 12. januar 2027.",
   },
   "cc11ac17-70d4-4743-b509-19c1ce336511": { kategori: "kulturarv" },
-  "215e0230-ee85-4a1c-8774-ca8b395dd72f": { kategori: "kulturarv" },
+  "215e0230-ee85-4a1c-8774-ca8b395dd72f": {
+    kategori: "kulturarv",
+    // Samme høring som Nordstrand-saken beskriver. Siden er offentlig.
+    // robots.txt for www.oslo.kommune.no tillater stien.
+    utdrag: "Oslo kommune, «Høring om utredning av overføring av oppgaver til nye bydeler»: 17. juni 2026 vedtok bystyret en bydelsreform i Oslo. Bydelsreformen trer i kraft fra 1. januar 2028. Det betyr blant annet at flere oppgaver som ligger i etater skal overføres til bydelene. Bystyret vedtok at seks oppgaver som i dag ligger hos etater i kommunen, skal utredes videre og at byrådet skal fremme saker for bystyret om overføring til bydel. Det er bystyret som til slutt skal avgjøre om oppgavene skal overføres til de nye bydelene. De seks oppgavene er: Uteseksjonen, overføring av idrettsanlegg, lokale kultur- og idretts tilskudd, takster beboerparkering, HC-kort og klagesaker på avslåtte søknader om dispensasjon fra kommuneplan og reguleringsplan. Kunnskapsgrunnlaget fra arbeidsgruppene sendes på høring.",
+  },
   "948390be-2ce3-451a-a3e2-862b97858f4d": {
     kategori: "kulturarv",
     sakstype: "nyhet",
@@ -419,7 +424,7 @@ export const FASIT_HOLDOUT: FasitSak[] = [
     forventet: "stor_endring",
     sikkerhet: "middels",
     sett: "holdt_utenfor",
-    fasit_begrunnelse: "Saken gjelder hvordan stipendpotten fordeles mellom kunstnergruppene. Det er en endring i fordelingsnøkkel, ikke en ny ordning og ikke et navngitt kutt. Innspillsfristen er 20.11.2026. Beløpene i fordelingen står ikke i sammendraget, derfor middels.",
+    fasit_begrunnelse: "Utvalgets forslag til kvotefordeling for 2027 er på høring; det viderefører i hovedsak dagens kvoter, men endrer prinsippene for fordelingen innen kunstnergruppene og fordeler nye hjemler og midler.",
   },
   {
     id: "ea1876a7-48b3-430b-84b5-85c933109caa",
@@ -471,7 +476,7 @@ export const FASIT_HOLDOUT: FasitSak[] = [
     forventet: "til_orientering",
     sikkerhet: "middels",
     sett: "holdt_utenfor",
-    fasit_begrunnelse: "Det er en høring om en grunnlovsparagraf, men forslagsstillerne skriver at den ikke tar sikte på å endre språklige rettigheter eller plikter. Innholdet står allerede i språkloven § 4. Høringen krever innspill, men endrer ikke rammevilkår for en bransje. Derfor til_orientering, ikke stor_endring.",
+    fasit_begrunnelse: "Høringen inviterer til innspill (fanges opp av Mobiliser nå), men endrer ikke rammevilkår.",
   },
   {
     id: "0dbea5c7-2a00-4ee0-804f-5454b98624fc",

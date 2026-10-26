@@ -99,7 +99,7 @@ Deno.serve(async (req: Request) => {
       dagens_dato: FASIT_DATO,
       skrev_til_database: false,
       tidsbudsjett_ms: EVAL_TIDSBUDSJETT_MS,
-      merknad: "Eval oppretter ingen Supabase-klient og skriver ingenting. Modellen får tittel, type, organ, frist, kategori og utdrag. Et sammendrag som er tomt eller «Automatisk avvist», brukes ikke. per_sett skiller den opprinnelige stikkprøven fra sakene som er holdt utenfor. fasit_begrunnelse er til Kildevakt og er ikke sendt til modellen. Utsatte saker inngår ikke i treffraten.",
+      merknad: "Eval oppretter ingen Supabase-klient og skriver ingenting. Modellen får tittel, type, organ, frist, kategori og utdrag. Et sammendrag som er tomt eller «Automatisk avvist», brukes ikke. per_sett skiller den opprinnelige stikkprøven fra sakene som er holdt utenfor. fasit_begrunnelse er til Kildevakt og er ikke sendt til modellen. maal.bestått gjelder det opprinnelige settet: minst 85 prosent, minst 3 av 5 stor_endring og minst 19 av 21 til_orientering. Utsatte saker inngår ikke i treffraten.",
       ...rapport,
     });
   }

@@ -496,6 +496,48 @@ export type EvalDelrapport = {
   per_verdi: Record<Konsekvens, TreffVerdi>;
 };
 
+export type EvalMålDel = {
+  bestått: boolean;
+  krav: string;
+  faktisk: string;
+};
+
+/** Kravene for det opprinnelige settet: 85 %, 3 av 5 stor_endring, 19 av 21 til_orientering. */
+export type EvalMål = {
+  sett: "opprinnelig";
+  bestått: boolean;
+  rate: EvalMålDel;
+  stor_endring: EvalMålDel;
+  til_orientering: EvalMålDel;
+};
+
+function målDel(bestått: boolean, krav: string, faktisk: string): EvalMålDel {
+  return { bestått, krav, faktisk };
+}
+
+/**
+ * Bestått bare når hele det opprinnelige settet er med: 30 saker,
+ * derav 5 stor_endring og 21 til_orientering. Utsatte saker teller ikke som treff.
+ */
+export function målForOpprinnelig(rader: readonly EvalRad[]): EvalMål {
+  const treff = rader.filter((r) => r.faktisk != null && r.faktisk === r.forventet).length;
+  const rate = rader.length === 0 ? 0 : treff / rader.length;
+  const stor = rader.filter((r) => r.forventet === "stor_endring");
+  const storTreff = stor.filter((r) => r.faktisk === "stor_endring").length;
+  const orientering = rader.filter((r) => r.forventet === "til_orientering");
+  const orienteringTreff = orientering.filter((r) => r.faktisk === "til_orientering").length;
+  const rateBestått = rader.length === 30 && rate >= 0.85;
+  const storBestått = stor.length === 5 && storTreff >= 3;
+  const orienteringBestått = orientering.length === 21 && orienteringTreff >= 19;
+  return {
+    sett: "opprinnelig",
+    bestått: rateBestått && storBestått && orienteringBestått,
+    rate: målDel(rateBestått, "≥85 %", `${treff}/${rader.length}`),
+    stor_endring: målDel(storBestått, "≥3/5", `${storTreff}/${stor.length}`),
+    til_orientering: målDel(orienteringBestått, "≥19/21", `${orienteringTreff}/${orientering.length}`),
+  };
+}
+
 export type KonsekvensPort =
   | { kind: "json"; status: 503 | 401 | 200; body: Record<string, string> }
   | { kind: "tekst"; status: 405; body: string };
@@ -642,6 +684,7 @@ export async function kjørFasitEval<T extends {
   rate: number | null;
   per_verdi: Record<Konsekvens, TreffVerdi>;
   per_sett: Record<string, EvalDelrapport>;
+  maal: EvalMål;
   utsatt: string[];
   token_forbruk: TokenForbruk & { kall: number };
   saker: EvalRad[];
@@ -691,6 +734,7 @@ export async function kjørFasitEval<T extends {
   }
   const per_sett: Record<string, EvalDelrapport> = {};
   for (const [sett, rader] of grupper) per_sett[sett] = evalDelrapport(rader);
+  const maal = målForOpprinnelig(sakerUt.filter((rad) => rad.sett === "opprinnelig"));
   return {
     antall: samlet.antall,
     vurdert: samlet.vurdert,
@@ -698,6 +742,7 @@ export async function kjørFasitEval<T extends {
     rate: samlet.rate,
     per_verdi: samlet.per_verdi,
     per_sett,
+    maal,
     utsatt: sakerUt.filter((s) => s.grunn !== "ok").map((s) => s.id),
     token_forbruk: summerTokenForbruk(sakerUt.map((s) => s.tokens)),
     saker: sakerUt,

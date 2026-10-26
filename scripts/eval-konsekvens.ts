@@ -115,4 +115,9 @@ function skrivDel(navn: string, del = rapport.per_sett[navn]) {
 console.log(`Kilde: ${kilde}. Samlet ${rapport.treff} av ${rapport.vurdert} (${prosent(rapport.rate)}).`);
 skrivDel("opprinnelig");
 skrivDel("holdt_utenfor");
+console.log(
+  `Mål for opprinnelig: ${rapport.maal.bestått ? "bestått" : "ikke bestått"} ` +
+  `(${rapport.maal.rate.faktisk}, stor_endring ${rapport.maal.stor_endring.faktisk}, ` +
+  `til_orientering ${rapport.maal.til_orientering.faktisk}).`,
+);
 console.log(ut.merknad);
