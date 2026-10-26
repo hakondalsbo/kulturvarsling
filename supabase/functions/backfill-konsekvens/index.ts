@@ -5,8 +5,9 @@
 // KONSEKVENS_BACKFILL_SECRET er valgfri og ikke påkrevd. Når den er satt,
 // godtas den i x-cron-secret eller x-backfill-secret.
 // GET gjør ingenting.
-// POST {"eval":true} klassifiserer de 30 fasitsakene med Haiku og skriver ikke
-// til databasen. POST uten eval tar én batch og oppdaterer ulåste rader.
+// POST {"eval":true} klassifiserer fasiten med Haiku og skriver ikke
+// til databasen. Den opprinnelige stikkprøven kommer først, deretter sakene
+// som er holdt utenfor. POST uten eval tar én batch og oppdaterer ulåste rader.
 // Rader med konsekvens_manuell eller manuelt_redigert røres ikke.
 // Rader som allerede har konsekvens, hoppes over.
 // mobiliser_naa skrives fra datoen, aldri fra modellen, og aldri på låste rader.
@@ -21,13 +22,14 @@ import {
   KONSEKVENS_BACKFILL_MAKS,
   KONSEKVENS_TIMEOUT_MS,
   avslagForKonsekvens,
+  innFraFasit,
   kanKlassifisereRad,
   kjørFasitEval,
   osloDato,
 } from "../_shared/konsekvens.ts";
 
 const KOLONNER =
-  "id, tittel, sammendrag, instans, frist, konsekvens, konsekvens_manuell, manuelt_redigert";
+  "id, tittel, sammendrag, instans, frist, kategori, sakstype, klartekst, konsekvens, konsekvens_manuell, manuelt_redigert";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -76,14 +78,7 @@ Deno.serve(async (req: Request) => {
     const rapport = await kjørFasitEval(
       FASIT_SAKER,
       async (sak) => {
-        const svar = await klassifiserKonsekvens({
-          tittel: sak.tittel,
-          sammendrag: sak.sammendrag,
-          kildetekst: sak.sammendrag,
-          instans: sak.instans,
-          frist: sak.frist,
-          dagensDato: FASIT_DATO,
-        }, apiKey, {
+        const svar = await klassifiserKonsekvens(innFraFasit(sak, FASIT_DATO), apiKey, {
           oppgave: "konsekvens-eval",
           timeoutMs: KONSEKVENS_TIMEOUT_MS,
           log: () => {},
@@ -104,7 +99,7 @@ Deno.serve(async (req: Request) => {
       dagens_dato: FASIT_DATO,
       skrev_til_database: false,
       tidsbudsjett_ms: EVAL_TIDSBUDSJETT_MS,
-      merknad: "Kildeteksten er det lagrede sammendraget, ikke hele dokumentet. Utsatte saker inngår ikke i treffraten.",
+      merknad: "Eval oppretter ingen Supabase-klient og skriver ingenting. Modellen får tittel, type, organ, frist, kategori og utdrag. Et sammendrag som er tomt eller «Automatisk avvist», brukes ikke. per_sett skiller den opprinnelige stikkprøven fra sakene som er holdt utenfor. fasit_begrunnelse er til Kildevakt og er ikke sendt til modellen. Utsatte saker inngår ikke i treffraten.",
       ...rapport,
     });
   }
@@ -150,6 +145,9 @@ Deno.serve(async (req: Request) => {
     sammendrag: string | null;
     instans: string | null;
     frist: string | null;
+    kategori: string | null;
+    sakstype: string | null;
+    klartekst: string | null;
     konsekvens: string | null;
     konsekvens_manuell: boolean | null;
     manuelt_redigert?: boolean | null;
@@ -180,9 +178,11 @@ Deno.serve(async (req: Request) => {
     const svar = await klassifiserKonsekvens({
       tittel: rad.tittel ?? "",
       sammendrag: rad.sammendrag ?? "",
-      kildetekst: rad.sammendrag ?? "",
+      kildetekst: rad.klartekst?.trim() ? rad.klartekst : (rad.sammendrag ?? ""),
       instans: rad.instans ?? "",
       frist: rad.frist ?? null,
+      sakstype: rad.sakstype,
+      kategori: rad.kategori,
       dagensDato: iDag,
     }, apiKey, { oppgave: "konsekvens-backfill", timeoutMs: KONSEKVENS_TIMEOUT_MS });
 

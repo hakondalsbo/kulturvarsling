@@ -2,31 +2,89 @@
   "kilde": "mock",
   "dagens_dato": "2026-10-20",
   "skrev_til_database": false,
-  "merknad": "Ingen ANTHROPIC_API_KEY. Treffraten er fra en lokal nøkkelord-mock, ikke fra Haiku. Kildeteksten er det lagrede sammendraget, ikke hele dokumentet.",
-  "antall": 30,
-  "vurdert": 30,
-  "treff": 27,
-  "rate": 0.9,
+  "merknad": "Ingen ANTHROPIC_API_KEY. Treffraten er fra en lokal nøkkelord-mock, ikke fra Haiku. per_sett.opprinnelig er stikkprøven. per_sett.holdt_utenfor er de nye sakene.",
+  "antall": 42,
+  "vurdert": 42,
+  "treff": 34,
+  "rate": 0.8095238095238095,
   "per_verdi": {
     "kutt_innstramming": {
       "antall": 1,
-      "treff": 0,
-      "rate": 0
+      "treff": 1,
+      "rate": 1
     },
     "stor_endring": {
-      "antall": 5,
-      "treff": 5,
-      "rate": 1
+      "antall": 9,
+      "treff": 6,
+      "rate": 0.6666666666666666
     },
     "ny_mulighet": {
-      "antall": 3,
+      "antall": 6,
       "treff": 1,
-      "rate": 0.3333333333333333
+      "rate": 0.16666666666666666
     },
     "til_orientering": {
-      "antall": 21,
-      "treff": 21,
+      "antall": 26,
+      "treff": 26,
       "rate": 1
+    }
+  },
+  "per_sett": {
+    "opprinnelig": {
+      "antall": 30,
+      "vurdert": 30,
+      "treff": 28,
+      "rate": 0.9333333333333333,
+      "per_verdi": {
+        "kutt_innstramming": {
+          "antall": 1,
+          "treff": 1,
+          "rate": 1
+        },
+        "stor_endring": {
+          "antall": 5,
+          "treff": 5,
+          "rate": 1
+        },
+        "ny_mulighet": {
+          "antall": 3,
+          "treff": 1,
+          "rate": 0.3333333333333333
+        },
+        "til_orientering": {
+          "antall": 21,
+          "treff": 21,
+          "rate": 1
+        }
+      }
+    },
+    "holdt_utenfor": {
+      "antall": 12,
+      "vurdert": 12,
+      "treff": 6,
+      "rate": 0.5,
+      "per_verdi": {
+        "kutt_innstramming": {
+          "antall": 0,
+          "treff": 0,
+          "rate": null
+        },
+        "stor_endring": {
+          "antall": 4,
+          "treff": 1,
+          "rate": 0.25
+        },
+        "ny_mulighet": {
+          "antall": 3,
+          "treff": 0,
+          "rate": 0
+        },
+        "til_orientering": {
+          "antall": 5,
+          "treff": 5,
+          "rate": 1
+        }
+      }
     }
   },
   "utsatt": [],
@@ -44,7 +102,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "e05a0843-c5bc-42d8-9a3d-4a5df3f25096",
@@ -52,7 +112,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "86b112f9-1a85-4fc3-a072-6351d415d401",
@@ -60,7 +122,9 @@
       "faktisk": "stor_endring",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "97d844b6-5521-4032-ac98-4597a4cdd64c",
@@ -68,7 +132,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "c8d165f2-7ea4-44f3-8a89-22ccbf6b0ee6",
@@ -76,7 +142,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "3f54ce6f-c602-4b48-96e7-5330ee7c7dc6",
@@ -84,7 +152,9 @@
       "faktisk": "stor_endring",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "161fdeab-2271-46c6-b28d-2680208e627a",
@@ -92,7 +162,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "90a26730-e886-4a10-a1e5-a08aedaabd17",
@@ -100,7 +172,9 @@
       "faktisk": "stor_endring",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "de0dc5a6-fb44-4d5c-aebd-76b9ea10c085",
@@ -108,7 +182,9 @@
       "faktisk": "ny_mulighet",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "b2fce9f0-5b02-4234-8f61-aef4a2f47ab3",
@@ -116,7 +192,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "cc11ac17-70d4-4743-b509-19c1ce336511",
@@ -124,7 +202,9 @@
       "faktisk": "stor_endring",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "215e0230-ee85-4a1c-8774-ca8b395dd72f",
@@ -132,7 +212,9 @@
       "faktisk": "stor_endring",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "d10a6289-9c04-49d0-811c-0cce7c51d9ed",
@@ -140,7 +222,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "af75b1b4-557a-4fac-9175-60aad58e0aa5",
@@ -148,7 +232,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "86124a2b-31ee-4ebf-87f6-6ece87acab86",
@@ -156,7 +242,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "a3906774-c52b-45d2-955e-88811f0c3e75",
@@ -164,7 +252,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "54eee543-98dd-452c-9668-15640e8a7fe8",
@@ -172,7 +262,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "390382e2-e405-4717-9d8d-3645e5138e13",
@@ -180,7 +272,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "4333eb3a-c44e-45bd-bc5a-162019cb1471",
@@ -188,7 +282,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "cdababbb-205d-44af-8723-1a4d91c432f9",
@@ -196,7 +292,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "b70f9ea5-b8f2-4a1d-8c6a-2ccf1ec4bf8c",
@@ -204,7 +302,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "6ed0668e-38f6-4279-815f-41e92ef9cdec",
@@ -212,7 +312,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "f104bc54-d6b0-4b8a-b785-e097bbb6fcf3",
@@ -220,15 +322,19 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "948390be-2ce3-451a-a3e2-862b97858f4d",
       "forventet": "kutt_innstramming",
-      "faktisk": "til_orientering",
+      "faktisk": "kutt_innstramming",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "2d4ca72f-de10-4ab5-90a8-a3eb43d74562",
@@ -236,7 +342,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "1cf0dfd3-4fc8-4fc0-976f-d733db4b7aae",
@@ -244,7 +352,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "1cbcddd8-8d9c-4732-b54c-f8956d7f022d",
@@ -252,7 +362,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "19622766-7b5b-4395-ac2b-c69e2e3bdd5f",
@@ -260,7 +372,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "bc017010-54b3-46ad-ada5-6db179fd5f86",
@@ -268,7 +382,9 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
     },
     {
       "id": "cbce8da8-335b-4ca6-b8bd-df2dc0fbe861",
@@ -276,7 +392,129 @@
       "faktisk": "til_orientering",
       "grunn": "ok",
       "begrunnelse": null,
-      "tokens": null
+      "tokens": null,
+      "sett": "opprinnelig",
+      "fasit_begrunnelse": null
+    },
+    {
+      "id": "d3938f34-b18d-4a66-aea8-ab21f18fdc91",
+      "forventet": "stor_endring",
+      "faktisk": "stor_endring",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Høring av et forslag som endrer pengespillforskriften: Norsk Tipping kan få tilby poker på nett, og reglene for Belago-midler endres. Det er en forskriftsendring for bransjen, ikke en tildeling og ikke et kutt. Fristen 29.11.2026 ligger i det lagrede sammendraget."
+    },
+    {
+      "id": "73099e8c-5675-4adc-ae49-cdb58a132586",
+      "forventet": "stor_endring",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Forslaget endrer kringkastingsforskriften og dermed hvor lenge lokalradioer kan sende, og hvem som kan få tillatelsen. Det er rammevilkår for en bransje. Teksten nevner ingen bevilgning som kuttes eller økes."
+    },
+    {
+      "id": "7f4cece1-f089-4dcc-9395-473d4ebafc96",
+      "forventet": "stor_endring",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Tittelen er en forskrift om utlån og utleie av kommunale lokaler, og sammendraget sier at den regulerer tilgangen til kulturhus og scener. Det er en regelendring for dem som bruker lokalene. Teksten gjengir ikke selve paragrafene, derfor middels sikkerhet. Det er ikke en åpen søknadsrunde."
+    },
+    {
+      "id": "104b8405-2dba-4771-ba85-ee4d4dd461f5",
+      "forventet": "stor_endring",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Saken gjelder hvordan stipendpotten fordeles mellom kunstnergruppene. Det er en endring i fordelingsnøkkel, ikke en ny ordning og ikke et navngitt kutt. Innspillsfristen er 20.11.2026. Beløpene i fordelingen står ikke i sammendraget, derfor middels."
+    },
+    {
+      "id": "ea1876a7-48b3-430b-84b5-85c933109caa",
+      "forventet": "ny_mulighet",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Det er en åpen søknadsrunde med frist 1. desember 2026. Ordningen finnes fra før, men teksten åpner en søknadsmulighet leserne kan bruke. Den oppgir ikke et kutt i årets bevilgning."
+    },
+    {
+      "id": "8808a110-b21f-4e55-b606-4616392d0096",
+      "forventet": "ny_mulighet",
+      "faktisk": "stor_endring",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Teksten navngir økninger: 25 millioner til Filmfondet, 15 millioner til insentivordningen og 5 millioner til en ny ordning for digitalt kinoutstyr. Økt bevilgning og en ny ordning er ny_mulighet. En stortingsmelding er varslet, men pengene er det saken handler om."
+    },
+    {
+      "id": "3dbc0fc1-8299-4dd3-8e16-6f9876c347ac",
+      "forventet": "ny_mulighet",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Antallet arbeidsstipend øker med fem, beløpet øker fra 342 193 til 354 801 kroner, og etableringsstipendet utvides til alle kunstnergrupper. Det er økte bevilgninger. Forskriften trådte i kraft 1. juli 2026 og er ikke den endringen saken varsler. Hadde forskriften vært selve forslaget, ville stor_endring ligget nærmere."
+    },
+    {
+      "id": "9d97fa17-782f-49d6-97c5-41d8458b38f4",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Det er en høring om en grunnlovsparagraf, men forslagsstillerne skriver at den ikke tar sikte på å endre språklige rettigheter eller plikter. Innholdet står allerede i språkloven § 4. Høringen krever innspill, men endrer ikke rammevilkår for en bransje. Derfor til_orientering, ikke stor_endring."
+    },
+    {
+      "id": "0dbea5c7-2a00-4ee0-804f-5454b98624fc",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Tittelen sier at 66 søknader er innvilget i en avsluttet runde 2026-09-03. Midlene er allerede tildelt. Det er ingen åpen frist og ingen ny ordning."
+    },
+    {
+      "id": "574ab18c-935c-4341-b944-15263d48458c",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Innkjøpet er vedtatt, og søknadsfristen 2. juni 2026 var passert 20.10.2026. Det er en liste over titler som allerede er kjøpt inn, ikke en åpen runde. Den lagrede teksten sluttet med «Saken er til orientering og har ingen frist». Den setningen er tatt ut, slik at modellen ikke kan lese fasiten av sammendraget."
+    },
+    {
+      "id": "dcf1fc90-9dd0-4a4b-8664-721dc72dae62",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Det er et forslag om æreslønn til én navngitt kunstner, 200 000 kroner. Ordningen finnes fra før, og saken endrer ikke rammevilkår eller åpner en søknad for andre. Derfor ikke ny_mulighet og ikke stor_endring."
+    },
+    {
+      "id": "6b95bdfb-59bb-4186-8643-f9b27671959d",
+      "forventet": "til_orientering",
+      "faktisk": "til_orientering",
+      "grunn": "ok",
+      "begrunnelse": null,
+      "tokens": null,
+      "sett": "holdt_utenfor",
+      "fasit_begrunnelse": "Behandlingsrunden 18. juni 2026 er avsluttet: 60 utgivelser har fått 90 000 kroner hver. Det er en tildelingsliste. Ordningen har løpende søknadsfrist, men denne saken er ikke en ny runde. Den lagrede teksten sluttet med «Saken er til orientering». Den setningen er tatt ut."
     }
   ]
 }

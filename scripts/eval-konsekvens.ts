@@ -1,6 +1,6 @@
-// Kjører konsekvens-klassifiseringen mot de 30 fasitsakene.
+// Kjører konsekvens-klassifiseringen mot fasiten.
 // Uten ANTHROPIC_API_KEY brukes en lokal nøkkelord-mock, ikke Haiku.
-// Kildeteksten er det lagrede sammendraget. Hele kildedokumentet ligger ikke i databasen.
+// Modellen får tittel, type, organ, frist, kategori og utdrag.
 //
 //   node --experimental-strip-types scripts/eval-konsekvens.ts
 //   ANTHROPIC_API_KEY=... node --experimental-strip-types scripts/eval-konsekvens.ts
@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import {
   KONSEKVENS_NAVN,
   KONSEKVENS_VERDIER,
+  innFraFasit,
   kjørFasitEval,
   tolkKonsekvensSvar,
 } from "../supabase/functions/_shared/konsekvens.ts";
@@ -21,9 +22,9 @@ import { FASIT_DATO, FASIT_SAKER, type FasitSak } from "../supabase/functions/_s
 
 const her = path.dirname(fileURLToPath(import.meta.url));
 
-/** Lokal stand-in. Leser bare tittel og lagret sammendrag, og er ikke fasiten. */
+/** Lokal stand-in. Leser tittel, sammendrag og utdrag. Er ikke fasiten og ikke Haiku. */
 function mockJson(sak: FasitSak): string {
-  const hay = `${sak.tittel}\n${sak.sammendrag ?? ""}`.toLowerCase();
+  const hay = `${sak.tittel}\n${sak.sammendrag ?? ""}\n${sak.utdrag ?? ""}`.toLowerCase();
   let konsekvens = "til_orientering";
   let sikkerhet = "middels";
   if (/innvilgede|tildeling:|orientering om tildelinger/.test(hay)) {
@@ -75,14 +76,11 @@ const kilde = brukMock ? "mock" : "haiku";
 
 const rapport = await kjørFasitEval(FASIT_SAKER, async (sak) => {
   if (brukMock) return tolkKonsekvensSvar(mockJson(sak), FASIT_DATO).konsekvens;
-  const svar = await klassifiserKonsekvens({
-    tittel: sak.tittel,
-    sammendrag: sak.sammendrag,
-    kildetekst: sak.sammendrag,
-    instans: sak.instans,
-    frist: sak.frist,
-    dagensDato: FASIT_DATO,
-  }, process.env.ANTHROPIC_API_KEY!, { oppgave: "konsekvens-eval", log: () => {} });
+  const svar = await klassifiserKonsekvens(
+    innFraFasit(sak, FASIT_DATO),
+    process.env.ANTHROPIC_API_KEY!,
+    { oppgave: "konsekvens-eval", log: () => {} },
+  );
   if (!svar.ok) return { konsekvens: null, begrunnelse: null, tokens: svar.tokens };
   return {
     konsekvens: svar.felt.konsekvens,
@@ -96,8 +94,8 @@ const ut = {
   dagens_dato: FASIT_DATO,
   skrev_til_database: false,
   merknad: brukMock
-    ? "Ingen ANTHROPIC_API_KEY. Treffraten er fra en lokal nøkkelord-mock, ikke fra Haiku. Kildeteksten er det lagrede sammendraget, ikke hele dokumentet."
-    : "Haiku via samme kall som pipelinen. Kildeteksten er det lagrede sammendraget, ikke hele dokumentet.",
+    ? "Ingen ANTHROPIC_API_KEY. Treffraten er fra en lokal nøkkelord-mock, ikke fra Haiku. per_sett.opprinnelig er stikkprøven. per_sett.holdt_utenfor er de nye sakene."
+    : "Haiku via samme kall som pipelinen. Modellen får tittel, type, organ, frist, kategori og utdrag.",
   ...rapport,
 };
 
@@ -105,9 +103,16 @@ const maal = path.join(her, "eval-konsekvens-resultat.json");
 fs.writeFileSync(maal, JSON.stringify(ut, null, 2));
 
 const prosent = (n: number | null) => n == null ? "–" : `${Math.round(n * 1000) / 10} %`;
-console.log(`Kilde: ${kilde}. ${rapport.treff} av ${rapport.antall} (${prosent(rapport.rate)}).`);
-for (const verdi of KONSEKVENS_VERDIER) {
-  const v = rapport.per_verdi[verdi];
-  console.log(`  ${KONSEKVENS_NAVN[verdi]}: ${v.treff}/${v.antall} (${prosent(v.rate)})`);
+function skrivDel(navn: string, del = rapport.per_sett[navn]) {
+  if (!del) return;
+  console.log(`${navn}: ${del.treff} av ${del.vurdert} (${prosent(del.rate)}).`);
+  for (const verdi of KONSEKVENS_VERDIER) {
+    const v = del.per_verdi[verdi];
+    console.log(`  ${KONSEKVENS_NAVN[verdi]}: ${v.treff}/${v.antall} (${prosent(v.rate)})`);
+  }
 }
+
+console.log(`Kilde: ${kilde}. Samlet ${rapport.treff} av ${rapport.vurdert} (${prosent(rapport.rate)}).`);
+skrivDel("opprinnelig");
+skrivDel("holdt_utenfor");
 console.log(ut.merknad);

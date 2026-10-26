@@ -48,8 +48,9 @@ export const KONSEKVENS_TIMEOUT_MS = 8_000;
 
 /**
  * Eval-kjøringen er ett eget funksjonskall, ikke en del av hent-saker.
- * 30 korte sammendrag rekker vanligvis. Vi stopper før plattformens 150 s
- * så svaret blir JSON og ikke et avbrudd uten kropp. Ingenting skrives.
+ * Den opprinnelige fasiten kjøres først, deretter sakene som er holdt utenfor.
+ * Vi stopper før plattformens 150 s så svaret blir JSON og ikke et avbrudd
+ * uten kropp. Ingenting skrives.
  */
 export const EVAL_TIDSBUDSJETT_MS = 120_000;
 
@@ -61,10 +62,14 @@ export type KonsekvensFilter = "alle" | Konsekvens | "mobiliser";
 export type KonsekvensInn = {
   tittel: string;
   sammendrag: string;
+  /** Råtekst eller utdrag. Ikke det forkastede sammendraget. */
   kildetekst: string;
   instans: string;
   frist: string | null;
   dagensDato: string;
+  /** høring, proposisjon, budsjett, varslet, tildeling, tilskudd, forslag eller nyhet. */
+  sakstype?: string | null;
+  kategori?: string | null;
 };
 
 export type KonsekvensVurdering = {
@@ -91,28 +96,48 @@ const PROMPT = `Du klassifiserer saker for kulturvarsling.no, en tjeneste som f�
 
 INPUT
 tittel: {tittel}
-sammendrag: {sammendrag}
-kildetekst: {kildetekst}
-instans: {instans}
+type: {sakstype}
+organ: {instans}
+kategori: {kategori}
 frist (fra databasen, kan være tom): {frist}
+sammendrag: {sammendrag}
+utdrag: {kildetekst}
 dagens_dato: {dagens_dato}
 
 GRUNNREGLER
-1. Bruk bare det som faktisk står i kildeteksten (og tittel/sammendrag hvis de stemmer med kilden). Ikke bruk egen kunnskap, ikke gjett, ikke regn ut tall som ikke står der.
-2. Ved tvil: velg "til_orientering" og sett sikkerhet til "lav".
+1. Bruk tittel, type, organ, frist, kategori og utdrag. Sammendraget er bare et hjelpemiddel. Er sammendraget tomt, merket som forkastet, eller «Automatisk avvist», skal det ikke brukes. Da avgjør de andre feltene.
+2. Når utdraget og sammendraget spriker, gjelder utdraget. Ikke bruk egen kunnskap, og ikke regn ut tall som ikke står i utdraget, tittelen eller frist-feltet.
 3. Ikke lag dramatikk. Gjengi nøkternt. Ikke bruk ord som "dramatisk", "sjokk", "rammer hardt" eller "krise" med mindre det er et direkte sitat, og merk det i så fall som sitat med kilde.
-4. Meninger fra en part (organisasjon, parti, Sametinget) er ikke det samme som et vedtak. Bruk dem bare hvis de inneholder konkrete tall, og si hvem som sier det.
+4. En mening fra en part (organisasjon, parti, Sametinget) er ikke et vedtak. Bruk den når den gjengir konkrete tall, og si hvem som sier det.
 
 VERDIER FOR KONSEKVENS
-- "kutt_innstramming": kilden viser lavere bevilgning til en navngitt post, ordning eller institusjon; eller at en bevilgning står stille i kroner eller øker mindre enn pris-/lønnsveksten, og kilden oppgir tallene; eller nedleggelse; eller at en ordning avvikles eller stenges. Gjelder også forslag fra et organ som kan vedta det. Ikke nok: "stramt", "lite handlingsrom" uten tall; tekniske rammeoverføringer.
-- "stor_endring": endring i regelverk (lov, forskrift, retningslinjer), organisering (ansvar flyttes, enheter slås sammen) eller fordelingsnøkler/kriterier for tilskudd, som ikke først og fremst er et kutt eller en økning.
-- "ny_mulighet": økte bevilgninger, nye satsinger eller ordninger, en åpen søknadsrunde med frist fram i tid, eller vedtak/planer som åpner for ny kulturaktivitet.
-- "til_orientering": alt annet, inkludert lister over tilskudd som allerede er tildelt, protokoller, møteplaner, referatsaker, uttalelser uten vedtak, varslede saker uten kjent innhold, og saker der kilden er uklar.
+- "kutt_innstramming": kilden viser lavere bevilgning til en navngitt post, ordning eller institusjon; eller at en bevilgning står stille i kroner eller øker mindre enn pris- eller lønnsveksten, og kilden oppgir tallene; eller nedleggelse; eller at en ordning avvikles eller stenges. Gjelder også forslag fra et organ som kan vedta det. Ikke nok: "stramt" eller "lite handlingsrom" uten tall. En teknisk rammeoverføring er ikke et kutt.
+- "stor_endring": en lov, forskrift, retningslinje eller regulering som endrer rammevilkårene for en bransje; eller at ansvaret for en kulturordning flyttes eller slås sammen; eller at fordelingsnøkler eller kriterier for tilskudd endres. Det kreves ikke et ferdig vedtak eller en møtedato.
+- "ny_mulighet": økte bevilgninger, en ny ordning, eller en åpen søknadsrunde med frist fram i tid. Også et vedtak eller en plan som åpner for ny kulturaktivitet.
+- "til_orientering": saken krever ikke handling og endrer ikke noe vesentlig. Det gjelder lister over tilskudd som allerede er tildelt, protokoller, referater, redegjørelser uten vedtak, innspill og uttalelser, vedlikehold, saker utenfor kunst og kultur, og en varslet sak der verken tittel eller utdrag sier hva som endres.
 
 REKKEFØLGE NÅR FLERE PASSER
 kutt_innstramming (bare når kuttet er konkret og navngitt i kilden) > stor_endring > ny_mulighet > til_orientering.
 Har saken både kutt og økninger, nevner du begge i begrunnelsen.
 "Videreført" i statsbudsjettet betyr prisomregnet og er ikke et kutt, med mindre kilden sier noe annet.
+
+SLIK DU SKILLER DEM
+- En lov- eller forskriftsendring som endrer rammevilkår for en bransje, er stor_endring. Et varslet lovforslag er stor_endring når tittelen eller utdraget navngir loven og hva som endres. Et forslag om å tillate eller forby en type aktivitet er stor_endring. En høring av et slikt forslag er stor_endring.
+- Et statsbudsjett eller en proposisjon som setter kulturbevilgninger, er ikke til_orientering. Etter innholdet: navngitt kutt, eller vekst under pris- eller lønnsveksten kilden selv oppgir, er kutt_innstramming. Økt bevilgning eller en ny ordning er ny_mulighet. Uten slike tall, men med en kjent endring i rammene, er det stor_endring. En varslet budsjettsak uten kjent innhold er til_orientering. Et sammendrag som bare sier at budsjettet er viktig, uten poster eller beløp, er ikke kjent innhold.
+- En ny tilskuddsordning eller en åpen søknadsmulighet er ny_mulighet.
+- Til_orientering skal bare brukes når saken ikke krever handling og ikke endrer noe vesentlig.
+- En høring som bare kartlegger behov, uten et forslag til regel, er til_orientering.
+- Et forslag om åpningstid eller drift ved én institusjon, uten lov eller forskrift, er til_orientering.
+- Søknader og ønsker om mer støtte, uten vedtak og uten åpen søknadsrunde, er til_orientering.
+- At ansvaret for en tilskuddsordning flyttes, er stor_endring selv om teksten ikke gjengir et vedtak.
+- Gjelder saken et annet felt enn kunst og kultur, er den til_orientering selv om organet har kultur i navnet.
+
+EKSEMPLER
+Eksemplene er generelle og er ikke sakene du skal vurdere.
+- Høring om forskrift om tilskudd til scenekunst, der kravet til egenandel fjernes. → stor_endring.
+- Prop. 1 S: posten for museer reduseres med 12 millioner kroner, og kilden oppgir beløpet. → kutt_innstramming.
+- Ny søknadsrunde for et debutantstipend, med frist 1. mars. → ny_mulighet.
+- Referat fra kulturutvalget, eller en liste over tilskudd som allerede er delt ut. → til_orientering.
 
 MOBILISER NÅ
 Finn datoen leserne kan handle før, og som står i kilden:
@@ -124,12 +149,12 @@ Datoer som har passert, gir aldri true. Har møtet allerede vært holdt, er mobi
 mobiliser_grunn: én kort setning med type og dato, for eksempel "Åpen høring, frist 12.01.2027" eller "Bystyret behandler saken 27.10.2026". Fyll den ut også når datoen ligger mer enn 21 dager fram i tid. Er det ingen dato, settes den til null.
 
 SIKKERHET
-- "høy": kilden sier dette direkte og tydelig.
-- "middels": kilden støtter vurderingen, men noe mangler (bare tittel er kjent, liten forskjell i reell vekst, deler av dokumentet er ikke lest).
-- "lav": kilden er uklar, tom eller ikke lest, eller du valgte til_orientering fordi du var i tvil.
+- "høy": utdraget eller tittelen sier dette direkte og tydelig.
+- "middels": vurderingen følger av tittel og type, men utdraget er kort eller mangler tall.
+- "lav": utdraget er tomt og tittelen sier ikke hva som endres.
 
 BEGRUNNELSE
-Én setning på norsk bokmål, saklig og konkret, som viser til det kilden sier (tall, dato, navn på ordning). Eksempel: "Kilden oppgir at post 50 øker med 3,2 %, mens prisveksten er anslått til 3,4 %."
+Én setning på norsk bokmål, saklig og konkret, som viser til det kilden sier (tall, dato, navn på ordning). Eksempel: "Kilden oppgir at posten for museer reduseres med 12 millioner kroner."
 
 SVAR
 Svar bare med gyldig JSON, uten annen tekst:
@@ -247,17 +272,91 @@ export function matcherKonsekvensFilter(
   return synligKonsekvens(sak) === filter;
 }
 
+/** Tomt, eller bare «Automatisk avvist …». Skal ikke være eneste grunnlag. */
+export function erUbrukeligGrunnlag(tekst: string | null | undefined): boolean {
+  const ren = (tekst ?? "").replace(/\s+/g, " ").trim();
+  if (!ren) return true;
+  return /^automatisk avvist\b/i.test(ren);
+}
+
+/**
+ * Type fra tittel og organ når kilden ikke har satt sakstype.
+ * Varslet sak går foran, slik at et ukjent budsjett ikke blir en proposisjon.
+ */
+export function utledSakstype(tittel: string, instans: string): string {
+  const tittelRen = tittel.replace(/\s+/g, " ").trim();
+  const hay = `${tittelRen} ${instans}`.toLowerCase();
+  if (/^varslet sak\b/i.test(tittelRen)) return "varslet";
+  if (/\bprop\.\s*1\b|\bproposisjon\b/.test(hay)) return "proposisjon";
+  if (/høring|høyring|\bhoring\b/.test(hay)) return "horing";
+  if (/\bstatsbudsjett/.test(hay) && !/budsjettbehov|økonomiske perspektiver/.test(hay)) {
+    return "budsjett";
+  }
+  if (/^tildeling\b|^innvilgede\b/i.test(tittelRen)) return "tildeling";
+  return "";
+}
+
+/** Feltene modellen skal se. Fasitbegrunnelsen tas ikke med. */
+export function innFraFasit(sak: {
+  tittel: string;
+  sammendrag: string;
+  instans: string;
+  frist: string | null;
+  sakstype?: string | null;
+  kategori?: string | null;
+  utdrag?: string | null;
+}, dagensDato: string): KonsekvensInn {
+  return forberedKonsekvensInn({
+    tittel: sak.tittel,
+    sammendrag: sak.sammendrag,
+    kildetekst: sak.utdrag ?? "",
+    instans: sak.instans,
+    frist: sak.frist,
+    dagensDato,
+    sakstype: sak.sakstype,
+    kategori: sak.kategori,
+  });
+}
+
+/** Forkaster ubrukelig sammendrag og lar utdraget være kildeteksten. */
+export function forberedKonsekvensInn(inn: KonsekvensInn): KonsekvensInn {
+  const sammendrag = erUbrukeligGrunnlag(inn.sammendrag)
+    ? ""
+    : inn.sammendrag.replace(/\s+/g, " ").trim();
+  let kildetekst = erUbrukeligGrunnlag(inn.kildetekst)
+    ? ""
+    : inn.kildetekst.replace(/\s+/g, " ").trim();
+  if (!kildetekst && sammendrag) kildetekst = sammendrag;
+  const sakstype = (inn.sakstype ?? "").replace(/\s+/g, " ").trim()
+    || utledSakstype(inn.tittel ?? "", inn.instans ?? "");
+  const kategori = (inn.kategori ?? "").replace(/\s+/g, " ").trim();
+  return { ...inn, sammendrag, kildetekst, sakstype, kategori };
+}
+
 export function byggKonsekvensPrompt(inn: KonsekvensInn): string {
+  const klar = forberedKonsekvensInn(inn);
+  const kortSammendrag = klipp(klar.sammendrag, 1500);
+  const sammendrag = erUbrukeligGrunnlag(inn.sammendrag)
+    ? "(forkastet, brukes ikke)"
+    : kortSammendrag;
+  const fullKilde = klipp(klar.kildetekst, 6000);
+  let kildetekst = fullKilde;
+  if (!fullKilde) kildetekst = "(ingen utdrag)";
+  else if (!erUbrukeligGrunnlag(inn.sammendrag) && fullKilde === kortSammendrag) {
+    kildetekst = "(samme som sammendraget)";
+  }
   const felt: Record<string, string> = {
-    tittel: klipp(inn.tittel || "", 400),
-    sammendrag: klipp(inn.sammendrag || "", 1500),
-    kildetekst: klipp(inn.kildetekst || "", 6000),
-    instans: klipp(inn.instans || "", 200),
-    frist: inn.frist && gyldigIsoDato(inn.frist) ? inn.frist : "",
-    dagens_dato: gyldigIsoDato(inn.dagensDato) ? inn.dagensDato : osloDato(),
+    tittel: klipp(klar.tittel || "", 400),
+    sakstype: klar.sakstype || "(ikke oppgitt)",
+    kategori: klar.kategori || "(ikke oppgitt)",
+    sammendrag,
+    kildetekst,
+    instans: klipp(klar.instans || "", 200),
+    frist: klar.frist && gyldigIsoDato(klar.frist) ? klar.frist : "",
+    dagens_dato: gyldigIsoDato(klar.dagensDato) ? klar.dagensDato : osloDato(),
   };
   return PROMPT.replace(
-    /\{(tittel|sammendrag|kildetekst|instans|frist|dagens_dato)\}/g,
+    /\{(tittel|sakstype|kategori|sammendrag|kildetekst|instans|frist|dagens_dato)\}/g,
     (_, nøkkel: string) => felt[nøkkel] ?? "",
   );
 }
@@ -384,6 +483,17 @@ export type EvalRad = {
   grunn: "ok" | "utsatt" | "tidsbudsjett";
   begrunnelse: string | null;
   tokens: TokenForbruk | null;
+  sett?: string;
+  /** Hvorfor fasiten er satt slik. Sendes ikke til modellen. */
+  fasit_begrunnelse?: string | null;
+};
+
+export type EvalDelrapport = {
+  antall: number;
+  vurdert: number;
+  treff: number;
+  rate: number | null;
+  per_verdi: Record<Konsekvens, TreffVerdi>;
 };
 
 export type KonsekvensPort =
@@ -503,7 +613,24 @@ function normaliserEvalSvar(svar: string | EvalKall | null): EvalKall {
   };
 }
 
-export async function kjørFasitEval<T extends { id: string; forventet: string }>(
+function evalDelrapport(rader: EvalRad[]): EvalDelrapport {
+  const vurdert = rader.filter((s) => s.faktisk != null) as Array<{ forventet: string; faktisk: string }>;
+  const rapport = treffrate(vurdert);
+  return {
+    antall: rader.length,
+    vurdert: vurdert.length,
+    treff: rapport.treff,
+    rate: rapport.rate,
+    per_verdi: rapport.per_verdi,
+  };
+}
+
+export async function kjørFasitEval<T extends {
+  id: string;
+  forventet: string;
+  sett?: string;
+  fasit_begrunnelse?: string | null;
+}>(
   saker: readonly T[],
   klassifiser: (sak: T) => Promise<string | EvalKall | null>,
   nå: () => number = Date.now,
@@ -514,6 +641,7 @@ export async function kjørFasitEval<T extends { id: string; forventet: string }
   treff: number;
   rate: number | null;
   per_verdi: Record<Konsekvens, TreffVerdi>;
+  per_sett: Record<string, EvalDelrapport>;
   utsatt: string[];
   token_forbruk: TokenForbruk & { kall: number };
   saker: EvalRad[];
@@ -521,6 +649,10 @@ export async function kjørFasitEval<T extends { id: string; forventet: string }
   const start = nå();
   const sakerUt: EvalRad[] = [];
   for (const sak of saker) {
+    const meta = {
+      sett: sak.sett,
+      fasit_begrunnelse: sak.fasit_begrunnelse ?? null,
+    };
     if (nå() - start >= budsjettMs) {
       sakerUt.push({
         id: sak.id,
@@ -529,6 +661,7 @@ export async function kjørFasitEval<T extends { id: string; forventet: string }
         grunn: "tidsbudsjett",
         begrunnelse: null,
         tokens: null,
+        ...meta,
       });
       continue;
     }
@@ -545,16 +678,26 @@ export async function kjørFasitEval<T extends { id: string; forventet: string }
       grunn: svar.konsekvens ? "ok" : "utsatt",
       begrunnelse: svar.begrunnelse,
       tokens: svar.tokens,
+      ...meta,
     });
   }
-  const vurdert = sakerUt.filter((s) => s.faktisk != null) as Array<{ forventet: string; faktisk: string }>;
-  const rapport = treffrate(vurdert);
+  const samlet = evalDelrapport(sakerUt);
+  const grupper = new Map<string, EvalRad[]>();
+  for (const rad of sakerUt) {
+    if (!rad.sett) continue;
+    const liste = grupper.get(rad.sett) ?? [];
+    liste.push(rad);
+    grupper.set(rad.sett, liste);
+  }
+  const per_sett: Record<string, EvalDelrapport> = {};
+  for (const [sett, rader] of grupper) per_sett[sett] = evalDelrapport(rader);
   return {
-    antall: sakerUt.length,
-    vurdert: vurdert.length,
-    treff: rapport.treff,
-    rate: rapport.rate,
-    per_verdi: rapport.per_verdi,
+    antall: samlet.antall,
+    vurdert: samlet.vurdert,
+    treff: samlet.treff,
+    rate: samlet.rate,
+    per_verdi: samlet.per_verdi,
+    per_sett,
     utsatt: sakerUt.filter((s) => s.grunn !== "ok").map((s) => s.id),
     token_forbruk: summerTokenForbruk(sakerUt.map((s) => s.tokens)),
     saker: sakerUt,

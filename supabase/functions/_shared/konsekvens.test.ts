@@ -4,6 +4,9 @@ import fs from "node:fs";
 import {
   avslagForKonsekvens,
   byggKonsekvensPrompt,
+  erUbrukeligGrunnlag,
+  forberedKonsekvensInn,
+  innFraFasit,
   erKonsekvensLåst,
   erMobiliserNaa,
   EVAL_TIDSBUDSJETT_MS,
@@ -22,7 +25,7 @@ import {
 } from "./konsekvens.ts";
 import { klassifiserKonsekvens } from "./konsekvens-kall.ts";
 import { oppfriskMobiliserNaa } from "./konsekvens-lager.ts";
-import { FASIT_SAKER } from "./konsekvens-fasit.ts";
+import { FASIT_HOLDOUT, FASIT_OPPRINNELIG, FASIT_SAKER } from "./konsekvens-fasit.ts";
 
 const IDAG = "2026-10-20";
 
@@ -168,10 +171,46 @@ test("prompten fyller plassholderne og beholder verdiene", () => {
     dagensDato: IDAG,
   });
   assert.match(prompt, /tittel: Statsbudsjett 2027/);
-  assert.match(prompt, /kildetekst: Post 50 øker med 3,2 %\./);
+  assert.match(prompt, /utdrag: Post 50 øker med 3,2 %\./);
+  assert.match(prompt, /type: budsjett/);
   assert.match(prompt, /dagens_dato: 2026-10-20/);
   assert.match(prompt, /kutt_innstramming \(bare når kuttet er konkret og navngitt i kilden\)/);
   assert.equal(prompt.includes("{tittel}"), false);
+  const eksempler = prompt.slice(prompt.indexOf("EKSEMPLER"), prompt.indexOf("MOBILISER"));
+  for (const ord of ["helligdagsfredloven", "Bjerke", "lotteri", "Sápmi", "dataspill", "Kulturkvartalet"]) {
+    assert.equal(eksempler.toLowerCase().includes(ord.toLowerCase()), false, ord);
+  }
+});
+
+test("forkastet sammendrag brukes ikke som eneste grunnlag", () => {
+  assert.equal(erUbrukeligGrunnlag("Automatisk avvist av relevansfilteret"), true);
+  assert.equal(erUbrukeligGrunnlag("  "), true);
+  assert.equal(erUbrukeligGrunnlag("En redegjørelse uten vedtak."), false);
+  const prompt = byggKonsekvensPrompt({
+    tittel: "Forslag om å endre en forskrift",
+    sammendrag: "Automatisk avvist av relevansfilteret",
+    kildetekst: "Automatisk avvist av relevansfilteret",
+    instans: "Departementet",
+    frist: "2027-01-12",
+    dagensDato: IDAG,
+    sakstype: "horing",
+    kategori: "spill",
+  });
+  assert.match(prompt, /sammendrag: \(forkastet, brukes ikke\)/);
+  assert.match(prompt, /utdrag: \(ingen utdrag\)/);
+  assert.doesNotMatch(prompt, /sammendrag: Automatisk avvist/);
+  assert.match(prompt, /type: horing/);
+  assert.match(prompt, /2027-01-12/);
+  const medUtdrag = forberedKonsekvensInn({
+    tittel: "T",
+    sammendrag: "Automatisk avvist av relevansfilteret",
+    kildetekst: "Utdraget sier at forskriften endres.",
+    instans: "I",
+    frist: null,
+    dagensDato: IDAG,
+  });
+  assert.equal(medUtdrag.sammendrag, "");
+  assert.equal(medUtdrag.kildetekst, "Utdraget sier at forskriften endres.");
 });
 
 test("treffrate regnes per fasitverdi", () => {
@@ -304,11 +343,22 @@ test("konsekvenstaket får plass i veggklokken på 150 sekunder", () => {
   assert.ok(EVAL_TIDSBUDSJETT_MS < vegg);
 });
 
-test("fasiten har 30 saker og eval stopper ved tidsbudsjettet uten å skrive", async () => {
-  assert.equal(FASIT_SAKER.length, 30);
+test("fasiten har 30 opprinnelige saker og minst 10 holdt utenfor", async () => {
+  assert.equal(FASIT_OPPRINNELIG.length, 30);
+  assert.ok(FASIT_HOLDOUT.length >= 10);
+  assert.equal(FASIT_SAKER.length, FASIT_OPPRINNELIG.length + FASIT_HOLDOUT.length);
   const verdier = new Set(["kutt_innstramming", "stor_endring", "ny_mulighet", "til_orientering"]);
-  assert.equal(new Set(FASIT_SAKER.map((s) => s.id)).size, 30);
+  const ids = FASIT_SAKER.map((s) => s.id);
+  assert.equal(new Set(ids).size, ids.length);
   for (const sak of FASIT_SAKER) assert.equal(verdier.has(sak.forventet), true);
+  for (const sak of FASIT_HOLDOUT) {
+    assert.equal(sak.sett, "holdt_utenfor");
+    assert.ok((sak.fasit_begrunnelse ?? "").length > 40);
+  }
+  const holdout = FASIT_HOLDOUT[0];
+  const prompt = byggKonsekvensPrompt(innFraFasit(holdout, IDAG));
+  assert.equal(prompt.includes(holdout.fasit_begrunnelse ?? "mangler"), false);
+  assert.equal(prompt.includes("fasit_begrunnelse"), false);
 
   let kall = 0;
   const rapport = await kjørFasitEval(
@@ -358,6 +408,17 @@ test("fasiten har 30 saker og eval stopper ved tidsbudsjettet uten å skrive", a
   assert.equal(rapport.per_verdi.kutt_innstramming.antall, 0);
   assert.deepEqual(rapport.utsatt, ["2", "3"]);
   assert.equal(rapport.saker[2]?.grunn, "tidsbudsjett");
+
+  const delt = await kjørFasitEval(
+    [
+      { id: "o", forventet: "stor_endring", sett: "opprinnelig" },
+      { id: "h", forventet: "til_orientering", sett: "holdt_utenfor", fasit_begrunnelse: "Fordi listen er ferdig." },
+    ],
+    async (sak) => sak.forventet,
+  );
+  assert.equal(delt.per_sett.opprinnelig?.treff, 1);
+  assert.equal(delt.per_sett.holdt_utenfor?.treff, 1);
+  assert.equal(delt.saker[1]?.fasit_begrunnelse, "Fordi listen er ferdig.");
 });
 
 test("oppfrisk skriver ikke mobiliser_naa på låste rader", async () => {

@@ -904,9 +904,11 @@ Deno.serve(async (req: Request) => {
               sammendrag,
               kildetekst: typeof item.sammendrag_raa === "string" && item.sammendrag_raa
                 ? item.sammendrag_raa
-                : sammendrag,
+                : "",
               instans: String(item.instans ?? ""),
               frist: item.frist ?? null,
+              sakstype: typeof item.sakstype === "string" ? item.sakstype : null,
+              kategori,
               dagensDato: osloDato(),
             }, anthropicKey, { oppgave: "konsekvens", timeoutMs: KONSEKVENS_TIMEOUT_MS });
             if (svar.ok) {
