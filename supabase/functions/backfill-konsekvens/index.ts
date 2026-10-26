@@ -1,7 +1,10 @@
 // Batchvis, idempotent backfill av konsekvens, og en skrivebeskyttet eval.
 //
-// Krever KONSEKVENS_BACKFILL_SECRET i headeren x-backfill-secret, i tillegg
-// til plattformens JWT. GET gjør ingenting.
+// Auth er den samme som hent-saker: header x-cron-secret mot
+// HENT_SAKER_CRON_SECRET (Vault-navn hent_saker_cron_secret).
+// KONSEKVENS_BACKFILL_SECRET er valgfri og ikke påkrevd. Når den er satt,
+// godtas den i x-cron-secret eller x-backfill-secret.
+// GET gjør ingenting.
 // POST {"eval":true} klassifiserer de 30 fasitsakene med Haiku og skriver ikke
 // til databasen. POST uten eval tar én batch og oppdaterer ulåste rader.
 // Rader med konsekvens_manuell eller manuelt_redigert røres ikke.
@@ -9,7 +12,6 @@
 // mobiliser_naa skrives fra datoen, aldri fra modellen, og aldri på låste rader.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
-import { tidligAvslag } from "../hent-saker/kildehelse.ts";
 import { klassifiserKonsekvens } from "../_shared/konsekvens-kall.ts";
 import { FASIT_DATO, FASIT_SAKER } from "../_shared/konsekvens-fasit.ts";
 import { oppfriskMobiliserNaa } from "../_shared/konsekvens-lager.ts";
@@ -18,6 +20,7 @@ import {
   KONSEKVENS_BACKFILL_BATCH,
   KONSEKVENS_BACKFILL_MAKS,
   KONSEKVENS_TIMEOUT_MS,
+  avslagForKonsekvens,
   kanKlassifisereRad,
   kjørFasitEval,
   osloDato,
@@ -38,17 +41,20 @@ function erEval(body: unknown): boolean {
 }
 
 Deno.serve(async (req: Request) => {
-  const tidlig = tidligAvslag(
+  const tidlig = avslagForKonsekvens(
     req.method,
-    Deno.env.get("KONSEKVENS_BACKFILL_SECRET"),
+    req.headers.get("x-cron-secret"),
     req.headers.get("x-backfill-secret"),
+    Deno.env.get("HENT_SAKER_CRON_SECRET"),
+    Deno.env.get("KONSEKVENS_BACKFILL_SECRET"),
   );
   if (tidlig) {
     if (tidlig.status === 200) {
       return json({
         status: "ok",
         jobb: "backfill-konsekvens",
-        merk: "GET klassifiserer ingenting. POST {\"eval\":true} skriver ikke til databasen.",
+        auth: "x-cron-secret",
+        merk: "GET klassifiserer ingenting. POST {\"eval\":true} skriver ikke til databasen. Hemmeligheten er HENT_SAKER_CRON_SECRET.",
       });
     }
     if (tidlig.kind === "tekst") return new Response(tidlig.body, { status: tidlig.status });
@@ -82,7 +88,12 @@ Deno.serve(async (req: Request) => {
           timeoutMs: KONSEKVENS_TIMEOUT_MS,
           log: () => {},
         });
-        return svar.ok ? svar.felt.konsekvens : null;
+        if (!svar.ok) return { konsekvens: null, begrunnelse: null, tokens: svar.tokens };
+        return {
+          konsekvens: svar.felt.konsekvens,
+          begrunnelse: svar.felt.konsekvens_begrunnelse,
+          tokens: svar.tokens,
+        };
       },
       Date.now,
       EVAL_TIDSBUDSJETT_MS,

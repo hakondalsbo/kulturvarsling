@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
+  avslagForKonsekvens,
   byggKonsekvensPrompt,
   erKonsekvensLåst,
   erMobiliserNaa,
@@ -217,8 +218,11 @@ test("Haiku-kall: ugyldig svar blir fallback, HTTP-feil blir ikke skrevet", asyn
   assert.equal(ok.ok, true);
   if (ok.ok) {
     assert.equal(ok.felt.konsekvens, "ny_mulighet");
+    assert.equal(ok.felt.konsekvens_begrunnelse, "Budsjettet øker.");
     assert.equal(ok.felt.mobiliser_naa, false);
     assert.equal(ok.felt.mobiliser_dato, "2026-12-01");
+    assert.equal(ok.tokens?.input_tokens, 1);
+    assert.equal(ok.tokens?.output_tokens, 1);
   }
 
   const ugyldig = await kall("helt galt");
@@ -229,7 +233,34 @@ test("Haiku-kall: ugyldig svar blir fallback, HTTP-feil blir ikke skrevet", asyn
   }
 
   const http = await kall("{}", 529);
-  assert.deepEqual(http, { ok: false, grunn: "http", status: 529 });
+  assert.equal(http.ok, false);
+  if (!http.ok) {
+    assert.equal(http.grunn, "http");
+    assert.equal(http.status, 529);
+    assert.equal(http.tokens?.input_tokens, 1);
+  }
+});
+
+test("eval bruker cron-hemmeligheten og krever ikke egen secret", () => {
+  assert.equal(avslagForKonsekvens("POST", null, null, undefined, undefined)?.status, 503);
+  assert.equal(avslagForKonsekvens("POST", "feil", null, "cron-hemmelig", undefined)?.status, 401);
+  assert.equal(avslagForKonsekvens("POST", null, "cron-hemmelig", "cron-hemmelig", undefined)?.status, 401);
+  assert.equal(avslagForKonsekvens("POST", "cron-hemmelig", null, "cron-hemmelig", undefined), null);
+  assert.equal(avslagForKonsekvens("GET", "cron-hemmelig", null, "cron-hemmelig", undefined)?.status, 200);
+  assert.equal(avslagForKonsekvens("POST", null, "egen", undefined, "egen"), null);
+  assert.equal(avslagForKonsekvens("POST", "egen", null, "cron-hemmelig", "egen"), null);
+  assert.equal(avslagForKonsekvens("PUT", "cron-hemmelig", null, "cron-hemmelig", undefined)?.status, 405);
+
+  const kilde = fs.readFileSync(
+    new URL("../backfill-konsekvens/index.ts", import.meta.url),
+    "utf8",
+  );
+  const evalStart = kilde.indexOf("if (erEval(body))");
+  const klient = kilde.indexOf("createClient(");
+  assert.ok(evalStart > 0 && klient > evalStart);
+  assert.equal(kilde.slice(evalStart, klient).includes("createClient"), false);
+  assert.match(kilde, /HENT_SAKER_CRON_SECRET/);
+  assert.match(kilde, /x-cron-secret/);
 });
 
 test("merketekstene er språkguidens navn, uten «på vanlig norsk»", () => {
@@ -302,6 +333,27 @@ test("fasiten har 30 saker og eval stopper ved tidsbudsjettet uten å skrive", a
   assert.equal(kall, 1);
   assert.equal(rapport.vurdert, 1);
   assert.equal(rapport.treff, 1);
+  assert.equal(rapport.saker[0]?.begrunnelse, null);
+  assert.equal(rapport.token_forbruk.kall, 0);
+
+  const medTekst = await kjørFasitEval(
+    [{ id: "a", forventet: "ny_mulighet" }],
+    async () => ({
+      konsekvens: "ny_mulighet",
+      begrunnelse: "Kilden øker bevilgningen med 3,5 %.",
+      tokens: {
+        input_tokens: 120,
+        output_tokens: 40,
+        cache_read_input_tokens: 10,
+        cache_creation_input_tokens: 0,
+      },
+    }),
+  );
+  assert.equal(medTekst.saker[0]?.begrunnelse, "Kilden øker bevilgningen med 3,5 %.");
+  assert.equal(medTekst.token_forbruk.input_tokens, 120);
+  assert.equal(medTekst.token_forbruk.output_tokens, 40);
+  assert.equal(medTekst.token_forbruk.cache_read_input_tokens, 10);
+  assert.equal(medTekst.token_forbruk.kall, 1);
   assert.equal(rapport.per_verdi.til_orientering.treff, 1);
   assert.equal(rapport.per_verdi.kutt_innstramming.antall, 0);
   assert.deepEqual(rapport.utsatt, ["2", "3"]);

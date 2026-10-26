@@ -83,7 +83,12 @@ const rapport = await kjørFasitEval(FASIT_SAKER, async (sak) => {
     frist: sak.frist,
     dagensDato: FASIT_DATO,
   }, process.env.ANTHROPIC_API_KEY!, { oppgave: "konsekvens-eval", log: () => {} });
-  return svar.ok ? svar.felt.konsekvens : null;
+  if (!svar.ok) return { konsekvens: null, begrunnelse: null, tokens: svar.tokens };
+  return {
+    konsekvens: svar.felt.konsekvens,
+    begrunnelse: svar.felt.konsekvens_begrunnelse,
+    tokens: svar.tokens,
+  };
 });
 
 const ut = {

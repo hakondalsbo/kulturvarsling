@@ -1,5 +1,6 @@
 // Ren logikk for konsekvens og «Mobiliser nå». Ingen nettverk, ingen Deno.
 // Modellen foreslår dato og grunn. mobiliser_naa regnes alltid ut her.
+import { hemmeligheterStemmer } from "./samtykke.ts";
 
 export const KONSEKVENS_VERDIER = [
   "kutt_innstramming",
@@ -362,13 +363,101 @@ export function tekstFraClaude(data: unknown): string {
 
 export type TreffRad = { forventet: string; faktisk: string };
 
+export type TokenForbruk = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens: number;
+  cache_creation_input_tokens: number;
+};
+
+export type EvalKall = {
+  konsekvens: string | null;
+  begrunnelse: string | null;
+  tokens: TokenForbruk | null;
+};
+
 export type EvalRad = {
   id: string;
   forventet: string;
   /** null når kallet ikke ga en verdi. Telles ikke som feil klasse. */
   faktisk: string | null;
   grunn: "ok" | "utsatt" | "tidsbudsjett";
+  begrunnelse: string | null;
+  tokens: TokenForbruk | null;
 };
+
+export type KonsekvensPort =
+  | { kind: "json"; status: 503 | 401 | 200; body: Record<string, string> }
+  | { kind: "tekst"; status: 405; body: string };
+
+/**
+ * Samme port som hent-saker: header x-cron-secret mot HENT_SAKER_CRON_SECRET
+ * (Vault-navn hent_saker_cron_secret). KONSEKVENS_BACKFILL_SECRET er valgfri.
+ * Den godtas i x-cron-secret eller x-backfill-secret når den er satt.
+ * Uten begge hemmeligheter er tjenesten ikke konfigurert.
+ */
+export function avslagForKonsekvens(
+  method: string,
+  cronHeader: string | null,
+  backfillHeader: string | null,
+  cronSecret: string | undefined,
+  fallbackSecret: string | undefined,
+): KonsekvensPort | null {
+  if (!cronSecret && !fallbackSecret) {
+    return { kind: "json", status: 503, body: { feil: "Tjenesten er ikke konfigurert" } };
+  }
+  const godkjent = hemmeligheterStemmer(cronHeader, cronSecret)
+    || hemmeligheterStemmer(cronHeader, fallbackSecret)
+    || hemmeligheterStemmer(backfillHeader, fallbackSecret);
+  if (!godkjent) {
+    return { kind: "json", status: 401, body: { feil: "Uautorisert" } };
+  }
+  if (method === "GET") {
+    return { kind: "json", status: 200, body: { status: "ok" } };
+  }
+  if (method !== "POST") {
+    return { kind: "tekst", status: 405, body: "Bruk POST" };
+  }
+  return null;
+}
+
+function tokenTall(verdi: unknown): number {
+  return typeof verdi === "number" && Number.isFinite(verdi) && verdi >= 0 ? verdi : 0;
+}
+
+/** Usage fra Anthropic-svaret. Mangler feltet, blir null. */
+export function lesTokenForbruk(data: unknown): TokenForbruk | null {
+  if (!data || typeof data !== "object") return null;
+  const usage = (data as { usage?: unknown }).usage;
+  if (!usage || typeof usage !== "object") return null;
+  const rad = usage as Record<string, unknown>;
+  if (rad.input_tokens == null && rad.output_tokens == null) return null;
+  return {
+    input_tokens: tokenTall(rad.input_tokens),
+    output_tokens: tokenTall(rad.output_tokens),
+    cache_read_input_tokens: tokenTall(rad.cache_read_input_tokens),
+    cache_creation_input_tokens: tokenTall(rad.cache_creation_input_tokens),
+  };
+}
+
+export function summerTokenForbruk(rader: Array<TokenForbruk | null>): TokenForbruk & { kall: number } {
+  const sum = {
+    kall: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+  };
+  for (const rad of rader) {
+    if (!rad) continue;
+    sum.kall += 1;
+    sum.input_tokens += rad.input_tokens;
+    sum.output_tokens += rad.output_tokens;
+    sum.cache_read_input_tokens += rad.cache_read_input_tokens;
+    sum.cache_creation_input_tokens += rad.cache_creation_input_tokens;
+  }
+  return sum;
+}
 
 export type TreffVerdi = { antall: number; treff: number; rate: number | null };
 
@@ -402,9 +491,21 @@ export function treffrate(par: TreffRad[]): {
  * Klassifiserer fasiten innenfor tidsbudsjettet. Et kall som ikke gir verdi,
  * eller som ikke rekker å starte, blir utsatt og inngår ikke i treffraten.
  */
+function normaliserEvalSvar(svar: string | EvalKall | null): EvalKall {
+  if (typeof svar === "string") {
+    return { konsekvens: svar, begrunnelse: null, tokens: null };
+  }
+  if (!svar) return { konsekvens: null, begrunnelse: null, tokens: null };
+  return {
+    konsekvens: svar.konsekvens,
+    begrunnelse: svar.begrunnelse,
+    tokens: svar.tokens,
+  };
+}
+
 export async function kjørFasitEval<T extends { id: string; forventet: string }>(
   saker: readonly T[],
-  klassifiser: (sak: T) => Promise<string | null>,
+  klassifiser: (sak: T) => Promise<string | EvalKall | null>,
   nå: () => number = Date.now,
   budsjettMs: number = EVAL_TIDSBUDSJETT_MS,
 ): Promise<{
@@ -414,26 +515,36 @@ export async function kjørFasitEval<T extends { id: string; forventet: string }
   rate: number | null;
   per_verdi: Record<Konsekvens, TreffVerdi>;
   utsatt: string[];
+  token_forbruk: TokenForbruk & { kall: number };
   saker: EvalRad[];
 }> {
   const start = nå();
   const sakerUt: EvalRad[] = [];
   for (const sak of saker) {
     if (nå() - start >= budsjettMs) {
-      sakerUt.push({ id: sak.id, forventet: sak.forventet, faktisk: null, grunn: "tidsbudsjett" });
+      sakerUt.push({
+        id: sak.id,
+        forventet: sak.forventet,
+        faktisk: null,
+        grunn: "tidsbudsjett",
+        begrunnelse: null,
+        tokens: null,
+      });
       continue;
     }
-    let faktisk: string | null = null;
+    let svar: EvalKall = { konsekvens: null, begrunnelse: null, tokens: null };
     try {
-      faktisk = await klassifiser(sak);
+      svar = normaliserEvalSvar(await klassifiser(sak));
     } catch {
-      faktisk = null;
+      svar = { konsekvens: null, begrunnelse: null, tokens: null };
     }
     sakerUt.push({
       id: sak.id,
       forventet: sak.forventet,
-      faktisk,
-      grunn: faktisk ? "ok" : "utsatt",
+      faktisk: svar.konsekvens,
+      grunn: svar.konsekvens ? "ok" : "utsatt",
+      begrunnelse: svar.begrunnelse,
+      tokens: svar.tokens,
     });
   }
   const vurdert = sakerUt.filter((s) => s.faktisk != null) as Array<{ forventet: string; faktisk: string }>;
@@ -445,6 +556,7 @@ export async function kjørFasitEval<T extends { id: string; forventet: string }
     rate: rapport.rate,
     per_verdi: rapport.per_verdi,
     utsatt: sakerUt.filter((s) => s.grunn !== "ok").map((s) => s.id),
+    token_forbruk: summerTokenForbruk(sakerUt.map((s) => s.tokens)),
     saker: sakerUt,
   };
 }

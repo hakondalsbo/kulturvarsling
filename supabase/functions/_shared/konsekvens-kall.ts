@@ -3,18 +3,20 @@ import { kallClaude } from "./claude.ts";
 import {
   byggKonsekvensPrompt,
   feltFraVurdering,
+  lesTokenForbruk,
   osloDato,
   tekstFraClaude,
   tolkKonsekvensSvar,
   type KonsekvensFelt,
   type KonsekvensInn,
+  type TokenForbruk,
 } from "./konsekvens.ts";
 
 const MODELL = "claude-haiku-4-5-20251001";
 
 export type KlassifiserResultat =
-  | { ok: true; felt: KonsekvensFelt }
-  | { ok: false; grunn: "http" | "tom" | "unntak"; status: number | null };
+  | { ok: true; felt: KonsekvensFelt; tokens: TokenForbruk | null }
+  | { ok: false; grunn: "http" | "tom" | "unntak"; status: number | null; tokens: TokenForbruk | null };
 
 export async function klassifiserKonsekvens(
   inn: Omit<KonsekvensInn, "dagensDato"> & { dagensDato?: string },
@@ -45,15 +47,17 @@ export async function klassifiserKonsekvens(
       }),
     }, deps.oppgave ?? "konsekvens", deps);
 
-    if (!res.ok) return { ok: false, grunn: "http", status: res.status };
     const data = await res.json().catch(() => null);
+    const tokens = lesTokenForbruk(data);
+    if (!res.ok) return { ok: false, grunn: "http", status: res.status, tokens };
     const tekst = tekstFraClaude(data);
-    if (!tekst.trim()) return { ok: false, grunn: "tom", status: res.status };
+    if (!tekst.trim()) return { ok: false, grunn: "tom", status: res.status, tokens };
     return {
       ok: true,
       felt: feltFraVurdering(tolkKonsekvensSvar(tekst, dagensDato)),
+      tokens,
     };
   } catch {
-    return { ok: false, grunn: "unntak", status: null };
+    return { ok: false, grunn: "unntak", status: null, tokens: null };
   }
 }
