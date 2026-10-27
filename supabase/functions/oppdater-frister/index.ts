@@ -2,7 +2,11 @@
 // Regjeringen og Sametinget, og møtedato fra eInnsyn/Bergen. Kjører via
 // pg_cron (oppdater-frister-daglig), ikke via Vercel Cron. Feil i ett
 // oppslag stopper ikke de andre. Skriver frist, motedato og status.
-// Aldri tittel, sammendrag eller kategori. Rader med manuelt_redigert
+// Aldri tittel, sammendrag, kategori eller handling. Handling og
+// kategori leses bare for status. Med handling_mulig er 0–7 dager
+// kritisk og 8–21 viktig. Uten det er 0–21 dager viktig bare for
+// kulturpolitikk, ellers normal. En nærmere dato gir aldri lavere
+// status. Rader med manuelt_redigert
 // får ikke frist, møtedato eller status, heller ikke når feltet er tomt.
 // 80653f79, 1cf0dfd3, de0dc5a6, b70f9ea5 og 90a26730 er stengt selv om
 // flagget skulle mangle.
@@ -34,7 +38,6 @@ import {
 import { hentBergenAgendapunkter } from "../hent-saker/bergen.ts";
 import { finnHøringsfrist, kalenderdag } from "../hent-saker/logikk.ts";
 import {
-  addIsoDager,
   erRegjeringsHoring,
   MAKS_LISTE_SIDER,
   MAKS_REGJERING_DETALJ,
@@ -65,6 +68,7 @@ import {
   utfallOk,
   type KallUtfall,
 } from "./kall.ts";
+import { beregnFristStatus, type FristStatus } from "./status.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 
@@ -197,41 +201,94 @@ async function hentBergenDatoer(): Promise<{ datoer: Map<string, string>; utfall
   return { datoer: ut, utfall: utfallOk(hentet.httpStatus ?? 200) };
 }
 
-/** Frist vinner over møtedato. Uten begge blir status normal, aldri kritisk. Redaktørstatus blir stående. */
+type StatusRad = {
+  id: string;
+  frist: string | null;
+  motedato: string | null;
+  handling: string | null;
+  kategori: string | null;
+  status: string | null;
+};
+
+const STATUS_SIDE = 1000;
+const STATUS_SKRIV = 100;
+
+function statusSporring(supabase: { from: (t: string) => any }) {
+  return supabase
+    .from("varsler")
+    .select("id, frist, motedato, handling, kategori, status")
+    .eq("publisert", true)
+    .eq("manuelt_redigert", false)
+    .not("id", "in", REDAKTOR_ID_FILTER);
+}
+
+/** Samme filter som før. Leser handling og kategori, skriver bare status. */
+async function hentStatusRader(
+  supabase: { from: (t: string) => any },
+): Promise<StatusRad[]> {
+  const ut: StatusRad[] = [];
+  let kursor: string | null = null;
+  for (;;) {
+    let sporring = statusSporring(supabase).order("id", { ascending: true }).limit(STATUS_SIDE);
+    if (kursor) sporring = sporring.gt("id", kursor);
+    const { data, error } = await sporring;
+    if (error) throw new Error(error.message);
+    const side = (data ?? []) as StatusRad[];
+    if (side.length === 0) break;
+    const siste = side[side.length - 1]?.id;
+    if (!siste || siste === kursor) throw new Error("Statuslisten lot seg ikke bla");
+    kursor = siste;
+    ut.push(...side);
+    if (side.length < STATUS_SIDE) break;
+  }
+  return ut;
+}
+
+async function skrivStatus(
+  supabase: { from: (t: string) => any },
+  status: FristStatus,
+  ids: string[],
+): Promise<number> {
+  let antall = 0;
+  for (let i = 0; i < ids.length; i += STATUS_SKRIV) {
+    const del = ids.slice(i, i + STATUS_SKRIV);
+    const { data, error } = await supabase
+      .from("varsler")
+      .update({ status, oppdatert: new Date().toISOString() })
+      .in("id", del)
+      .eq("publisert", true)
+      .eq("manuelt_redigert", false)
+      .not("id", "in", REDAKTOR_ID_FILTER)
+      .neq("status", status)
+      .select("id");
+    const ut = tolkSkriving(error, data);
+    if (ut.feil) throw new Error(ut.feil);
+    antall += ut.antall;
+  }
+  return antall;
+}
+
+/** Frist vinner over møtedato. Redaktørstatus blir stående. */
 async function merkFristStatus(
   supabase: { from: (t: string) => any },
   idag: string,
 ): Promise<Record<string, number>> {
-  const om7 = addIsoDager(idag, 7);
-  const om21 = addIsoDager(idag, 21);
-  const tell = async (sporring: any) => {
-    const { data, error } = await sporring.select("id");
-    if (error) throw new Error(error.message);
-    return (data ?? []).length as number;
+  const grupper: Record<FristStatus, string[]> = {
+    passert: [],
+    kritisk: [],
+    viktig: [],
+    normal: [],
   };
-  const statusOp = (status: string) =>
-    supabase.from("varsler").update({ status, oppdatert: new Date().toISOString() })
-      .eq("publisert", true)
-      .eq("manuelt_redigert", false)
-      .not("id", "in", REDAKTOR_ID_FILTER)
-      .neq("status", status);
-  const fraFrist = (status: string, smal: (q: any) => any) =>
-    tell(smal(statusOp(status).not("frist", "is", null)));
-  const fraMote = (status: string, smal: (q: any) => any) =>
-    tell(smal(statusOp(status).is("frist", null).not("motedato", "is", null)));
-  const utenDato = await tell(
-    statusOp("normal").is("frist", null).is("motedato", null),
-  );
+  for (const rad of await hentStatusRader(supabase)) {
+    const neste = beregnFristStatus(rad, idag);
+    if (rad.status === neste) continue;
+    grupper[neste].push(rad.id);
+  }
   return {
-    passert: await fraFrist("passert", (q) => q.lt("frist", idag))
-      + await fraMote("passert", (q) => q.lt("motedato", idag)),
-    kritisk: await fraFrist("kritisk", (q) => q.gte("frist", idag).lte("frist", om7))
-      + await fraMote("kritisk", (q) => q.gte("motedato", idag).lte("motedato", om7)),
-    viktig: await fraFrist("viktig", (q) => q.gt("frist", om7).lte("frist", om21))
-      + await fraMote("viktig", (q) => q.gt("motedato", om7).lte("motedato", om21)),
-    normal: await fraFrist("normal", (q) => q.gt("frist", om21))
-      + await fraMote("normal", (q) => q.gt("motedato", om21))
-      + utenDato,
+    passert: await skrivStatus(supabase, "passert", grupper.passert),
+    kritisk: await skrivStatus(supabase, "kritisk", grupper.kritisk),
+    viktig: await skrivStatus(supabase, "viktig", grupper.viktig),
+    normal: await skrivStatus(supabase, "normal", grupper.normal),
   };
 }
 
