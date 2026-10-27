@@ -1,7 +1,7 @@
 // Ren status for oppdater-frister. Ingen nettverk og ingen skriving.
-// Fristen styrer når den er satt. Ellers brukes møtedato. Uten begge
-// blir status normal. Vinduene er de samme kalenderdagene som før:
-// passert før i dag, 0–7 dager, 8–21 dager, og lenger frem.
+// Fristen styrer når den er satt. Ellers brukes møtedato. Uten gyldig
+// dato blir status normal. En nærmere dato gir aldri lavere status
+// enn en dato lenger frem. Passert gjelder først når datoen er før i dag.
 
 import { addIsoDager } from "../hent-saker/frister.ts";
 
@@ -44,22 +44,21 @@ function isoDato(verdi: string | null | undefined): string | null {
  * Status for én rad. Kaller ikke filteret manuelt_redigert; det ligger
  * i jobben og skal ikke endres.
  *
- * kritisk krever handling_mulig og at den styrende datoen er i dag
- * eller innen 7 dager (samme grense som lte i dag + 7).
- * Innen det vinduet er bare_orientering, null og annen handling
- * høyst normal. Unntaket er tungt kulturpolitisk kategori, som blir viktig.
- * Passert og vinduene etter dag 7 er uendret.
+ * handling_mulig: 0–7 dager er kritisk, 8–21 er viktig, senere normal.
+ * bare_orientering og null: 0–21 dager er viktig bare for kulturpolitikk,
+ * ellers normal. Senere er normal. Nærmere dato senker ikke statusen.
  */
 export function beregnFristStatus(rad: FristStatusInndata, idag: string): FristStatus {
   const dato = harDato(rad.frist) ? isoDato(rad.frist) : isoDato(rad.motedato);
   if (!dato) return "normal";
   if (dato < idag) return "passert";
   const om7 = addIsoDager(idag, 7);
-  if (dato <= om7) {
-    if (rad.handling === "handling_mulig") return "kritisk";
-    if (erTungtKulturpolitisk(rad.kategori)) return "viktig";
+  const om21 = addIsoDager(idag, 21);
+  if (rad.handling === "handling_mulig") {
+    if (dato <= om7) return "kritisk";
+    if (dato <= om21) return "viktig";
     return "normal";
   }
-  if (dato <= addIsoDager(idag, 21)) return "viktig";
+  if (dato <= om21 && erTungtKulturpolitisk(rad.kategori)) return "viktig";
   return "normal";
 }

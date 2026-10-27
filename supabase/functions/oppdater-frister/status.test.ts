@@ -139,7 +139,7 @@ test("kulturpolitikk med handling_mulig innen 7 dager er fortsatt kritisk", () =
   );
 });
 
-test("dag 0 og dag 7 følger samme nærvindu, dag 8 er viktig som før", () => {
+test("dag 0 og dag 7 er kritisk bare med handling_mulig", () => {
   assert.equal(
     beregnFristStatus(sak({ frist: IDAG, handling: "handling_mulig" }), IDAG),
     "kritisk",
@@ -147,6 +147,10 @@ test("dag 0 og dag 7 følger samme nærvindu, dag 8 er viktig som før", () => {
   assert.equal(
     beregnFristStatus(sak({ frist: IDAG, handling: null }), IDAG),
     "normal",
+  );
+  assert.equal(
+    beregnFristStatus(sak({ frist: IDAG, handling: null, kategori: "kulturpolitikk" }), IDAG),
+    "viktig",
   );
   assert.equal(
     beregnFristStatus(sak({ motedato: OM_SYV, handling: "handling_mulig" }), IDAG),
@@ -162,6 +166,10 @@ test("dag 0 og dag 7 følger samme nærvindu, dag 8 er viktig som før", () => {
   );
   assert.equal(
     beregnFristStatus(sak({ frist: OM_ATTE, handling: "bare_orientering", kategori: "musikk" }), IDAG),
+    "normal",
+  );
+  assert.equal(
+    beregnFristStatus(sak({ frist: OM_ATTE, handling: "bare_orientering", kategori: "kulturpolitikk" }), IDAG),
     "viktig",
   );
   assert.equal(
@@ -170,13 +178,17 @@ test("dag 0 og dag 7 følger samme nærvindu, dag 8 er viktig som før", () => {
   );
   assert.equal(
     beregnFristStatus(sak({ motedato: OM_ATTE, handling: null }), IDAG),
-    "viktig",
+    "normal",
   );
 });
 
-test("8 til 21 dager er viktig og lenger frem er normal, uavhengig av handling", () => {
+test("8 til 21 dager følger handling og kategori, og senere er normal", () => {
   assert.equal(
     beregnFristStatus(sak({ frist: OM_TJUEEN, handling: null, kategori: "opera" }), IDAG),
+    "normal",
+  );
+  assert.equal(
+    beregnFristStatus(sak({ frist: OM_TJUEEN, handling: "bare_orientering", kategori: "kulturpolitikk" }), IDAG),
     "viktig",
   );
   assert.equal(
@@ -188,9 +200,66 @@ test("8 til 21 dager er viktig og lenger frem er normal, uavhengig av handling",
     "normal",
   );
   assert.equal(
+    beregnFristStatus(sak({ frist: OM_TJUETO, handling: "bare_orientering", kategori: "kulturpolitikk" }), IDAG),
+    "normal",
+  );
+  assert.equal(
     beregnFristStatus(sak({ frist: "2026-12-01", handling: "bare_orientering" }), IDAG),
     "normal",
   );
+});
+
+const RANG = { normal: 0, viktig: 1, kritisk: 2 } as const;
+
+function plussDager(iso: string, dager: number): string {
+  const ms = Date.parse(`${iso}T00:00:00Z`) + dager * 86400000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+test("status synker ikke når datoen kommer nærmere", () => {
+  const typer = [
+    { handling: "handling_mulig" as const, kategori: "kulturpolitikk" },
+    { handling: "handling_mulig" as const, kategori: "musikk" },
+    { handling: "bare_orientering" as const, kategori: "kulturpolitikk" },
+    { handling: "bare_orientering" as const, kategori: "musikk" },
+    { handling: null, kategori: "kulturpolitikk" },
+    { handling: null, kategori: "musikk" },
+  ];
+  for (const type of typer) {
+    let forrige = -1;
+    for (let dager = 30; dager >= 0; dager--) {
+      const status = beregnFristStatus(
+        sak({ frist: plussDager(IDAG, dager), handling: type.handling, kategori: type.kategori }),
+        IDAG,
+      );
+      const naa = RANG[status as keyof typeof RANG];
+      assert.notEqual(status, "passert");
+      assert.ok(
+        naa >= forrige,
+        `${type.handling ?? "null"}/${type.kategori} dag ${dager} ga ${status}`,
+      );
+      forrige = naa;
+    }
+  }
+
+  const ved = (dager: number, handling: FristStatusInndata["handling"], kategori: string) =>
+    beregnFristStatus(sak({ frist: plussDager(IDAG, dager), handling, kategori }), IDAG);
+
+  assert.equal(ved(22, "handling_mulig", "musikk"), "normal");
+  assert.equal(ved(21, "handling_mulig", "musikk"), "viktig");
+  assert.equal(ved(8, "handling_mulig", "kulturpolitikk"), "viktig");
+  assert.equal(ved(7, "handling_mulig", "kulturpolitikk"), "kritisk");
+  assert.equal(ved(0, "handling_mulig", "musikk"), "kritisk");
+
+  assert.equal(ved(22, "bare_orientering", "kulturpolitikk"), "normal");
+  assert.equal(ved(21, "bare_orientering", "kulturpolitikk"), "viktig");
+  assert.equal(ved(2, "bare_orientering", "kulturpolitikk"), "viktig");
+  assert.equal(ved(0, null, "kulturpolitikk"), "viktig");
+
+  assert.equal(ved(21, "bare_orientering", "musikk"), "normal");
+  assert.equal(ved(8, null, "musikk"), "normal");
+  assert.equal(ved(2, "bare_orientering", "musikk"), "normal");
+  assert.equal(ved(0, null, "musikk"), "normal");
 });
 
 test("uten dato er normal, og frist vinner over et nærmere møte", () => {

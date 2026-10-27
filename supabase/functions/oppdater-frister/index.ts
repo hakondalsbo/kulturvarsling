@@ -3,10 +3,10 @@
 // pg_cron (oppdater-frister-daglig), ikke via Vercel Cron. Feil i ett
 // oppslag stopper ikke de andre. Skriver frist, motedato og status.
 // Aldri tittel, sammendrag, kategori eller handling. Handling og
-// kategori leses bare for status. Kritisk krever handling_mulig og
-// frist eller møte innen 7 dager. Uten handlingsmulighet blir det
-// vinduet normal, eller viktig for kategori kulturpolitikk. Passert
-// og de senere vinduene er som før. Rader med manuelt_redigert
+// kategori leses bare for status. Med handling_mulig er 0–7 dager
+// kritisk og 8–21 viktig. Uten det er 0–21 dager viktig bare for
+// kulturpolitikk, ellers normal. En nærmere dato gir aldri lavere
+// status. Rader med manuelt_redigert
 // får ikke frist, møtedato eller status, heller ikke når feltet er tomt.
 // 80653f79, 1cf0dfd3, de0dc5a6, b70f9ea5 og 90a26730 er stengt selv om
 // flagget skulle mangle.
