@@ -222,7 +222,9 @@ test("handling er nullable uten default, og triggeren sperrer den ikke", () => {
   const frist = readFileSync("supabase/functions/oppdater-frister/index.ts", "utf8");
   assert.match(hent, /stortinget-horinger/);
   assert.match(hent, /rad\.handling = item\.handling/);
-  assert.doesNotMatch(frist, /handling/);
+  // oppdater-frister leser handling for status. Kolonnen skrives ikke.
+  assert.match(frist, /beregnFristStatus\(/);
+  assert.doesNotMatch(frist, /\.update\(\{[^}]*\bhandling\b/);
 });
 
 test("anon og authenticated mister skriving på varsler, lesing blir stående", () => {
