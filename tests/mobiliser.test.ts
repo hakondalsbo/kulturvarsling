@@ -50,6 +50,8 @@ test("samtykkemalen i databasen er den samme teksten som i koden", () => {
   assert.equal(SAMTYKKE_MAL.split("\n")[0], gamleAvsnitt[0]);
   assert.equal(SAMTYKKE_MAL.split("\n")[1], gamleAvsnitt[1]);
   assert.match(SAMTYKKE_MAL, /\[Les mer i personvernerklæringen]$/);
+  assert.match(personvern, /<a href="\/personvern">Les mer i personvernerklæringen<\/a>/);
+  assert.match(readFileSync("src/mobiliser/FellesInnspill.tsx", "utf8"), /href="\/personvern">Les mer i personvernerklæringen/);
   assert.match(ny, /on conflict \(versjon\) do nothing/);
   assert.doesNotMatch(SAMTYKKE_MAL, /post@kulturvarsling\.no/);
   assert.doesNotMatch(SAMTYKKE_MAL, /\[KONTAKT-E-POST\]/);

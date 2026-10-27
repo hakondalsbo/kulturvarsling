@@ -19,10 +19,15 @@ export const PERSONVERN_FELLES_AVSNITT = [
 
 export function personvernTilleggHtml(): string {
   const avsnitt = PERSONVERN_FELLES_AVSNITT.map((tekst) => {
-    const medPost = tekst.replaceAll(
-      PERSONVERN_EPOST,
-      `<a href="mailto:${PERSONVERN_EPOST}">${PERSONVERN_EPOST}</a>`,
-    );
+    const medPost = tekst
+      .replaceAll(
+        PERSONVERN_EPOST,
+        `<a href="mailto:${PERSONVERN_EPOST}">${PERSONVERN_EPOST}</a>`,
+      )
+      .replaceAll(
+        "[Les mer i personvernerklæringen]",
+        '<a href="/personvern">Les mer i personvernerklæringen</a>',
+      );
     return `    <p>${medPost}</p>`;
   }).join("\n");
   return `    <section id="felles-innspill" class="org">
