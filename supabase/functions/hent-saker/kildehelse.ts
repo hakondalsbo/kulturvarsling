@@ -187,11 +187,13 @@ function erKortEgenTekst(melding: string): boolean {
 }
 
 /**
- * Tekst som kan ligge i kilde_kjoringer. Tabellen er offentlig lesbar, så
- * eksterne URL-er og vilkårlige svartekster blir aldri med. Detaljer logges
- * med console.error hos kalleren.
+ * Tekst som kan ligge i kilde_kjoringer. Tabellen leses bare av
+ * service_role, men feilmeldingen skal likevel ikke inneholde eksterne
+ * URL-er. Detaljer logges med console.error hos kalleren.
  */
 export function sanitertFeilmelding(f: HenteFeil): string {
+  const egen = f.melding.trim();
+  if (/^Tidsgrense: \d+ av \d+ enheter$/.test(egen)) return egen;
   if ((f.type === "http" || f.type === "auth") && f.httpStatus != null) {
     return `HTTP ${f.httpStatus}`;
   }
@@ -315,6 +317,47 @@ function medManglendeFrist(
 
 export function klassifiserKjøring(p: KjøringInndata): KjøringKlassifisering {
   return medManglendeFrist(klassifiserKjøringUtenFrist(p), p.manglendeFrist);
+}
+
+export type ClaudeAvvik = {
+  feilet: boolean;
+  httpStatus: number | null;
+  /** Saker som skulle vært analysert og ble utsatt. Kostnadstaket teller ikke. */
+  utsatte: number;
+  parseFeil?: boolean;
+};
+
+/**
+ * Claude-svikt skal ikke registreres som ok_ingen_nye. Bare kilder som
+ * faktisk utsatte saker endres. Kildens egen feil_* beholdes. Teksten er
+ * «Claude HTTP 401» eller «Claude svarte ikke», uten svarbody.
+ */
+export function medClaudeFeil(
+  base: KjøringKlassifisering,
+  info: ClaudeAvvik,
+): KjøringKlassifisering {
+  if (!info.feilet || info.utsatte <= 0) return base;
+  if (base.status.startsWith("feil_")) return base;
+  const tekst = info.httpStatus != null
+    ? `Claude HTTP ${info.httpStatus}`
+    : "Claude svarte ikke";
+  if (base.status === "ok_nye" || base.status === "delvis") {
+    return {
+      status: "delvis",
+      httpStatus: base.httpStatus,
+      feilmelding: base.feilmelding ? `${base.feilmelding}; ${tekst}`.slice(0, 2000) : tekst,
+    };
+  }
+  if (base.status !== "ok_ingen_nye" && base.status !== "tom") return base;
+  const status: KildeStatus = info.parseFeil
+      || (info.httpStatus != null && info.httpStatus >= 200 && info.httpStatus < 300)
+    ? "feil_parse"
+    : info.httpStatus === 401 || info.httpStatus === 403
+      ? "feil_auth"
+      : info.httpStatus == null
+        ? "feil_nett"
+        : "feil_http";
+  return { status, httpStatus: info.httpStatus, feilmelding: tekst };
 }
 
 function klassifiserKjøringUtenFrist(p: KjøringInndata): KjøringKlassifisering {

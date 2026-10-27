@@ -1,5 +1,5 @@
 // Manuelt kall av slett_utlopte_signaturer, bare telling.
-// Den daglige jobben er pg_cron i 20261026230016_slett_signaturer_cron.sql,
+// Den daglige jobben er pg_cron i 20261027070200_slett_signaturer_cron.sql,
 // kl. 03:00 UTC, etter eInnsyn 01:00–02:10 UTC. Den kaller også med true.
 // Ekte sletting kommer i en senere migrasjon. Ikke kall med false herfra.
 // verify_jwt = true er ikke nok alene. Krever x-cron-secret.

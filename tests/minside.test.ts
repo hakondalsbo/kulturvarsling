@@ -39,7 +39,7 @@ test("kulturpolitikk er valgbart, og den gamle migrasjonen er urørt", () => {
   assert.equal(kategorierForMeny(false).some((k) => k.id === "kulturpolitikk"), false);
   const gammel = readFileSync("supabase/migrations/20261024200000_minside_valg.sql", "utf8");
   assert.match(gammel, /create or replace function public\.kulturpolitikk_valgbart\(\)[\s\S]*select false/);
-  const ny = readFileSync("supabase/migrations/20261026100100_kulturpolitikk_valgbart.sql", "utf8");
+  const ny = readFileSync("supabase/migrations/20261027070100_kulturpolitikk_valgbart.sql", "utf8");
   assert.match(ny, /select true/);
   assert.doesNotMatch(ny, /UTSENDING_AKTIV/);
   const app = readFileSync("src/App.tsx", "utf8");

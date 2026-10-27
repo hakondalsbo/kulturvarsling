@@ -13,6 +13,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
+import { erStripeHendelseId, utfallForStripeInsert } from "./idempotens.ts";
 
 const TOLERANSE_SEK = 300; // avvis signaturer eldre enn 5 min (replay-vern)
 
@@ -74,11 +75,35 @@ Deno.serve(async (req: Request) => {
 
   let event;
   try { event = JSON.parse(payload); } catch { return new Response("Ugyldig hendelse", { status: 400 }); }
-  if (!event?.data?.object || typeof event.type !== "string") return new Response("Ugyldig hendelse", { status: 400 });
+  if (!event?.data?.object || typeof event.type !== "string" || !erStripeHendelseId(event.id)) {
+    return new Response("Ugyldig hendelse", { status: 400 });
+  }
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  const { error: lagret } = await admin.from("stripe_hendelser").insert({
+    event_id: event.id,
+    type: event.type,
+  });
+  const utfall = utfallForStripeInsert(lagret);
+  if (utfall === "feil") {
+    console.error("Kunne ikke lagre Stripe-hendelse:", lagret?.message);
+    return new Response("DB-feil", { status: 500 });
+  }
+  if (utfall === "duplikat") {
+    const { data: tidligere, error: lesFeil } = await admin.from("stripe_hendelser")
+      .select("behandlet")
+      .eq("event_id", event.id)
+      .maybeSingle();
+    if (lesFeil) return new Response("DB-feil", { status: 500 });
+    if (tidligere?.behandlet) {
+      return new Response(JSON.stringify({ received: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
@@ -121,6 +146,14 @@ Deno.serve(async (req: Request) => {
       if (reserveFeil) return new Response("DB-feil", { status: 500 });
     }
     console.log(`Abonnement avsluttet for Stripe-kunde ${sub.customer}`);
+  }
+
+  const { error: merke } = await admin.from("stripe_hendelser")
+    .update({ behandlet: true })
+    .eq("event_id", event.id);
+  if (merke) {
+    console.error("Kunne ikke merke Stripe-hendelse som behandlet:", merke.message);
+    return new Response("DB-feil", { status: 500 });
   }
 
   return new Response(JSON.stringify({ received: true }), {

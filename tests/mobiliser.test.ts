@@ -23,6 +23,7 @@ import {
   tellerMed,
   trekkSignatur,
   utkastErMerke,
+  svarVedSignaturKonflikt,
   validerSignering,
   vurderCaptcha,
 } from "../supabase/functions/_shared/mobilisering-kjerne.ts";
@@ -41,7 +42,7 @@ test("samtykkemalen i databasen er den samme teksten som i koden", () => {
   assert.ok(treff);
   assert.equal(treff[1], SAMTYKKE_MAL_2026_10_24);
   assert.equal(SAMTYKKE_VERSJON_2026_10_24, "felles-innspill-2026-10-24");
-  const ny = readFileSync("supabase/migrations/20261026234923_signatur_innsetting_og_frister.sql", "utf8");
+  const ny = readFileSync("supabase/migrations/20261027070300_signatur_innsetting_og_frister.sql", "utf8");
   const nyTekst = ny.match(/\$samtykke\$(.*?)\$samtykke\$/s);
   assert.ok(nyTekst);
   assert.equal(nyTekst[1], SAMTYKKE_MAL);
@@ -320,8 +321,11 @@ test("rutene og funksjonene er koblet uten at mottaket åpnes i cron", () => {
   assert.match(signer, /bruker_id: null/);
   assert.match(signer, /, 403\)/);
   assert.match(signer, /if \(brev\.send\)/);
-  assert.match(signer, /MOBILISERING_CAPTCHA_AKTIV/);
-  assert.match(signer, /mobiliser_forsok/);
+  assert.match(signer, /TURNSTILE_SECRET_KEY/);
+  assert.match(signer, /registrerFartsgrense/);
+  assert.match(signer, /svarVedSignaturKonflikt/);
+  assert.doesNotMatch(signer, /MOBILISERING_CAPTCHA_AKTIV/);
+  assert.doesNotMatch(signer, /mobiliser_forsok/);
   const vercel = readFileSync("vercel.json", "utf8");
   assert.match(vercel, /\/min-side/);
   assert.match(vercel, /\/mobiliser/);
@@ -343,19 +347,23 @@ test("rutene og funksjonene er koblet uten at mottaket åpnes i cron", () => {
   assert.doesNotMatch(utsending, /MOBILISERING/);
 });
 
-test("captcha krever verken nøkkel eller token før flagget er på", () => {
-  assert.deepEqual(vurderCaptcha({ flagg: undefined, hemmelighet: undefined, token: undefined }), { krev: false });
-  assert.equal(vurderCaptcha({ flagg: "true", hemmelighet: "", token: "" }).krev, true);
-  const utenNokkel = vurderCaptcha({ flagg: "true", hemmelighet: "  ", token: "x" });
-  assert.equal("status" in utenNokkel && utenNokkel.status, 503);
-  const utenToken = vurderCaptcha({ flagg: "true", hemmelighet: "hemmelig", token: "" });
+test("captcha er av uten hemmelighet og krever token når den er satt", () => {
+  assert.deepEqual(vurderCaptcha({ hemmelighet: undefined, token: undefined }), { krev: false });
+  assert.deepEqual(vurderCaptcha({ hemmelighet: "  ", token: "x" }), { krev: false });
+  const utenToken = vurderCaptcha({ hemmelighet: "hemmelig", token: "" });
   assert.equal("status" in utenToken && utenToken.status, 400);
-  const klar = vurderCaptcha({ flagg: "true", hemmelighet: "hemmelig", token: "a".repeat(20) });
+  const klar = vurderCaptcha({ hemmelighet: "hemmelig", token: "a".repeat(20) });
   assert.deepEqual(klar, { krev: true, token: "a".repeat(20) });
+  assert.equal(
+    svarVedSignaturKonflikt({ code: "23505", message: "duplicate key" }).feil,
+    "Du har allerede signert dette innspillet.",
+  );
+  assert.equal(svarVedSignaturKonflikt({ code: "23505" }).status, 409);
+  assert.equal(svarVedSignaturKonflikt({ message: "timeout" }).status, 500);
 });
 
 test("sletting av signaturer kjøres kl. 03:00 UTC med tellemodus", () => {
-  const sql = readFileSync("supabase/migrations/20261026230016_slett_signaturer_cron.sql", "utf8");
+  const sql = readFileSync("supabase/migrations/20261027070200_slett_signaturer_cron.sql", "utf8");
   const gammel = readFileSync("supabase/migrations/20261024210000_mobilisering_fase_og_felles_innspill.sql", "utf8");
   assert.match(sql, /cron\.schedule\(\s*'slett-utlopte-signaturer-daglig',\s*'0 3 \* \* \*'/);
   assert.match(sql, /slett_utlopte_signaturer\(now\(\), true\)/);
@@ -371,7 +379,7 @@ test("sletting av signaturer kjøres kl. 03:00 UTC med tellemodus", () => {
   assert.match(sql, /grant select, insert on table public\.slett_signatur_kjoringer to service_role/);
   const endepunkt = readFileSync("supabase/functions/slett-signaturer/index.ts", "utf8");
   assert.match(endepunkt, /p_dry_run: true/);
-  const frist = readFileSync("supabase/migrations/20261026234923_signatur_innsetting_og_frister.sql", "utf8");
+  const frist = readFileSync("supabase/migrations/20261027070300_signatur_innsetting_og_frister.sql", "utf8");
   assert.match(frist, /coalesce\(p_dry_run, true\)/);
   assert.match(frist, /sendt_tid \+ interval '30 days'/);
   assert.match(frist, /sendt_tid \+ interval '12 months'/);
@@ -384,7 +392,7 @@ test("sletting av signaturer kjøres kl. 03:00 UTC med tellemodus", () => {
   assert.match(frist, /revoke all on function privat\.sett_innspill_slettefrist\(\) from public, anon, authenticated/);
   assert.doesNotMatch(frist, /grant execute on function privat\.sett_innspill_slettefrist\(\) to authenticated/);
   assert.doesNotMatch(frist, /slag = 'felles_innspill'/);
-  const vedKampanje = readFileSync("supabase/migrations/20261027000357_signaturfrist_ved_kampanje.sql", "utf8");
+  const vedKampanje = readFileSync("supabase/migrations/20261027070400_signaturfrist_ved_kampanje.sql", "utf8");
   assert.match(vedKampanje, /after update of sendt_tid, avsluttet_tid on public\.kampanjer/);
   assert.match(vedKampanje, /new\.slag = 'felles_innspill'/);
   assert.match(vedKampanje, /new\.sendt_tid \+ interval '30 days'/);

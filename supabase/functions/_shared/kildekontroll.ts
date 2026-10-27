@@ -1,5 +1,5 @@
 // Etterkontroll: tall og årstall i et sammendrag som ikke står i kildeteksten.
-// Logger et flagg. Stopper ikke kjøringen og skriver ikke til databasen.
+// Logger et flagg og kan skrive én rad i varsel_sperringer. Stopper ikke kjøringen.
 
 export type Tallavvik = {
   aar: string[];
@@ -94,5 +94,66 @@ export function loggUdokumenterteTall(
       melding: String(e).slice(0, 120),
     }));
     return { aar: [], tall: [] };
+  }
+}
+
+export type SperreOppgave = "hent-saker" | "klartekst";
+
+export type VarselSperring = {
+  varsel_id: string;
+  arsak: "tall_uten_kilde";
+  oppgave: SperreOppgave;
+  detalj: { aar: string[]; tall: string[] };
+};
+
+/** Én rad per sak. Tomt avvik gir ingen rad. Detaljen er bare tallene, ikke kildeteksten. */
+export function sperringForTall(
+  varselId: string,
+  oppgave: SperreOppgave,
+  avvik: Tallavvik,
+): VarselSperring | null {
+  if (!varselId || (avvik.aar.length === 0 && avvik.tall.length === 0)) return null;
+  return {
+    varsel_id: varselId,
+    arsak: "tall_uten_kilde",
+    oppgave,
+    detalj: { aar: [...avvik.aar], tall: [...avvik.tall] },
+  };
+}
+
+type SperreKlient = {
+  from: (tabell: string) => {
+    upsert: (
+      rad: VarselSperring,
+      opts: { onConflict: string; ignoreDuplicates: boolean },
+    ) => Promise<{ error: { message?: string } | null }>;
+  };
+};
+
+/**
+ * Skriver varsel_sperringer. Kaster ikke. null når ingen rad trengtes
+ * eller raden ble skrevet. Tekst når skrivingen feilet.
+ */
+export async function lagreTallSperring(
+  supabase: SperreKlient,
+  varselId: string,
+  oppgave: SperreOppgave,
+  avvik: Tallavvik,
+): Promise<string | null> {
+  const rad = sperringForTall(varselId, oppgave, avvik);
+  if (!rad) return null;
+  try {
+    const { error } = await supabase.from("varsel_sperringer").upsert(rad, {
+      onConflict: "varsel_id,arsak,oppgave",
+      ignoreDuplicates: true,
+    });
+    if (!error) return null;
+    const melding = (error.message ?? "skriving feilet").slice(0, 200);
+    console.error("varsel_sperringer:", melding);
+    return melding;
+  } catch (e) {
+    const melding = String(e).slice(0, 200);
+    console.error("varsel_sperringer:", melding);
+    return melding;
   }
 }

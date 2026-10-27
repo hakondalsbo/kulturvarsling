@@ -666,26 +666,35 @@ export function erUuid(verdi: unknown): verdi is string {
   return typeof verdi === "string" && UUID.test(verdi);
 }
 
+export const ALLEREDE_SIGNERT = "Du har allerede signert dette innspillet.";
+
 /**
- * Captcha er av til MOBILISERING_CAPTCHA_AKTIV er nøyaktig true.
- * Nøkkel kreves ikke for at funksjonen skal starte. Er flagget på uten nøkkel,
- * avvises signeringen. Turnstile sjekkes bare da.
+ * Turnstile er av når TURNSTILE_SECRET_KEY mangler, så signering
+ * virker som før Håkon har opprettet widgeten. Er nøkkelen satt,
+ * kreves et token. Selve siteverify skjer i signer-innspill.
  */
 export function vurderCaptcha(input: {
-  flagg: string | null | undefined;
   hemmelighet: string | null | undefined;
   token: unknown;
-}): { krev: false } | { krev: true; token: string } | { krev: true; feil: string; status: 400 | 503 } {
-  if (!signaturMottakAktiv(input.flagg)) return { krev: false };
+}): { krev: false } | { krev: true; token: string } | { krev: true; feil: string; status: 400 } {
   const hemmelighet = (input.hemmelighet ?? "").trim();
-  if (!hemmelighet) {
-    return { krev: true, feil: "Captcha er slått på, men nøkkelen er ikke satt.", status: 503 };
-  }
+  if (!hemmelighet) return { krev: false };
   const token = typeof input.token === "string" ? input.token.trim() : "";
   if (token.length < 10 || token.length > 2048) {
     return { krev: true, feil: "Bekreft at du ikke er en robot.", status: 400 };
   }
   return { krev: true, token };
+}
+
+/** Unik e-post på et åpent innspill skal ikke se ut som en intern feil. */
+export function svarVedSignaturKonflikt(
+  feil: { code?: string; message?: string } | null | undefined,
+): { status: number; feil: string } {
+  const tekst = feil?.message ?? "";
+  if (feil?.code === "23505" || /duplicate key|unique constraint|kampanje_signaturer_aapen_epost/i.test(tekst)) {
+    return { status: 409, feil: ALLEREDE_SIGNERT };
+  }
+  return { status: 500, feil: "Signaturen ble ikke lagret." };
 }
 
 export async function sha256Hex(tekst: string): Promise<string> {

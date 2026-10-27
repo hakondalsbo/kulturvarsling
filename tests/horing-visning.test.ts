@@ -84,7 +84,7 @@ test("følg komité er på og skriver egen rad uten e-post", async () => {
   assert.match(personvern, /artikkel 6 nr\. 1 bokstav b/);
   assert.doesNotMatch(personvern, /Åndsverkstedet/);
   assert.equal(personvern.toLowerCase().includes("på vanlig norsk"), false);
-  const flagg = readFileSync("supabase/migrations/20261026100000_folg_komite_pa.sql", "utf8");
+  const flagg = readFileSync("supabase/migrations/20261027070000_folg_komite_pa.sql", "utf8");
   assert.match(flagg, /set aktiv = true/);
   assert.match(flagg, /nokkel = 'folg_komite'/);
   assert.doesNotMatch(flagg, /UTSENDING_AKTIV/);

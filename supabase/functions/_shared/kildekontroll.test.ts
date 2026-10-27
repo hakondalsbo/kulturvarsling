@@ -1,10 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   finnUdokumenterteTall,
   kildegrunnlag,
+  lagreTallSperring,
   loggUdokumenterteTall,
   publiseresEtterKontroll,
+  sperringForTall,
 } from "./kildekontroll.ts";
 
 test("årstall og beløp som står i kilden flagges ikke", () => {
@@ -66,6 +69,63 @@ test("logging flagger uten å kaste, og lar være når alt står i kilden", () =
   const stille: string[] = [];
   loggUdokumenterteTall("hent-saker", "Frist 2026.", "Frist 2026.", "x", (linje) => stille.push(linje));
   assert.deepEqual(stille, []);
+});
+
+test("sperret sak får varsel-id og årsak tall_uten_kilde", async () => {
+  assert.equal(sperringForTall("id-1", "hent-saker", { aar: [], tall: [] }), null);
+  const rad = sperringForTall("11111111-1111-4111-8111-111111111111", "hent-saker", {
+    aar: ["2027"],
+    tall: ["374"],
+  });
+  assert.deepEqual(rad, {
+    varsel_id: "11111111-1111-4111-8111-111111111111",
+    arsak: "tall_uten_kilde",
+    oppgave: "hent-saker",
+    detalj: { aar: ["2027"], tall: ["374"] },
+  });
+  assert.equal(JSON.stringify(rad).includes("Rogaland"), false);
+
+  const skrevet: unknown[] = [];
+  const feil = await lagreTallSperring({
+    from: (tabell) => ({
+      upsert: async (inn, opts) => {
+        skrevet.push({ tabell, inn, opts });
+        return { error: null };
+      },
+    }),
+  }, "11111111-1111-4111-8111-111111111111", "klartekst", { aar: ["2027"], tall: [] });
+  assert.equal(feil, null);
+  assert.equal(skrevet.length, 1);
+  const forste = skrevet[0] as { tabell: string; opts: { onConflict: string; ignoreDuplicates: boolean } };
+  assert.equal(forste.tabell, "varsel_sperringer");
+  assert.equal(forste.opts.onConflict, "varsel_id,arsak,oppgave");
+  assert.equal(forste.opts.ignoreDuplicates, true);
+
+  const stille = await lagreTallSperring({
+    from: () => ({ upsert: async () => { throw new Error("skulle ikke kalles"); } }),
+  }, "x", "hent-saker", { aar: [], tall: [] });
+  assert.equal(stille, null);
+});
+
+test("varsel_sperringer er ny tabell, ikke en kolonne på kilde_kjoringer", () => {
+  const sql = readFileSync("supabase/migrations/20261026223000_varsel_sperringer.sql", "utf8");
+  assert.match(sql, /create table if not exists public\.varsel_sperringer/);
+  assert.match(sql, /arsak = 'tall_uten_kilde'/);
+  assert.match(sql, /varsel_id uuid not null references public\.varsler/);
+  assert.match(sql, /unique \(varsel_id, arsak, oppgave\)/);
+  assert.match(sql, /enable row level security/);
+  assert.match(sql, /revoke all on table public\.varsel_sperringer from anon/);
+  assert.match(sql, /grant select, insert on table public\.varsel_sperringer to service_role/);
+  assert.match(sql, /revoke update, delete, truncate, references, trigger/);
+  assert.match(sql, /from service_role/);
+  assert.match(sql, /create index if not exists varsel_sperringer_opprettet_idx/);
+  assert.match(sql, /drop policy if exists varsel_sperringer_service_les/);
+  assert.match(sql, /create policy varsel_sperringer_service_les/);
+  assert.match(sql, /drop policy if exists varsel_sperringer_service_skriv/);
+  assert.match(sql, /create policy varsel_sperringer_service_skriv/);
+  assert.equal(/to anon/i.test(sql) && /create policy[\s\S]*to anon/.test(sql), false);
+  assert.equal(sql.includes("kilde_kjoringer"), true);
+  assert.equal(/alter table public\.kilde_kjoringer/.test(sql), false);
 });
 
 test("tall uten kilde holdes upublisert, og rene sammendrag publiseres", () => {

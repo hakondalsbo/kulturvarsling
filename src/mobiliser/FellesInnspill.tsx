@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { Felt, Knapp } from "../ui.tsx";
+import { TurnstileFelt, turnstileNokkel } from "../turnstile.tsx";
 import { SAMTYKKE_VERSJON, fyllSamtykke, validerSignering } from "./kjerne.ts";
 import { signaturKanSigneres } from "./miljo.ts";
+
+// Samme offentlige anon-nøkkel som i App.tsx. Skjemaet importerer ikke App,
+// for App importerer mobiliser.
+const SUPABASE_URL = "https://zyyijlvmgoanjdzngmon.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI";
 
 export function InnspillStengt({ tittel }: { tittel?: string }) {
   return (
@@ -37,11 +43,16 @@ export function FellesInnspillSkjema({
   const [samtykke, setSamtykke] = useState(false);
   const [feil, setFeil] = useState("");
   const [sendt, setSendt] = useState(false);
+  const [melding, setMelding] = useState("");
+  const [laster, setLaster] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaOmstart, setCaptchaOmstart] = useState(0);
   const vist = fyllSamtykke(mottaker, dato);
   const [foran, etter] = deltSamtykke(vist);
+  const krevCaptcha = turnstileNokkel() !== "";
   if (!signaturKanSigneres()) return <InnspillStengt tittel={tittel} />;
 
-  function send(e: { preventDefault: () => void }) {
+  async function send(e: { preventDefault: () => void }) {
     e.preventDefault();
     if (!samtykke) {
       setFeil("Du må krysse av for samtykke. Avkrysningen er ikke fylt ut på forhånd.");
@@ -66,8 +77,50 @@ export function FellesInnspillSkjema({
       setSendt(false);
       return;
     }
+    if (krevCaptcha && !captchaToken) {
+      setFeil("Bekreft at du ikke er en robot.");
+      setSendt(false);
+      return;
+    }
+    setLaster(true);
     setFeil("");
-    setSendt(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/signer-innspill`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON,
+          Authorization: `Bearer ${SUPABASE_ANON}`,
+        },
+        body: JSON.stringify({
+          kampanje_id: innspillId,
+          navn,
+          epost,
+          rolle,
+          organisasjon,
+          kommune,
+          samtykke: true,
+          samtykke_tekst_versjon: SAMTYKKE_VERSJON,
+          kv_hp_felt: honning,
+          captcha_token: captchaToken,
+        }),
+      });
+      const data = await res.json().catch(() => ({})) as { ok?: boolean; feil?: string; melding?: string };
+      if (!res.ok || data.ok === false) {
+        setFeil(typeof data.feil === "string" ? data.feil : "Signaturen ble ikke lagret.");
+        setSendt(false);
+        setCaptchaToken("");
+        setCaptchaOmstart((n) => n + 1);
+        return;
+      }
+      setMelding(typeof data.melding === "string" ? data.melding : "Sjekk e-posten din og bekreft signaturen.");
+      setSendt(true);
+    } catch {
+      setFeil("Signaturen ble ikke lagret. Prøv igjen.");
+      setSendt(false);
+    } finally {
+      setLaster(false);
+    }
   }
 
   return (
@@ -98,14 +151,11 @@ export function FellesInnspillSkjema({
         <a href="/personvern">Les mer i personvernerklæringen</a>
         {etter}
       </p>
+      <TurnstileFelt key={captchaOmstart} onToken={setCaptchaToken} />
       {feil && <p className="kv-feil" role="alert">{feil}</p>}
-      {sendt && (
-        <p role="status">
-          Dette er en forhåndsvisning. Ingenting er lagret hos oss eller sendt. Signaturen teller ikke før e-posten er bekreftet.
-        </p>
-      )}
+      {sendt && <p role="status">{melding}</p>}
       <div className="mobiliser-lenker">
-        <Knapp type="submit">Signer innspillet</Knapp>
+        <Knapp type="submit" disabled={laster || (krevCaptcha && !captchaToken)}>{laster ? "Sender" : "Signer innspillet"}</Knapp>
         <a className="kv-lenke" href="/mobiliser?vis=panel">Tilbake til saken</a>
         <a className="kv-lenke" href="/min-side#stottet" data-lenkepunkt="min-side" data-koble="mine-innspill">Innspill du har støttet</a>
         <a className="kv-lenke" href="/min-side#fulgte" data-lenkepunkt="min-side" data-koble="fulgte">Saker du følger</a>

@@ -1,7 +1,7 @@
 /**
  * Håkon godkjente kulturpolitikk som eget fagområde 26. oktober 2026.
  * Samme verdi står i public.kulturpolitikk_valgbart() etter migrasjonen
- * 20261026100100_kulturpolitikk_valgbart.sql. Den eldre migrasjonen
+ * 20261027070100_kulturpolitikk_valgbart.sql. Den eldre migrasjonen
  * 20261024200000 returnerer fortsatt false og skal ikke endres.
  *
  * true: kategorien kan krysses av og lagres i profiler.fagfelt. Saker med

@@ -8,8 +8,10 @@
 // flagget skulle mangle.
 //
 // Kall som feiler logges i kilde_kjoringer med jobb oppdater-frister,
-// feilstatus og HTTP-kode. 403 rapporteres som feil_auth. User-Agent er
-// Kulturvarsling/1.0 og byttes ikke, og det brukes ingen proxy.
+// feilstatus og HTTP-kode. 403 rapporteres som feil_auth. User-Agent mot
+// api.einnsyn.no har navn og kontakt. Andre kilder beholder
+// Kulturvarsling/1.0. Det brukes ingen proxy. Minst én vellykket kilde
+// gir HTTP 200 med advarsel. 502 bare når alle kalte kilder feilet.
 // Alarm vises i kilde_alarmer_frister, ikke i kilde_alarmer, og
 // kilder.sist_status røres ikke. Det er innhentingens status.
 // Oppdaterte frister og møtedatoer skrives som antall_oppdatert,
@@ -54,10 +56,11 @@ import {
 } from "../hent-saker/frister.ts";
 import { REDAKTOR_FELT_LAAS, skalSkriveFrist, skalSkriveMotedato } from "../_shared/varselvern.ts";
 import {
-  harKildeAlarm,
   klassifiserKildeKall,
   planleggDatoSkriving,
+  svarForFristjobb,
   tolkSkriving,
+  userAgentForUrl,
   utfallFeil,
   utfallOk,
   type KallUtfall,
@@ -91,7 +94,7 @@ const REDAKTOR_ID_FILTER = `(${REDAKTOR_FELT_LAAS.join(",")})`;
 async function hentTekst(url: string): Promise<Lest> {
   try {
     const res = await fetch(url, {
-      headers: { Accept: "text/html,application/json", "User-Agent": "Kulturvarsling/1.0" },
+      headers: { Accept: "text/html,application/json", "User-Agent": userAgentForUrl(url) },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const lest = await lesTekstRespons(res, url);
@@ -546,8 +549,8 @@ Deno.serve(async (req: Request) => {
       kilde_status: logg.rader,
       logg_feil: logg.loggFeil ?? undefined,
     };
-    const http = harKildeAlarm(logg.rader) || logg.loggFeil ? 502 : 200;
-    return jsonSvar(kropp, http);
+    const http = svarForFristjobb(logg.rader, logg.loggFeil);
+    return jsonSvar({ ...kropp, advarsel: http.advarsel ?? undefined }, http.status);
   } catch (e) {
     console.error("oppdater-frister:", String(e).slice(0, 200));
     const logg = await loggKildeKall(supabase, kall, oppdatertPerKilde, startet, kjoertAv).catch((loggE) => {

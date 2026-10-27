@@ -9,6 +9,7 @@ import {
   feilFraStatus,
   feilFraUnntak,
   klassifiserKjøring,
+  medClaudeFeil,
   lesSakerListe,
   samleRssSvar,
   sesjonIdStemmer,
@@ -441,6 +442,67 @@ test("0 rå fra en kilde som normalt har treff er feil_tomt_svar, ikke ok_ingen_
   assert.equal(r.httpStatus, 200);
   assert.equal(r.feilmelding, "Kilden svarte uten treff");
   assertLovligStatus(r.status);
+});
+
+test("Claude-svikt blir alarm og ikke ok_ingen_nye", () => {
+  const okIngen = klassifiserKjøring({
+    raattAntall: 3,
+    antallNye: 0,
+    feil: [],
+    forsok: 1,
+    vellykket: 1,
+    httpStatus: 200,
+  });
+  const auth = medClaudeFeil(okIngen, { feilet: true, httpStatus: 401, utsatte: 2 });
+  assert.equal(auth.status, "feil_auth");
+  assert.equal(auth.feilmelding, "Claude HTTP 401");
+  assert.equal(auth.httpStatus, 401);
+  assertLovligStatus(auth.status);
+
+  const nett = medClaudeFeil(okIngen, { feilet: true, httpStatus: null, utsatte: 1 });
+  assert.equal(nett.status, "feil_nett");
+  assert.equal(nett.feilmelding, "Claude svarte ikke");
+
+  const parse = medClaudeFeil(okIngen, {
+    feilet: true,
+    httpStatus: 200,
+    utsatte: 1,
+    parseFeil: true,
+  });
+  assert.equal(parse.status, "feil_parse");
+  assert.equal(parse.feilmelding, "Claude HTTP 200");
+
+  const rate = medClaudeFeil(okIngen, { feilet: true, httpStatus: 429, utsatte: 1 });
+  assert.equal(rate.status, "feil_http");
+  assert.equal(rate.feilmelding, "Claude HTTP 429");
+
+  const urort = medClaudeFeil(okIngen, { feilet: true, httpStatus: 401, utsatte: 0 });
+  assert.equal(urort.status, "ok_ingen_nye");
+  assert.equal(urort.feilmelding, null);
+
+  const nye = klassifiserKjøring({
+    raattAntall: 3,
+    antallNye: 1,
+    feil: [],
+    forsok: 1,
+    vellykket: 1,
+    httpStatus: 200,
+  });
+  const delvis = medClaudeFeil(nye, { feilet: true, httpStatus: 503, utsatte: 1 });
+  assert.equal(delvis.status, "delvis");
+  assert.equal(delvis.feilmelding, "Claude HTTP 503");
+  assert.equal(delvis.httpStatus, 200);
+
+  const kildens = klassifiserKjøring({
+    raattAntall: 0,
+    antallNye: 0,
+    feil: [{ type: "http", httpStatus: 500, melding: "hemmelig kropp", url: "https://eksempel.no/x" }],
+    forsok: 1,
+    vellykket: 0,
+  });
+  const beholdt = medClaudeFeil(kildens, { feilet: true, httpStatus: 401, utsatte: 4 });
+  assert.equal(beholdt.status, "feil_http");
+  assert.equal(beholdt.feilmelding, "HTTP 500");
 });
 
 test("0 rå uten forventet treff forblir tom, med http-status", () => {

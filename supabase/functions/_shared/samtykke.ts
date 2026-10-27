@@ -1,6 +1,8 @@
 // Ren logikk for påmelding, avmelding og utsendelse. Ingen Deno- eller
 // databasekall, slik at filen kan testes med Node.
 
+import { erTillattOpprinnelse } from "./cors.ts";
+
 export const SAMTYKKE_VERSJON = "nyhetsbrev-2026-10";
 export const PERSONVERN_VERSJON = "personvern-2026-10";
 export const KILDE_VENTESIDE = "venteside";
@@ -80,14 +82,9 @@ export function erBlokkert(epostAntall: number, ipAntall: number): boolean {
   return epostAntall >= RATE_EPOST || ipAntall >= RATE_IP;
 }
 
-const KENDTE_OPPHAV = new Set([
-  "https://www.kulturvarsling.no",
-  "https://kulturvarsling.no",
-]);
-
 export function opphavTillatt(origin: string | null): boolean {
   if (!origin) return true;
-  if (KENDTE_OPPHAV.has(origin)) return true;
+  if (erTillattOpprinnelse(origin)) return true;
   try {
     const url = new URL(origin);
     return url.hostname === "localhost" || url.hostname === "127.0.0.1";

@@ -70,6 +70,8 @@ test("rate limit og opphav", () => {
   assert.equal(opphavTillatt("https://kulturvarsling.no"), true);
   assert.equal(opphavTillatt("http://localhost:8080"), true);
   assert.equal(opphavTillatt("https://ond-side.example"), false);
+  assert.equal(opphavTillatt("https://kulturvarsling-git-foo-hakondalsbos-projects.vercel.app"), true);
+  assert.equal(opphavTillatt("https://kulturvarsling-git-foo-annen-projects.vercel.app"), false);
 });
 
 test("avmelding skrives bare ved POST og krever uuid", () => {

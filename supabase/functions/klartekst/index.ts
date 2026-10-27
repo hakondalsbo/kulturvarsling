@@ -1,13 +1,14 @@
 import { harPremium, reserverAiKvote } from "../_shared/tilgang.ts";
 import { kallClaude } from "../_shared/claude.ts";
-import { kildegrunnlag, loggUdokumenterteTall } from "../_shared/kildekontroll.ts";
+import { kildegrunnlag, lagreTallSperring, loggUdokumenterteTall } from "../_shared/kildekontroll.ts";
 // Klartekst (VEIKART E2): «Hva betyr dette for deg?»
 // POST {varsel_id} med innlogget bruker-JWT →
 //   {svar: {hva_skjer, hvem_pavirkes, tall_belop, frist, hva_kan_du_gjore}, cachet}
 // Profilen hentes alltid server-side fra profiler. Svaret caches per sak +
 // normalisert profiltype i klartekst_cache.
-// Skriver bare til klartekst_cache, aldri til varsler. Tittel, sammendrag
-// og kategori — også når manuelt_redigert er satt — blir ikke rørt her.
+// Skriver til klartekst_cache, og ved tall uten kilde én rad i
+// varsel_sperringer. Aldri til varsler. Tittel, sammendrag og kategori
+// — også når manuelt_redigert er satt — blir ikke rørt her.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
@@ -137,15 +138,6 @@ async function genererKlartekst(
     const prompt = byggPrompt(sak, profil);
     const tekst = await spørClaude(prompt, apiKey);
     const parsed = tekst ? parseKlartekstSvar(tekst) : null;
-    if (parsed) {
-      // Flagget stopper ikke svaret. varsler-raden skrives ikke.
-      loggUdokumenterteTall(
-        "klartekst",
-        klartekstSomTekst(parsed),
-        kildegrunnlag([sak.tittel, sak.sammendrag, sak.instans, sak.frist, sak.sted]),
-        sak.tittel,
-      );
-    }
     return parsed;
   })();
 
@@ -273,6 +265,17 @@ Deno.serve(async (req: Request) => {
       return svar(req, { feil: "AI-laget er utilgjengelig akkurat nå — prøv igjen om litt" }, 502);
     }
     leggILokalCache(cacheNøkkel, parsed);
+
+    // Flagget stopper ikke svaret. varsler-raden skrives ikke.
+    // Avviket blir en sporbar rad med varsel-id og årsak tall_uten_kilde.
+    const avvik = loggUdokumenterteTall(
+      "klartekst",
+      klartekstSomTekst(parsed),
+      kildegrunnlag([sak.tittel, sak.sammendrag, sak.instans, sak.frist, sak.sted]),
+      sak.tittel,
+    );
+    const sperreFeil = await lagreTallSperring(supabase, varselId, "klartekst", avvik);
+    if (sperreFeil) console.error("varsel_sperringer klartekst:", sperreFeil.slice(0, 120));
 
     // Bare cache-tabellen. varsler.tittel/sammendrag/kategori oppdateres ikke.
     const { error: cacheLagreFeil } = await supabase.from("klartekst_cache").upsert(

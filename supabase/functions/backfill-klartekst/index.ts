@@ -4,6 +4,7 @@
 // Skriver kun klartekst_cache. Oppdaterer aldri varsler.tittel, sammendrag
 // eller kategori, så en rad med manuelt_redigert=true beholder redaktørens tekst.
 
+import { lagreTallSperring } from "../_shared/kildekontroll.ts";
 import { tidligAvslag } from "../hent-saker/kildehelse.ts";
 import {
   genererGenerellKlartekst,
@@ -83,6 +84,7 @@ Deno.serve(async (req: Request) => {
     const valgt = mangler.slice(0, batch);
     let lagret = 0;
     let feilet = 0;
+    let sperret = 0;
 
     for (const sak of valgt) {
       try {
@@ -90,6 +92,11 @@ Deno.serve(async (req: Request) => {
         if (!generert) {
           feilet++;
           continue;
+        }
+        if (generert.tallavvik.aar.length || generert.tallavvik.tall.length) {
+          const sperreFeil = await lagreTallSperring(supabase, sak.id, "klartekst", generert.tallavvik);
+          if (sperreFeil) console.error("varsel_sperringer:", sperreFeil.slice(0, 120));
+          else sperret++;
         }
         const cacheFeil = await lagreKlartekstCache(supabase, sak.id, generert);
         if (cacheFeil) {
@@ -112,6 +119,7 @@ Deno.serve(async (req: Request) => {
       forsokt: valgt.length,
       lagret,
       feilet,
+      sperret,
       gjenstar: Math.max(0, mangler.length - lagret),
     });
   } catch (e) {
