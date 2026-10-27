@@ -384,6 +384,7 @@ test("sletting av signaturer kjøres kl. 03:00 UTC med tellemodus", () => {
   assert.doesNotMatch(frist, /slag = 'felles_innspill'/);
   const vedKampanje = readFileSync("supabase/migrations/20261027000357_signaturfrist_ved_kampanje.sql", "utf8");
   assert.match(vedKampanje, /after update of sendt_tid, avsluttet_tid on public\.kampanjer/);
+  assert.match(vedKampanje, /new\.slag = 'felles_innspill'/);
   assert.match(vedKampanje, /new\.sendt_tid \+ interval '30 days'/);
   assert.match(vedKampanje, /new\.sendt_tid \+ interval '12 months'/);
   assert.match(vedKampanje, /new\.avsluttet_tid \+ interval '12 months'/);
