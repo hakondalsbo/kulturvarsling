@@ -4,6 +4,8 @@ import { FellesInnspillSkjema, InnspillBekreftet, InnspillTrukket } from "./Fell
 import { MobiliserPanel } from "./MobiliserPanel.tsx";
 import { signaturErSynlig } from "./miljo.ts";
 import { StottetInnspill } from "./StottetInnspill.tsx";
+import { TrekkSignatur } from "./TrekkSignatur.tsx";
+import { erTrekkForesporsel } from "./trekk.ts";
 import "./mobiliser.css";
 
 const VISNINGER = ["panel", "uten-fase", "samtykke", "bekreftet", "trukket", "eksport"] as const;
@@ -16,6 +18,19 @@ function lesVis(): Vis {
 }
 
 export function MobiliserSide() {
+  if (erTrekkForesporsel(window.location.search)) {
+    return (
+      <div className="avis mobiliser">
+        <main className="mobiliser-wrap">
+          <div className="mobiliser-topp">
+            <a href="/" rel="noreferrer">Kulturvarsling</a>
+          </div>
+          <TrekkSignatur />
+        </main>
+      </div>
+    );
+  }
+
   const vis = lesVis();
   const apen = signaturErSynlig();
 
