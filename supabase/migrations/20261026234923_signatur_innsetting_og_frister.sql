@@ -224,7 +224,9 @@ grant execute on function public.slett_utlopte_signaturer(timestamptz, boolean) 
 insert into public.samtykke_tekster (versjon, tekst, gyldig_fra)
 values (
   'felles-innspill-2026-10-27',
-  $samtykke$Jeg kan trekke signaturen når som helst via lenken i e-posten. Da sletter Kulturvarsling AS med en gang navnet mitt, e-postadressen min og det jeg har skrevet om meg selv. Er innspillet allerede sendt, kan det ikke hentes tilbake fra [mottaker]. E-postadressen min slettes 30 dager etter innsending, og navnet mitt 12 måneder etter innsending. Blir innspillet ikke sendt, slettes alt 12 måneder etter at det ble avsluttet, eller 12 måneder etter at jeg signerte hvis det aldri avsluttes. Jeg bekrefter at jeg er minst 16 år.$samtykke$,
+  $samtykke$Jeg vil signere dette innspillet til [mottaker]. Jeg samtykker til at Kulturvarsling AS lagrer navnet mitt, e-postadressen min og det jeg ellers fyller ut, og at navn, [rolle/organisasjon] og kommune sendes til [mottaker] sammen med innspillet rundt [dato].
+Jeg forstår at innspill med navn ofte blir offentlige, for eksempel på regjeringen.no eller stortinget.no. E-postadressen min deles aldri. Den brukes bare til å bekrefte signaturen og si fra hvordan det gikk.
+Jeg kan trekke signaturen når som helst via lenken i e-posten. Da sletter Kulturvarsling AS med en gang navnet mitt, e-postadressen min og det jeg har skrevet om meg selv. Er innspillet allerede sendt, kan det ikke hentes tilbake fra [mottaker]. E-postadressen min slettes 30 dager etter innsending, og navnet mitt 12 måneder etter innsending. Blir innspillet ikke sendt, slettes alt 12 måneder etter at det ble avsluttet, eller 12 måneder etter at jeg signerte hvis det aldri avsluttes. Jeg bekrefter at jeg er minst 16 år. [Les mer i personvernerklæringen]$samtykke$,
   '2026-10-27T00:00:00Z'
 )
 on conflict (versjon) do nothing;

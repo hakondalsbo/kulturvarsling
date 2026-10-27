@@ -20,9 +20,13 @@ export const SAMTYKKE_MAL_2026_10_24 =
 
 export const SAMTYKKE_VERSJON = "felles-innspill-2026-10-27";
 
-/** Ordrett. Plassholderen [mottaker] fylles når teksten vises. */
+const SAMTYKKE_2026_10_24_AVSNITT = SAMTYKKE_MAL_2026_10_24.split("\n");
+
+/** Avsnitt 1 og 2 er ordrett fra 24.10. Lenken står sist. */
 export const SAMTYKKE_MAL =
-  "Jeg kan trekke signaturen når som helst via lenken i e-posten. Da sletter Kulturvarsling AS med en gang navnet mitt, e-postadressen min og det jeg har skrevet om meg selv. Er innspillet allerede sendt, kan det ikke hentes tilbake fra [mottaker]. E-postadressen min slettes 30 dager etter innsending, og navnet mitt 12 måneder etter innsending. Blir innspillet ikke sendt, slettes alt 12 måneder etter at det ble avsluttet, eller 12 måneder etter at jeg signerte hvis det aldri avsluttes. Jeg bekrefter at jeg er minst 16 år.";
+  SAMTYKKE_2026_10_24_AVSNITT[0] + "\n" +
+  SAMTYKKE_2026_10_24_AVSNITT[1] + "\n" +
+  "Jeg kan trekke signaturen når som helst via lenken i e-posten. Da sletter Kulturvarsling AS med en gang navnet mitt, e-postadressen min og det jeg har skrevet om meg selv. Er innspillet allerede sendt, kan det ikke hentes tilbake fra [mottaker]. E-postadressen min slettes 30 dager etter innsending, og navnet mitt 12 måneder etter innsending. Blir innspillet ikke sendt, slettes alt 12 måneder etter at det ble avsluttet, eller 12 måneder etter at jeg signerte hvis det aldri avsluttes. Jeg bekrefter at jeg er minst 16 år. [Les mer i personvernerklæringen]";
 
 export const VARSEL_FASER = [
   "tidlig_signal",
