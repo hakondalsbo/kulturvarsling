@@ -2088,8 +2088,8 @@ textarea.kv-input,
 .kv-ark.smal { max-width: 480px; }
 .kv-prosent { height: 2px; background: var(--linje); }
 .kv-prosent > i { display: block; height: 2px; background: var(--granitt); }
-.kv-samtykke { display: flex; gap: 12px; align-items: flex-start; }
-.kv-samtykke input { width: 20px; height: 20px; margin-top: 3px; accent-color: var(--granitt); }
+.kv-samtykke { display: flex; gap: 12px; align-items: center; min-height: 44px; padding: 4px 0; }
+.kv-samtykke input { width: 22px; height: 22px; margin: 0; flex: 0 0 auto; accent-color: var(--granitt); }
 .kv-tall {
   font: 500 28px/1 var(--serif);
   color: var(--tekst);
@@ -2240,14 +2240,36 @@ textarea.kv-input,
 .budsjett .kilde { font: 400 14px/1.5 var(--sans); color: var(--dempet); }
 .budsjett .hvem { font: 500 15px/1.45 var(--sans); }
 
+.ordliste {
+  padding-top: 48px;
+  padding-bottom: 96px;
+}
+
+.ordliste h1 {
+  margin: 0 0 16px;
+  max-width: 18ch;
+  font: 500 44px/1.15 var(--serif);
+  letter-spacing: -0.02em;
+}
+
+.ordliste-innledning {
+  margin: 0 0 28px;
+  max-width: 62ch;
+  font: 400 21px/1.6 var(--serif);
+  color: var(--brod);
+}
+
 .ordliste-bokstav {
   margin: 36px 0 8px;
   font: 500 28px/1 var(--serif);
+  scroll-margin-top: 76px;
 }
 
 .ordliste-innslag {
-  padding: 16px 0;
+  padding: 20px 0;
   border-top: 1px solid var(--linje);
+  scroll-margin-top: 76px;
+  scroll-margin-bottom: 88px;
 }
 
 .ordliste-innslag h3 {
@@ -2255,14 +2277,58 @@ textarea.kv-input,
   font: 500 22px/1.3 var(--serif);
 }
 
+.ordliste-innslag h3 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ordliste-innslag h3 a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.14em;
+}
+
+.ordliste-innslag p {
+  max-width: 68ch;
+  margin: 0 0 12px;
+  font: 400 18px/1.65 var(--serif);
+  color: var(--brod);
+}
+
+.ordliste-innslag a {
+  color: var(--granitt);
+}
+
+.ordliste-eksempel {
+  font-style: italic;
+}
+
 .ordliste-nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
+  flex-wrap: nowrap;
+  gap: 2px;
+  margin: 0 0 8px;
+  padding: 8px 0;
+  overflow-x: auto;
+  background: var(--papir);
+  scrollbar-width: thin;
 }
 
 .ordliste-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   color: var(--granitt);
+  font: 500 16px/1 var(--sans);
+  text-decoration: none;
+}
+
+.ordliste-nav a:hover {
+  background: var(--granitt-lys);
 }
 
 .avis-sb {
@@ -2475,6 +2541,9 @@ textarea.kv-utkast {
 }
 
 @media (max-width: 720px) {
+  .ordliste h1 { font-size: 34px; }
+  .ordliste-innledning { font-size: 18px; }
+  .ordliste-innslag p { font-size: 17px; }
   .avis-forklar { font-size: 17px; }
   .avis-oversikt p { font-size: 18px; }
   .avis-fagnav .avis-wrap { padding-left: 24px; padding-right: 24px; }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { demoTillatt } from "./minside/demo.ts";
 import { Felt, Knapp, Tekstfelt, Velger } from "./ui.tsx";
 
 export type KommunalHoring = {
@@ -112,6 +113,7 @@ export function KommuneInnspillSkjema({
 }
 
 export function InnspillForhandsvisning() {
+  if (!demoTillatt()) return null;
   return (
     <article className="avis-wrap avis-annet">
       <p className="kv-steg">Kommune</p>

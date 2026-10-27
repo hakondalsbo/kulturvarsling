@@ -11,7 +11,17 @@ function psql(args: string[], input?: string) {
   });
 }
 
-test("innloggede skriver bare egne rader, anon nektes, andre grants står", () => {
+test("innloggede skriver bare egne rader, anon nektes, andre grants står", (t) => {
+  try {
+    execFileSync("sudo", ["-u", "postgres", "psql", "-c", "select 1"], { stdio: "ignore" });
+  } catch {
+    try {
+      execFileSync("psql", ["-c", "select 1"], { stdio: "ignore" });
+    } catch {
+      t.skip("lokal Postgres er ikke tilgjengelig");
+      return;
+    }
+  }
   psql(["-d", "postgres", "-c", `drop database if exists ${DB} with (force)`]);
   psql(["-d", "postgres", "-c", `create database ${DB}`]);
   try {

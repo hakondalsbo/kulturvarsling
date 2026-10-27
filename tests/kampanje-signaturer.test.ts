@@ -17,19 +17,11 @@ test("migrasjonen stenger lesing og anon-innsetting", () => {
   assert.doesNotMatch(sql, /grant insert/i);
 });
 
-test("klienten signerer med return=minimal og krever innlogging", () => {
+test("klienten skriver ikke signaturer rett i tabellen", () => {
   const kilde = readFileSync("src/App.tsx", "utf8");
-  const start = kilde.indexOf("async function signKampanje");
-  const slutt = kilde.indexOf("async function sendFeedbackDB");
-  const fn = kilde.slice(start, slutt);
-  assert.match(fn, /Prefer: "return=minimal"/);
-  assert.match(fn, /res\.status === 409/);
-  assert.match(fn, /return "allerede"/);
-  assert.match(kilde, /Du har allerede signert/);
-  assert.doesNotMatch(fn, /\.select\(/);
-  assert.doesNotMatch(fn, /brukerId \?\? null/);
-  assert.match(kilde, /Logg inn for å signere kampanjen\. Signaturen lagres på kontoen din\./);
-  assert.match(kilde, /onKrevInnlogging\?\.\(SIGNATUR_INNLOGGING\)/);
+  assert.doesNotMatch(kilde, /rest\/v1\/kampanje_signaturer/);
+  assert.doesNotMatch(kilde, /function signKampanje/);
+  assert.match(kilde, /Signering er ikke åpen/);
 });
 
 test("rettigheter mot lokal Postgres som i prod", (t) => {

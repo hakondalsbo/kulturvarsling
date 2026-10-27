@@ -1,6 +1,7 @@
 /**
  * Visning av komitéhøringer. Fristene leses fra varselets sammendrag.
- * Følg-komité er av til personvernteksten er godkjent.
+ * Følg-komité er på i appen. Det sendes ingen e-post.
+ * Skriving i databasen krever at funksjonsflagg.folg_komite er true.
  */
 
 export const FRIST_DELTA_LINJE = "Frist for å søke om å delta: ";
@@ -30,9 +31,10 @@ export const KOMITE_NAVN: Record<string, string> = {
 const HORING_SIDE = "https://www.stortinget.no/no/Hva-skjer-pa-Stortinget/Horing/horing/?h=";
 const HORING_SKJEMA = "https://www.stortinget.no/no/Hva-skjer-pa-Stortinget/Horing/skriv-skriftlig-innspill/?h=";
 
+/** På i appen. Sett VITE_FOLG_KOMITE_AKTIV=false bare for å skjule funksjonen. */
 export function folgKomiteAktiv(): boolean {
   const env = (import.meta as { env?: { VITE_FOLG_KOMITE_AKTIV?: string } }).env;
-  return env?.VITE_FOLG_KOMITE_AKTIV === "true";
+  return env?.VITE_FOLG_KOMITE_AKTIV !== "false";
 }
 
 export function komiteNavn(id: string | null | undefined): string {
@@ -91,7 +93,7 @@ export function horingerOmSaken<T extends { id?: string; hovedsak_id?: string | 
   return saker.filter((s) => s.hovedsak_id === sakId && s.id !== sakId);
 }
 
-/** Gjør ingenting når flagget er av, og spør ikke databasen. */
+/** Gjør ingenting når flagget er av, og spør ikke databasen. Sender ingen e-post. */
 export async function lagreFulgteKomite(
   db: { from: (tabell: string) => any },
   brukerId: string,

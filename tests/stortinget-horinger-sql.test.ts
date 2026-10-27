@@ -25,7 +25,7 @@ test("stortinget_horinger har to frister, RLS og ingen lesing for anon", () => {
   assert.match(tabell, /Frist for å søke om å delta/);
 });
 
-test("følg komité er av, og anon kan ikke skrive", () => {
+test("følg komité starter av, og anon kan ikke skrive", () => {
   assert.match(folg, /'folg_komite', false/);
   assert.match(folg, /create table public\.fulgte_komiteer/);
   assert.match(folg, /references auth\.users/);

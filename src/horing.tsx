@@ -60,21 +60,33 @@ export function FolgKomiteStyring({
     });
     return () => { levende = false; };
   }, [aktiv, brukerId, komiteId, les]);
-  if (!aktiv || !brukerId) return null;
+  const [feil, setFeil] = useState(false);
+  if (!aktiv) return null;
+  if (!brukerId) {
+    return <p className="kv-brod">Logg inn for å følge komiteen. Vi sender ikke e-post.</p>;
+  }
   return (
-    <button
-      type="button"
-      className="kv-knapp linje"
-      onClick={() => {
-        const neste = !folger;
-        setFolger(neste);
-        skriv(brukerId, komiteId, neste).then((ok) => {
-          if (!ok) setFolger(!neste);
-        });
-      }}
-    >
-      {folger ? "Slutt å følge komiteen" : "Følg komiteen"}
-    </button>
+    <div className="kv-stakk">
+      <button
+        type="button"
+        className="kv-knapp linje"
+        onClick={() => {
+          const neste = !folger;
+          setFeil(false);
+          setFolger(neste);
+          skriv(brukerId, komiteId, neste).then((ok) => {
+            if (!ok) {
+              setFolger(!neste);
+              setFeil(true);
+            }
+          });
+        }}
+      >
+        {folger ? "Slutt å følge komiteen" : "Følg komiteen"}
+      </button>
+      {feil && <p className="kv-feil" role="alert">Kunne ikke lagre valget. Prøv igjen.</p>}
+      <p className="kv-meta">Valget lagres på kontoen din og vises i appen. Vi sender ikke e-post.</p>
+    </div>
   );
 }
 
@@ -115,11 +127,14 @@ export function MineKomiteer({
     if (!komite || !ids.includes(komite)) return false;
     return sak.dager == null || sak.dager >= 0;
   });
+  const tomTekst = ids.length === 0
+    ? "Du følger ingen komiteer."
+    : "Ingen åpne høringer i komiteene du følger.";
   return (
     <section className="kv-kort" aria-labelledby="mine-komiteer">
       <h2 id="mine-komiteer" className="kv-undertittel">Mine komiteer</h2>
-      <p className="kv-meta">Åpne høringer i komiteene du følger.</p>
-      {åpne.length === 0 && <p className="kv-tom">Ingen åpne høringer i komiteene du følger.</p>}
+      <p className="kv-meta">Åpne høringer i komiteene du følger. Vi sender ikke e-post.</p>
+      {åpne.length === 0 && <p className="kv-tom">{tomTekst}</p>}
       <ul className="kv-liste">
         {åpne.map((sak) => (
           <li key={sak.id} className="kv-rad">
@@ -151,7 +166,7 @@ export function KomiteSide({
   return (
     <article className="avis-wrap kv-stakk">
       <h1>{navn}</h1>
-      <p className="kv-brod">Kommende høringer i komiteen.</p>
+      <p className="kv-brod">Kommende høringer i komiteen. Følging vises i appen og utløser ingen e-post.</p>
       <FolgKomiteStyring komiteId={komiteId} brukerId={brukerId} les={les} skriv={skriv} />
       {horinger.length === 0 && <p className="kv-tom">Ingen høringer er registrert for komiteen.</p>}
       <ul className="kv-liste">

@@ -148,7 +148,7 @@ export function FellesInnspillSkjema({
         <span>{foran}</span>
       </label>
       <p>
-        <a href="/personvern#felles-innspill">Les mer i personvernerklæringen</a>
+        <a href="/personvern">Les mer i personvernerklæringen</a>
         {etter}
       </p>
       <TurnstileFelt key={captchaOmstart} onToken={setCaptchaToken} />

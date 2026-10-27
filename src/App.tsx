@@ -20,7 +20,7 @@ import { kategorierForMeny } from "./minside/kategorier.ts";
 import type { LagretSok, MinValg } from "./minside/filter.ts";
 import { FolgeBoks } from "./minside/Personlig.tsx";
 import { boksForForside, personligKilde } from "./minside/forslag.ts";
-import { demoParameter } from "./minside/demo.ts";
+import { demoParameter, demoTillatt } from "./minside/demo.ts";
 import { MobiliserInngang } from "./mobiliser/MobiliserInngang.tsx";
 import { MobiliserPanel } from "./mobiliser/MobiliserPanel.tsx";
 import { signaturKanSigneres } from "./mobiliser/miljo.ts";
@@ -225,43 +225,6 @@ async function hentAktivitet(brukerId: any) {
     .select("*").eq("bruker_id", brukerId)
     .order("opprettet", { ascending: false }).limit(50);
   return data ?? [];
-}
-
-const SIGNATUR_INNLOGGING = "Logg inn for å signere kampanjen. Signaturen lagres på kontoen din.";
-
-// return=minimal: anon og authenticated har ikke SELECT på tabellen.
-// return=representation (RETURNING) ville feilet, og raden ble ikke lagret.
-async function signKampanje(kampanjeId: any, brukerId: any, navn: any, epost: any) {
-  const { data } = await sb.auth.getSession();
-  const token = data?.session?.access_token ?? null;
-  const innlogget = data?.session?.user?.id ?? null;
-  if (!token || !innlogget || !brukerId || brukerId !== innlogget) return "feil";
-  let res;
-  try {
-    res = await fetch(`${SUPABASE_URL}/rest/v1/kampanje_signaturer`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON,
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        kampanje_id: kampanjeId,
-        bruker_id: innlogget,
-        navn,
-        epost,
-      }),
-    });
-  } catch {
-    return "feil";
-  }
-  if (res.status === 409) return "allerede";
-  if (!res.ok) {
-    console.error("Signatur-feil:", res.status);
-    return "feil";
-  }
-  return "ok";
 }
 
 async function sendFeedbackDB(brukerId: any, type: any, tekst: any, sakTittel: any) {
@@ -539,7 +502,7 @@ function OnboardingWizard({user,setUser,onDone}: any) {
         <div className="kv-dialog-kropp">
           {steg===0&&(
             <div>
-              <Felt id="onb-org" label="Navn eller organisasjon" value={org} onChange={e=>setOrg(e.target.value)} placeholder="Eksempel: Norsk Musikerforbund" />
+              <Felt id="onb-org" label="Navn eller organisasjon" value={org} onChange={e=>setOrg(e.target.value)} placeholder="Navn på organisasjonen" />
               <p className="kv-feltnavn">Type aktør</p>
               <Enkeltvalg valg={ORG_TYPE_VALG} valgt={orgType} onVelg={setOrgType} />
             </div>
@@ -575,7 +538,7 @@ function OnboardingWizard({user,setUser,onDone}: any) {
                   Jeg har lest og akseptert <a className="kv-lenke" href="/personvern" target="_blank" rel="noopener noreferrer">personvernerklæringen</a> og samtykker til at Kulturvarsling kan behandle personopplysningene mine.
                 </span>
               </label>
-              <p className="kv-meta">Du kan trekke samtykket tilbake og slette kontoen. Spørsmål sendes til personvern@kulturvarsling.no.</p>
+              <p className="kv-meta">Du kan trekke samtykket tilbake og slette kontoen. Spørsmål sendes til post@kulturvarsling.no.</p>
             </div>
           )}
           <div className="kv-klynge">
@@ -802,9 +765,10 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
   );
 }
 
-/** Bare i vite dev, til skjermbilder. Brukeren har ingen id, så ingenting lagres. */
+/** Bare når VITE_VERCEL_ENV ikke er production. Brukeren har ingen id, så ingenting lagres. */
 function forhandsvisning(): string | null {
-  if (!import.meta.env.DEV) return null;
+  if (!demoTillatt()) return null;
+  if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get("vis");
 }
 
@@ -1324,7 +1288,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             <a href="/ordliste">Ordliste</a>
             <a href="/personvern">Personvern</a>
             <button type="button" onClick={()=>setShowFeedback(true)}>Gi tilbakemelding</button>
-            <span>personvern@kulturvarsling.no</span>
+            <span>post@kulturvarsling.no</span>
           </div>
         </div>
       </footer>
@@ -1360,7 +1324,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
     const { data, error } = await sb.functions.invoke("slett-konto", { body: {} });
     if (error || !data?.ok) {
       setSlettSteg("idle");
-      setSlettFeil("Kontoen ble ikke slettet. Prøv igjen, eller skriv til personvern@kulturvarsling.no.");
+      setSlettFeil("Kontoen ble ikke slettet. Prøv igjen, eller skriv til post@kulturvarsling.no.");
       return;
     }
     await sb.auth.signOut();
@@ -1602,30 +1566,7 @@ export function VarselKort({v,compact=false,onClick,fulgte=[],toggleFølg=()=>{}
   );
 }
 
-function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevInnlogging}:{k:any;compact?:boolean;user?:any;relSak?:any;onÅpneSak?:()=>void;onKrevInnlogging?:(grunn:string)=>void}) {
-  const [sig,setSig]=useState(k.sig);
-  const [vis,setVis]=useState(false);
-  const [signert,setSignert]=useState(false);
-  const [laster,setLaster]=useState(false);
-  const [navn,setNavn]=useState(user?.navn||"");
-  const [epost,setEpost]=useState(user?.epost||"");
-
-  function beOmSignatur() {
-    if(user?.id) { setVis(true); return; }
-    onKrevInnlogging?.(SIGNATUR_INNLOGGING);
-  }
-
-  async function signer() {
-    if(!user?.id) { onKrevInnlogging?.(SIGNATUR_INNLOGGING); return; }
-    if(!navn||!epost) return;
-    setLaster(true);
-    const utfall = await signKampanje(k.id, user.id, navn, epost);
-    if(utfall==="ok") { setSig((s: any)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
-    else if(utfall==="allerede") { setSignert(true); setVis(false); showToast("Du har allerede signert"); }
-    else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
-    setLaster(false);
-  }
-
+function KampanjeKort({k,compact=false,user: _user=null,relSak=null,onÅpneSak,onKrevInnlogging: _inn=undefined}:{k:any;compact?:boolean;user?:any;relSak?:any;onÅpneSak?:()=>void;onKrevInnlogging?:(grunn:string)=>void}) {
   return (
     <article className="kv-kort">
       {(k.tags||[]).length>0 && <p className="kv-meta">{(k.tags||[]).join(", ")}</p>}
@@ -1634,21 +1575,8 @@ function KampanjeKort({k,compact=false,user=null,relSak=null,onÅpneSak,onKrevIn
       {relSak && onÅpneSak && (
         <button type="button" className="kv-knapp stille" onClick={onÅpneSak}>Sak: {relSak.tittel}</button>
       )}
-      <p className="kv-meta">{sig} av {k.mal}{k.dager!=null?` · ${k.dager} dager igjen`:""}</p>
-      {signert?(
-        <p className="kv-brod">Signaturen er registrert.</p>
-      ):vis && user?.id?(
-        <div>
-          <Felt id={`kamp-navn-${k.id}`} label="Navn" value={navn} onChange={e=>setNavn(e.target.value)} />
-          <Felt id={`kamp-epost-${k.id}`} label="E-post" type="email" value={epost} onChange={e=>setEpost(e.target.value)} />
-          <div className="kv-klynge">
-            <Knapp onClick={signer} disabled={laster}>{laster?"Lagrer":"Signer"}</Knapp>
-            <Knapp variant="linje" onClick={()=>setVis(false)}>Avbryt</Knapp>
-          </div>
-        </div>
-      ):(
-        <Knapp onClick={beOmSignatur}>Signer kampanjen</Knapp>
-      )}
+      <p className="kv-meta">{k.sig} av {k.mal}{k.dager!=null?` · ${k.dager} dager igjen`:""}</p>
+      <p className="kv-brod">Signering er ikke åpen.</p>
     </article>
   );
 }
@@ -1768,13 +1696,13 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
       )}
       {tab==="mobiliser"&&(
         <div className="kv-stakk">
-          <p className="kv-brod">Åpne brev viser en mal. E-post åpner e-postprogrammet.</p>
-          <p className="kv-brod">Liste over politikere kommer.</p>
+          <p className="kv-brod">Brevet er tomt. Skriv teksten selv. Kulturvarsling sender den ikke.</p>
+          <p className="kv-tom">Det finnes ingen politikerliste. Vi viser ikke navn før de er hentet fra en åpen kilde.</p>
           <div className="kv-rad">
             <p className="kv-feltnavn">Anbefalt komité</p>
             <h3 className="kv-undertittel">Familie- og kulturkomiteen</h3>
-            <p className="kv-meta">familie-og-kulturkomiteen@stortinget.no</p>
-            <Knapp variant="linje" onClick={()=>setMalModal({type:"komite",kontekst:{navn:"Familie- og kulturkomiteen",kontakt:"familie-og-kulturkomiteen@stortinget.no"}})}>Kontakt komiteen</Knapp>
+            <p><a className="kv-lenke" href="https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Familie-og-kulturkomiteen/" target="_blank" rel="noreferrer">Komiteen på stortinget.no</a></p>
+            <Knapp variant="linje" onClick={()=>setMalModal({type:"komite",kontekst:{navn:"Familie- og kulturkomiteen"}})}>Skriv til komiteen</Knapp>
           </div>
         </div>
       )}
@@ -1804,7 +1732,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
             {visNyKampanje&&!nyKampOpprettet&&(
               <div>
                 <Felt id="ny-kamp-tittel" label="Tittel" value={nyKampTittel} onChange={e=>setNyKampTittel(e.target.value)} />
-                <Tekstfelt id="ny-kamp-beskr" label="Hva krever dere?" value={nyKampBeskr} onChange={e=>setNyKampBeskr(e.target.value)} rows={3} placeholder={`Vi krever at ${sak.instans} trekker tilbake forslaget og sikrer...`} />
+                <Tekstfelt id="ny-kamp-beskr" label="Hva krever dere?" value={nyKampBeskr} onChange={e=>setNyKampBeskr(e.target.value)} rows={3} placeholder="Skriv kort hva dere ber om og hvorfor" />
                 <div className="kv-klynge">
                   <Knapp onClick={()=>{if(nyKampTittel)setNyKampOpprettet(true);}}>Opprett kampanje</Knapp>
                   <Knapp variant="linje" onClick={()=>setVisNyKampanje(false)}>Avbryt</Knapp>
@@ -1893,39 +1821,8 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
   );
 }
 
-function KampanjeSignerMini({k,user=null,onKrevInnlogging}:{k:any;user?:any;onKrevInnlogging?:(grunn:string)=>void}) {
-  const [sig,setSig]=useState(k.sig);
-  const [signert,setSignert]=useState(false);
-  const [vis,setVis]=useState(false);
-  const [laster,setLaster]=useState(false);
-  const [navn,setNavn]=useState(user?.navn||"");
-  const [epost,setEpost]=useState(user?.epost||"");
-  function beOmSignatur() {
-    if(user?.id) { setVis(true); return; }
-    onKrevInnlogging?.(SIGNATUR_INNLOGGING);
-  }
-  async function signer() {
-    if(!user?.id) { onKrevInnlogging?.(SIGNATUR_INNLOGGING); return; }
-    if(!navn||!epost) return;
-    setLaster(true);
-    const utfall = await signKampanje(k.id, user.id, navn, epost);
-    if(utfall==="ok") { setSig((s:number)=>s+1); setSignert(true); setVis(false); showToast("Signaturen er registrert."); }
-    else if(utfall==="allerede") { setSignert(true); setVis(false); showToast("Du har allerede signert"); }
-    else { showToast("Kunne ikke registrere signaturen – prøv igjen","feil"); }
-    setLaster(false);
-  }
-  if(signert) return <p className="kv-brod">Signaturen er registrert. {sig} av {k.mal}.</p>;
-  if(vis && user?.id) return (
-    <div>
-      <Felt id={`mini-navn-${k.id}`} label="Navn" value={navn} onChange={e=>setNavn(e.target.value)} />
-      <Felt id={`mini-epost-${k.id}`} label="E-post" type="email" value={epost} onChange={e=>setEpost(e.target.value)} />
-      <div className="kv-klynge">
-        <Knapp onClick={signer} disabled={laster}>{laster?"Lagrer":"Signer"}</Knapp>
-        <Knapp variant="linje" onClick={()=>setVis(false)}>Avbryt</Knapp>
-      </div>
-    </div>
-  );
-  return <Knapp onClick={beOmSignatur}>Signer denne kampanjen</Knapp>;
+function KampanjeSignerMini({k,user: _user=null,onKrevInnlogging: _inn}:{k:any;user?:any;onKrevInnlogging?:(grunn:string)=>void}) {
+  return <p className="kv-brod">Signering er ikke åpen. {k.sig} av {k.mal}.</p>;
 }
 
 function DelMini({sak}: any) {
@@ -2083,114 +1980,51 @@ function BrukerKampanjer({kampanjerData=KAMPANJER,varslerData=VARSLER,user=null,
 }
 
 type Mal = { id: string; label: string; tekst: (arg?: any) => string };
+function tomMal(): string {
+  return "";
+}
+function delingFraSak(sak: any): string {
+  if (!sak?.tittel && !sak?.sammendrag) return "";
+  const linjer = [sak.tittel, sak.sammendrag].filter(Boolean);
+  if (sak.frist) linjer.push(`Frist: ${new Date(sak.frist).toLocaleDateString("nb-NO")}`);
+  if (sak.instans) linjer.push(String(sak.instans));
+  return linjer.join("\n\n");
+}
 const MAL_TEMPLATES: Record<string, Mal[]> = {
-  komite: [
-    { id:"generell", label:"Generell henvendelse", tekst:(komite)=>`Til ${komite},\n\nVi representerer kulturfeltet og ønsker å gjøre komiteen oppmerksom på en sak vi mener fortjener politisk oppmerksomhet.\n\n[Beskriv saken og hvilken beslutning som nærmer seg]\n\nVi ber komiteen om å:\n1. [Konkret krav 1]\n2. [Konkret krav 2]\n3. [Konkret krav 3]\n\nVi stiller gjerne til møte eller kan sende ytterligere dokumentasjon.\n\nMed vennlig hilsen,\n[Navn]\n[Organisasjon]\n[Telefon / e-post]` },
-    { id:"budsjett", label:"Budsjettbekymring", tekst:(komite)=>`Til ${komite},\n\nVi skriver til dere med alvorlig bekymring for kulturbudsjettets utvikling.\n\nDe foreslåtte kuttene vil ramme:\n- [Felt 1] med ca. [beløp/prosent]\n- [Felt 2] med ca. [beløp/prosent]\n\nDette vil i praksis bety at [beskriv konsekvens for feltet].\n\nVi ber komiteen om å sikre at budsjettrammen for kulturfeltet som minimum prisjusteres, og at øremerkede midler til [fagfelt] ikke slås sammen med generelle kulturmidler.\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
-    { id:"horing", label:"Be om utvidet høring", tekst:(komite)=>`Til ${komite},\n\nVi ber komiteen vurdere å utvide høringen i saken om [sakstittel].\n\nBakgrunnen for vår henvendelse er at:\n- Høringsfristen er for kort til at mindre organisasjoner kan utarbeide gode svar\n- Viktige fagmiljøer er ikke direkte varslet\n- Konsekvensene for [fagfelt] er ikke tilstrekkelig utredet\n\nVi ber om at fristen forlenges til [dato] og at følgende organisasjoner inviteres særskilt:\n[Liste]\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
-  ],
-  politiker: [
-    { id:"generell", label:"Generell henvendelse", tekst:(p)=>`Hei ${p.navn},\n\nJeg kontakter deg som ${p.rolle} fordi jeg ønsker å sette fokus på en sak jeg mener er viktig for kulturfeltet.\n\n[Beskriv saken kort og konkret]\n\nJeg håper du vil:\n- Følge med på denne saken\n- Ta initiativ til [handling]\n- Svare på dette brevet\n\nJeg er tilgjengelig for en prat om du ønsker mer informasjon.\n\nMed vennlig hilsen,\n[Ditt navn]\n[Organisasjon]\n[Telefon]` },
-    { id:"støtte", label:"Be om støtte til sak", tekst:(p)=>`Hei ${p.navn},\n\nJeg skriver til deg fordi [saksnavn] nå er til behandling, og vi trenger politisk støtte.\n\nSaken handler om [kort beskrivelse]. Uten handling vil konsekvensen være:\n- [Konsekvens 1]\n- [Konsekvens 2]\n\nDet vi konkret ber deg om er:\n1. Å ta opp saken i [komité / kommunestyre / bystyret]\n2. Å stemme for [forslag] når saken kommer til votering\n3. Å gi oss tilbakemelding på din posisjon\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
-    { id:"spørretime", label:"Be om spørsmål i Stortinget", tekst:(p)=>`Hei ${p.navn},\n\nVi ber deg vurdere å stille et skriftlig eller muntlig spørsmål til kulturministeren om følgende:\n\n«[Formuler spørsmålet]»\n\nBakgrunnen er [kort forklaring]. Saken er ikke tilstrekkelig belyst i offentligheten, og et stortingsspørsmål vil bidra til nødvendig transparens.\n\nVi kan bistå med faktagrunnlag og bakgrunnsdokumentasjon.\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
-    { id:"takk", label:"Takkebrev etter positiv handling", tekst:(p)=>`Hei ${p.navn},\n\nVi vil gjerne takke deg for [hva politikeren gjorde].\n\nDin handling betyr mye for [fagfelt / kulturliv i region]. Vi setter stor pris på at du lytter til kulturfeltet og tar ansvar.\n\nVi ser frem til å følge deg videre og vil gjerne holde deg oppdatert på utviklingen.\n\nMed vennlig hilsen,\n[Navn / Organisasjon]` },
-  ],
-  horing: [
-    { id:"standard", label:"Standard høringssvar", tekst:(sak)=>`Høringssvar – ${sak?.tittel||"[Sakstittel]"}\n\nFra: [Organisasjonsnavn]\nTil: ${sak?.instans||"[Instans]"}\nDato: ${new Date().toLocaleDateString("no-NO")}\n\n1. INNLEDNING\n[Organisasjonen] er en [beskriv organisasjonen] med [antall] medlemmer. Vi har fulgt denne saken nøye og ønsker å bidra med våre innspill.\n\n2. SAMMENDRAG AV VÅR POSISJON\n[To til tre setninger som oppsummerer hva dere mener]\n\n3. BAKGRUNN OG KONTEKST\n[Beskriv relevant bakgrunn]\n\n4. VÅR VURDERING\n4.1 [Tema 1]\n[Vurdering]\n\n4.2 [Tema 2]\n[Vurdering]\n\n5. KONKLUSJON OG ANBEFALINGER\nPå bakgrunn av ovenstående anbefaler vi:\n- [Anbefaling 1]\n- [Anbefaling 2]\n- [Anbefaling 3]\n\nMed vennlig hilsen,\n[Navn, tittel]\n[Organisasjon]\n[Kontaktinfo]` },
-    { id:"kort", label:"Kort høringssvar (1 side)", tekst:(sak)=>`Høringssvar – ${sak?.tittel||"[Sakstittel]"}\n${sak?.instans||"[Instans]"} · ${new Date().toLocaleDateString("no-NO")}\n\nFra: [Organisasjon]\n\nVi støtter / vi støtter ikke [forslaget] av følgende grunner:\n\n[3–5 kortfattede punkter med begrunnelse]\n\nVår anbefaling er at [instans] [gjør X]. Vi ber om at innspillet tas med i den videre behandlingen.\n\n[Navn / Organisasjon]` },
-    { id:"faglig", label:"Faglig/teknisk høringssvar", tekst:(sak)=>`Faglig høringssvar – ${sak?.tittel||"[Sakstittel]"}\n\nOrganisasjon: [Navn]\nDato: ${new Date().toLocaleDateString("no-NO")}\nKontaktperson: [Navn, tittel, e-post]\n\nDEL 1: FAGLIG VURDERING\n[Grundig faglig analyse av forslaget]\n\nDEL 2: KONSEKVENSANALYSE\nØkonomiske konsekvenser: [vurdering]\nKvalitetsmessige konsekvenser: [vurdering]\nStrukturelle konsekvenser: [vurdering]\n\nDEL 3: ALTERNATIVE LØSNINGER\n[Beskriv alternativer som kan løse problemet bedre]\n\nDEL 4: KONKLUSJON\n[Tydelig konklusjon med konkrete anbefalinger]\n\n[Navn / Organisasjon]` },
-    { id:"protest", label:"Protestsvar / sterk motstand", tekst:(sak)=>`Høringssvar med sterke innvendinger\n\nSak: ${sak?.tittel||"[Sakstittel]"}\nFra: [Organisasjon]\nDato: ${new Date().toLocaleDateString("no-NO")}\n\n[Organisasjonen] protesterer på det sterkeste mot det foreslåtte [tiltaket/kuttet/vedtaket].\n\nÅrsakene er:\n1. [Sterk innvending 1 med faktagrunnlag]\n2. [Sterk innvending 2 med faktagrunnlag]\n3. [Sterk innvending 3 med faktagrunnlag]\n\nForslaget er i strid med [lov/avtale/tidligere vedtak] og vil ha alvorlige konsekvenser for [hvem].\n\nVi krever at forslaget [trekkes / endres vesentlig / sendes tilbake for ny utredning].\n\n[Navn / Organisasjon]` },
-  ],
-  pressem: [
-    { id:"standard", label:"Standard pressemelding", tekst:()=>`PRESSEMELDING\n[Sted], ${new Date().toLocaleDateString("no-NO")}\n\nOVERSKRIFT: [Feng tittel som beskriver saken]\n\nINGRESS: [Én til to setninger som oppsummerer det viktigste]\n\nBRODTEKST:\n[Organisasjon] reagerer på [sak/vedtak/forslag] og krever at [hvem] [gjør hva].\n\n[Sitat fra leder eller talsperson, 1–2 setninger]\n\nBakgrunn:\n[2–3 avsnitt med fakta og kontekst]\n\nKONTAKT:\nNavn: [Navn]\nTittel: [Tittel]\nTelefon: [Nummer]\nE-post: [Adresse]\n\n###` },
-    { id:"seier", label:"Pressemelding, positiv sak", tekst:()=>`PRESSEMELDING\n${new Date().toLocaleDateString("no-NO")}\n\n[Tittel]\n\n[Organisasjon] registrerer at [beslutning] nå er [fattet].\n\n«[Sitat]», sier [navn og tittel].\n\nDette betyr at [konsekvens for feltet].\n\nBakgrunn: [Kort historikk]\n\nKontakt:\n[Kontaktinfo]\n\n###` },
-  ],
-  sosiale: [
-    { id:"facebook", label:"Facebook-innlegg", tekst:(sak)=>`${sak?.tittel||"[Sakstittel]"}\n\n${sak?.sammendrag||"[Kort beskrivelse av saken]"}\n\nFrist: ${sak?.frist?new Date(sak.frist).toLocaleDateString("no-NO"):"[dato]"}.${sak?.dager!=null?` ${sak.dager} dager igjen.`:""}\n\nLes saken: ${sak?.id?`https://kulturvarsling.no/sak/${sak.id}`:"https://kulturvarsling.no"}` },
-    { id:"twitter", label:"Kort melding", tekst:(sak)=>`${sak?.tittel||"[Sakstittel]"}: ${(sak?.sammendrag||"[Beskrivelse]").slice(0,120)}\n\nFrist om ${sak?.dager??"X"} dager. Behandles av ${sak?.instans||"[instans]"}.\n\nLes saken: https://kulturvarsling.no/sak/${sak?.id||""}` },
-    { id:"instagram", label:"Bildetekst", tekst:(sak)=>`${sak?.tittel||"[Sakstittel]"}\n\n${sak?.sammendrag||"[Beskrivelse]"}\n\n${sak?.dager!=null?`${sak.dager} dager igjen.`:"Fristen står i saken."}\n\nLes saken: https://kulturvarsling.no` },
-  ],
+  komite: [{ id: "tom", label: "Tomt utkast", tekst: tomMal }],
+  politiker: [{ id: "tom", label: "Tomt utkast", tekst: tomMal }],
+  horing: [{ id: "tom", label: "Tomt utkast", tekst: tomMal }],
+  pressem: [{ id: "tom", label: "Tomt utkast", tekst: tomMal }],
+  sosiale: [{ id: "sak", label: "Tekst fra saken", tekst: delingFraSak }],
 };
 
-function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}:{type:string;kontekst:any;onClose:()=>void;onSend?:(entry:any)=>void;user?:any}) {
-  function applyUserFill(txt: any) {
-    if(!user) return txt;
-    const org = user.org||user.navn||"";
-    const navn = user.navn||"";
-    const epost = user.epost||"";
-    return txt
-      .replace(/\[Organisasjonsnavn\]/g, org)
-      .replace(/\[Organisasjonen\]/g, org)
-      .replace(/\[Organisasjon\]/g, org)
-      .replace(/\[Ditt navn\]/g, navn)
-      .replace(/\[Navn, tittel\]/g, navn)
-      .replace(/\[Navn \/ Organisasjon\]/g, navn+(org?" / "+org:""))
-      .replace(/\[Navn\]/g, navn)
-      .replace(/\[E-post \/ telefon\]/g, epost)
-      .replace(/\[Kontaktinfo\]/g, epost);
-  }
-  const maler = MAL_TEMPLATES[type]||[];
-  const [valgtMal, setValgtMal] = useState(maler[0]?.id||"");
+function MalModal({type, kontekst, onClose}:{type:string;kontekst:any;onClose:()=>void}) {
+  const mal = (MAL_TEMPLATES[type]||[])[0];
   const [tekst, setTekst] = useState("");
-  const [sendt, setSendt] = useState(false);
   const [kopiert, setKopiert] = useState(false);
-  const currentMal = maler.find(m=>m.id===valgtMal);
 
   useEffect(()=>{
-    if(currentMal) {
-      let t="";
-      if(type==="komite") t=currentMal.tekst(kontekst?.navn||"Familie- og kulturkomiteen");
-      else if(type==="politiker") t=currentMal.tekst(kontekst||{navn:"[Politikernavn]"});
-      else t=currentMal.tekst(kontekst);
-      setTekst(applyUserFill(t));
-    }
+    if (!mal) return;
+    const t = type === "komite"
+      ? mal.tekst(kontekst?.navn || "Familie- og kulturkomiteen")
+      : mal.tekst(kontekst);
+    setTekst(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  function velgMal(id: any) {
-    setValgtMal(id);
-    const mal = maler.find(m=>m.id===id);
-    if(!mal) return;
-    let t="";
-    if(type==="komite") t=mal.tekst(kontekst?.navn||"Familie- og kulturkomiteen");
-    else if(type==="politiker") t=mal.tekst(kontekst||{navn:"[Politikernavn]"});
-    else t=mal.tekst(kontekst);
-    setTekst(applyUserFill(t));
-    setSendt(false);
-  }
-
-  const titler: Record<string,string> = {komite:"Kontakt komité",politiker:"Kontakt politiker",horing:"Skriv høringssvar",pressem:"Pressemelding",sosiale:"Sosiale medier"};
-  const sendLabel: Record<string,string> = {komite:"Send til komiteen",politiker:`Send til ${kontekst?.navn||"politikeren"}`,pressem:"Kopier og send til media",sosiale:"Kopier tekst"};
-  const canSend = ["komite","politiker"].includes(type);
+  const titler: Record<string,string> = {komite:"Skriv til komité",politiker:"Skriv til politiker",horing:"Skriv høringssvar",pressem:"Pressemelding",sosiale:"Sosiale medier"};
 
   return (
     <Dialog tittel={titler[type]||"Mal"} onClose={onClose}>
-      {kontekst&&(type==="komite"||type==="politiker")&&(
-        <p className="kv-meta">{kontekst.navn}{kontekst.rolle?` · ${kontekst.rolle}`:""}{kontekst.kontakt?` · ${kontekst.kontakt}`:""}</p>
+      {kontekst?.navn && (type==="komite"||type==="politiker") && (
+        <p className="kv-meta">{kontekst.navn}</p>
       )}
-      <p className="kv-feltnavn">Mal</p>
-      <Enkeltvalg valg={maler} valgt={valgtMal} onVelg={velgMal} />
-      <p className="kv-meta">Tekst i klammer skal byttes ut. {user?.org?"Navn og kontakt er hentet fra profilen.":""}</p>
-      {type==="horing"&&<p className="kv-brod">Kulturvarsling sender ikke inn svaret. Kopier eller last ned teksten, og send den inn selv.</p>}
+      <p className="kv-brod">Skriv teksten selv. Her ligger ingen eksempeltekst, navn eller tall, og Kulturvarsling sender ikke inn svaret.</p>
       {type==="horing"&&kontekst?.kilde&&<p><a className="kv-lenke" href={kontekst.kilde} target="_blank" rel="noreferrer">Offisiell innsending</a></p>}
-      {sendt ? (
-        <div className="kv-stakk">
-          <p className="kv-brod">Meldingen er registrert.</p>
-          <Knapp variant="linje" onClick={()=>setSendt(false)}>Skriv ny melding</Knapp>
-        </div>
-      ) : (
-        <div className="kv-stakk">
-          <textarea className="kv-input" value={tekst} onChange={e=>setTekst(e.target.value)} rows={16} aria-label="Melding" />
+      <div className="kv-stakk">
+          <textarea className="kv-input" value={tekst} onChange={e=>setTekst(e.target.value)} rows={16} aria-label="Melding" placeholder="Skriv teksten her" />
           <div className="kv-klynge">
-            {canSend&&(
-              <Knapp onClick={()=>{
-                setSendt(true);
-                onSend({type,tittel:`${type==="horing"?"Høringssvar":type==="komite"?"Komitéhenvendelse":"Politikerkontakt"}: ${kontekst?.tittel||kontekst?.navn||"Ukjent"}`,mottaker:kontekst?.kontakt||kontekst?.navn||null});
-              }}>
-                {sendLabel[type]}
-              </Knapp>
-            )}
-            <Knapp variant="linje" onClick={()=>{navigator.clipboard?.writeText(tekst);setKopiert(true);setTimeout(()=>setKopiert(false),2000);}}>
+            <Knapp variant="linje" onClick={()=>{navigator.clipboard?.writeText(tekst);setKopiert(true);setTimeout(()=>setKopiert(false),2000);}} disabled={!tekst.trim()}>
               {kopiert?"Kopiert":"Kopier tekst"}
             </Knapp>
             {type==="horing"&&(
@@ -2204,34 +2038,30 @@ function MalModal({type, kontekst, onClose, onSend=()=>{}, user=null}:{type:stri
                 URL.revokeObjectURL(url);
               }}>Last ned</Knapp>
             )}
-            {type==="politiker"&&kontekst?.kontakt&&(
-              <Knapp variant="linje" onClick={()=>window.open(`mailto:${kontekst.kontakt}?body=${encodeURIComponent(tekst)}`)}>Åpne i e-post</Knapp>
-            )}
           </div>
-          <p className="kv-meta">{tekst.length} tegn. {Math.max(0, tekst.split(/\[.*?\]/).length-1)} felt i klammer står igjen.</p>
+          <p className="kv-meta">{tekst.length} tegn.</p>
         </div>
-      )}
     </Dialog>
   );
 }
 
 const KOMITEER_DATA = [
-  {id:"familie", navn:"Familie- og kulturkomiteen", kontakt:"familie-og-kulturkomiteen@stortinget.no", leder:"Knut Storberget (Ap)", felt:["Scenekunst","Musikk","Dans","Opera","Film","Litteratur","Visuell kunst","Museer","Spill","Kulturarv"], url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Familie-og-kulturkomiteen/"},
-  {id:"finans",  navn:"Finanskomiteen",              kontakt:"finanskomiteen@stortinget.no",           leder:"Marianne Lunde (H)",   felt:["Budsjett","Tilskudd","Skatt"], url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Finanskomiteen/"},
-  {id:"naering", navn:"Næringskomiteen",              kontakt:"naeringskomiteen@stortinget.no",         leder:"Geir Pollestad (Sp)",  felt:["Spill","Film","Kultureksport"], url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Naeringskomiteen/"},
-  {id:"utd",     navn:"Utdannings- og forskningskomiteen", kontakt:"utdanning@stortinget.no",          leder:"Iselin Nybø (V)",      felt:["Museer","Kulturarv","Arkiver"], url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Utdannings-og-forskningskomiteen/"},
+  {id:"familie", navn:"Familie- og kulturkomiteen", url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Familie-og-kulturkomiteen/"},
+  {id:"finans",  navn:"Finanskomiteen", url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Finanskomiteen/"},
+  {id:"naering", navn:"Næringskomiteen", url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Naeringskomiteen/"},
+  {id:"utd",     navn:"Utdannings- og forskningskomiteen", url:"https://www.stortinget.no/no/Representanter-og-komiteer/Komiteene/Utdannings-og-forskningskomiteen/"},
 ];
 
-function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanjerData=[],onKrevInnlogging}:{loggAktivitet?:(entry:any)=>void;user?:any;varslerData?:any[];kampanjerData?:any[];onKrevInnlogging?:(grunn:string)=>void}) {
+function BrukerMobiliser({loggAktivitet: _loggAktivitet=()=>{},user=null,varslerData=[],kampanjerData=[],onKrevInnlogging}:{loggAktivitet?:(entry:any)=>void;user?:any;varslerData?:any[];kampanjerData?:any[];onKrevInnlogging?:(grunn:string)=>void}) {
   const [tab,setTab]=useState("oversikt");
   const [malModal,setMalModal]=useState<any>(null);
   const handlinger=[
-    {tittel:"Kontakt stortingskomité",tekst:"Familie- og kulturkomiteen behandler de fleste kultursaker. Åpner en brevmal.",type:"komite"},
-    {tittel:"Skriv til en politiker",tekst:"Henvendelse med mal til en politiker.",type:"politiker_oversikt"},
+    {tittel:"Kontakt stortingskomité",tekst:"Åpner et tomt utkast til Familie- og kulturkomiteen. Det sendes ikke herfra.",type:"komite"},
+    {tittel:"Skriv til en politiker",tekst:"Det finnes ingen politikerliste.",type:"politiker_oversikt"},
     {tittel:"Skriv høringssvar",tekst:"Utkast til en åpen sak. Det sendes ikke inn herfra.",type:"horing_oversikt"},
-    {tittel:"Skriv pressemelding",tekst:"Mal for pressemelding.",type:"pressem"},
+    {tittel:"Skriv pressemelding",tekst:"Tomt felt. Det ligger ingen mal, og ingenting sendes herfra.",type:"pressem"},
     {tittel:"Del på sosiale medier",tekst:"Tekst til deling, med tittel, sammendrag og frist.",type:"sosiale"},
-    {tittel:"Signer kampanjer",tekst:`${kampanjerData.length} åpne kampanjer.`,type:"kampanje"},
+    {tittel:"Signer kampanjer",tekst:"Signering er ikke åpen.",type:"kampanje"},
   ];
   function åpneHandling(type: string){
     if(type==="komite") setMalModal({type:"komite",kontekst:KOMITEER_DATA[0]});
@@ -2245,7 +2075,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
 
   return (
     <div className="kv-stakk">
-      {malModal&&<MalModal type={malModal.type} kontekst={malModal.kontekst} user={user} onClose={()=>setMalModal(null)} onSend={(entry)=>loggAktivitet(entry)}/>}
+      {malModal&&<MalModal type={malModal.type} kontekst={malModal.kontekst} onClose={()=>setMalModal(null)}/>}
       <Faner
         faner={[
           {id:"oversikt",label:"Oversikt"},
@@ -2302,11 +2132,8 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
             {KOMITEER_DATA.map(k=>(
               <li key={k.id} className="kv-rad">
                 <h3 className="kv-undertittel">{k.navn}</h3>
-                <p className="kv-meta">Leder: {k.leder}</p>
-                <p className="kv-meta">{k.kontakt}</p>
-                <p><a className="kv-lenke" href={k.url} target="_blank" rel="noreferrer">Stortinget</a></p>
-                <p className="kv-brod">{k.felt.join(", ")}</p>
-                <Knapp variant="linje" onClick={()=>setMalModal({type:"komite",kontekst:k})}>Åpne brev</Knapp>
+                <p><a className="kv-lenke" href={k.url} target="_blank" rel="noreferrer">Komiteen på stortinget.no</a></p>
+                <Knapp variant="linje" onClick={()=>setMalModal({type:"komite",kontekst:k})}>Skriv til komiteen</Knapp>
               </li>
             ))}
           </ul>
@@ -2314,7 +2141,7 @@ function BrukerMobiliser({loggAktivitet=()=>{},user=null,varslerData=[],kampanje
       )}
 
       {tab==="politikere"&&(
-        <p className="kv-brod">Liste over politikere kommer.</p>
+        <p className="kv-tom">Det finnes ingen politikerliste. Vi viser ikke navn før de er hentet fra en åpen kilde.</p>
       )}
 
       {tab==="horinger"&&(
@@ -2484,7 +2311,7 @@ function PremiumVerktøy({varslerData=[],user=null}:{varslerData?:any[];user?:an
       )}
 
       {tool==="politikeraktivitet"&&(
-        <p className="kv-brod">Liste over politikere kommer.</p>
+        <p className="kv-tom">Det finnes ingen politikerliste. Vi viser ikke navn før de er hentet fra en åpen kilde.</p>
       )}
     </div>
   );
@@ -2895,7 +2722,7 @@ function PubliserModal({onClose,onPubliser}: any) {
       <p className="kv-steg">Steg {steg} av 2</p>
       {steg===1&&(
         <div className="kv-stakk">
-          <Felt id="pub-tittel" label="Tittel" value={tittel} onChange={e=>setTittel(e.target.value)} placeholder="Revisjon av tilskudd til lokale kulturlokaler" />
+          <Felt id="pub-tittel" label="Tittel" value={tittel} onChange={e=>setTittel(e.target.value)} placeholder="Tittel på høringen" />
           <Tekstfelt id="pub-beskrivelse" label="Beskrivelse" value={beskrivelse} onChange={e=>setBeskrivelse(e.target.value)} rows={4} placeholder="Hva høringen handler om, og hva dere ønsker innspill på." />
           <Velger id="pub-fag" label="Fagområde" value={kategori} onChange={e=>setKategori(e.target.value)}>
             {KATEGORIER.map(k=><option key={k.id} value={k.id}>{k.label}</option>)}

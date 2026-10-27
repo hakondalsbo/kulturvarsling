@@ -29,6 +29,13 @@
   overflow-wrap: anywhere;
 }
 
+.minside-valg-linje {
+  font: 500 16px/1.45 var(--sans);
+  color: var(--tekst);
+  margin: -8px 0 22px;
+  overflow-wrap: anywhere;
+}
+
 .minside-innledning,
 .minside-forklaring {
   font: 400 18px/1.55 var(--serif);

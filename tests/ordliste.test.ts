@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { BUDSJETTORD, ORDLISTE } from "../src/innhold/ordliste.ts";
+import { BUDSJETTORD, ORDLISTE, ORDLISTE_INNLEDNING, ORDLISTE_TITTEL } from "../src/innhold/ordliste.ts";
 import { delOpp, delOppDokument, finnTreff } from "../src/innhold/treff.ts";
 
 test("ordlisten har 50 begreper og seks budsjettord", () => {
@@ -22,8 +22,9 @@ test("budsjettforlik er gjengitt ordrett", () => {
   assert.ok(o);
   assert.equal(
     o.forklaring,
-    "Avtalen partiene inngår for å skaffe flertall for budsjettet. Det er ofte her de siste endringene blir gjort.",
+    "Avtalen partiene inngår for å få flertall for statsbudsjettet. Det er ofte her de siste endringene blir gjort. Vil du ha en endring i budsjettet, må du derfor nå fram til partiene før de blir enige.",
   );
+  assert.equal(o.eksempel, undefined);
   assert.deepEqual(o.synonymer, ["budsjettavtale"]);
 });
 
@@ -113,6 +114,33 @@ test("synonym som ikke står i søkemønsteret treffer", () => {
   assert.ok(treff.some((t) => t.id === "byrad-og-byradssak"));
   assert.ok(treff.some((t) => t.id === "retningslinjer"));
   assert.ok(treff.some((t) => t.id === "utvalg"));
+});
+
+test("innledningen og tittelen er hele fasiten", () => {
+  assert.equal(ORDLISTE_TITTEL, "Ordliste: ord du møter i sakene");
+  assert.equal(
+    ORDLISTE_INNLEDNING,
+    "Mange av sakene våre bruker ord fra forvaltningen og politikken. Her forklarer vi de vanligste: hva ordet betyr, og hva det betyr for deg som jobber med kunst og kultur. Ordene står i alfabetisk rekkefølge. Ord i parentes er andre former eller nynorske former av samme ord.",
+  );
+  const stipend = ORDLISTE.find((x) => x.id === "arbeidsstipend");
+  assert.match(stipend?.forklaring ?? "", /Stipendet gis for ett til fem år og utbetales månedlig/);
+  const tildeling = ORDLISTE.find((x) => x.id === "tildeling");
+  assert.equal(tildeling?.eksempel, undefined);
+  assert.match(readFileSync("src/ord.tsx", "utf8"), /aria-label="Bokstavindeks"/);
+  assert.match(readFileSync("src/ord.tsx", "utf8"), /href=\{`#\$\{o\.id\}`\}/);
+  assert.doesNotMatch(readFileSync("src/statsbudsjett.tsx", "utf8"), /ORDLISTE/);
+});
+
+test("sluttbehandling har et eksempel uten dato", () => {
+  const o = ORDLISTE.find((x) => x.id === "sluttbehandling");
+  assert.equal(
+    o?.eksempel,
+    "Bergen bystyre sluttbehandler reguleringsplanen for Kulturkvartalet Verftet.",
+  );
+  assert.equal((o?.eksempel ?? "").includes("2026"), false);
+  const ord = readFileSync("src/ord.tsx", "utf8");
+  assert.match(ord, /forklaringMedLenke\(o\.forklaring, "\/ordliste"\)/);
+  assert.doesNotMatch(ord, /\{o\.forklaring\}/);
 });
 
 test("siste eksempel er uten skillestrek fra utkastet", () => {

@@ -82,8 +82,8 @@ export function DesignSide() {
 
       <section aria-labelledby="galleri-skjema">
         <h2 id="galleri-skjema" className="kv-undertittel">Skjema</h2>
-        <Felt id="galleri-epost" label="E-postadresse" type="email" defaultValue="eksempel@kulturvarsling.no" />
-        <Tekstfelt id="galleri-tekst" label="Innspill" rows={4} defaultValue="Skriv innspillet her." />
+        <Felt id="galleri-epost" label="E-postadresse" type="email" placeholder="E-postadresse" />
+        <Tekstfelt id="galleri-tekst" label="Innspill" rows={4} placeholder="Skriv innspillet her" />
         <Velger id="galleri-fylke" label="Fylke" defaultValue="03">
           <option value="03">Oslo</option>
           <option value="46">Vestland</option>
