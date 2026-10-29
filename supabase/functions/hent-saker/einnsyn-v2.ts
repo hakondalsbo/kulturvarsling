@@ -58,10 +58,9 @@ const SPEC_COMMITS =
   + "&sha=main&per_page=1";
 
 /**
- * Siste commit som endret openapi/einnsyn.openapi.yml, lest 26.10.2026.
- * Ikke HEAD på main (den var en CI-endring, 10f2b418…).
+ * Siste commit som endret openapi/einnsyn.openapi.yml, lest 29.10.2026 (Base.deleted valgfri, ingen felt vi bruker).
  */
-export const EINNSYN_SPEC_KJENT_SHA = "cedf5edc8cb5ae27cff4b8e03c989af7928bd531";
+export const EINNSYN_SPEC_KJENT_SHA = "583442e1792dc6bd375cf0c10915c845cdac1ff3";
 
 export const EINNSYN_V2_SOKEORD = [
   "kultur",
