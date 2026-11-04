@@ -63,7 +63,7 @@ import {
 import { hentKulturdirektoratetTildelinger } from "./kulturdirektoratet.ts";
 import { hentSametingetSaker } from "./sametinget.ts";
 import { hentRegjeringenRSS, parseOgBerik } from "./regjeringen.ts";
-import { BACKFILL_KODE, kjorRegjeringenBackfill, planleggTommeHoringsfrister } from "./backfill.ts";
+import { BACKFILL_KODE, kjorRegjeringenBackfill } from "./backfill.ts";
 import {
   feilFraStatus,
   feilFraUnntak,
@@ -440,35 +440,6 @@ async function lesSisteVellykkede(
     ut.set(adapter, typeof kjort === "string" ? kjort : null);
   }));
   return ut;
-}
-
-async function fyllTommeHoringsfrister(
-  supabase: { from: (t: string) => any },
-  frister: ReadonlyMap<string, string> | undefined,
-): Promise<number> {
-  if (!frister || frister.size === 0) return 0;
-  const { data, error } = await supabase
-    .from("varsler")
-    .select("id, kilde, tittel, instans, sammendrag, frist, manuelt_redigert")
-    .is("frist", null)
-    .eq("manuelt_redigert", false)
-    .ilike("kilde", "%regjeringen.no%");
-  if (error) {
-    console.error("Kunne ikke lese høringer uten frist");
-    return 0;
-  }
-  const plan = planleggTommeHoringsfrister({ eksisterende: data ?? [], frister });
-  let n = 0;
-  for (const op of plan) {
-    const { error: u } = await supabase
-      .from("varsler")
-      .update(op.felt)
-      .eq("id", op.id)
-      .eq("manuelt_redigert", false);
-    if (u) console.error("Fristoppdatering feilet");
-    else n++;
-  }
-  return n;
 }
 
 async function kjørAdapter(
@@ -862,13 +833,6 @@ Deno.serve(async (req: Request) => {
         .is("kilde_publisert", null);
       if (datoFeil) console.error("kilde_publisert:", datoFeil.message);
     }
-
-    const regjeringen = kjøringer.find((k) => k.navn === "regjeringen-rss");
-    const fyltFrist = await fyllTommeHoringsfrister(
-      supabase,
-      regjeringen?.utfall.horingsfrister,
-    );
-    if (fyltFrist > 0) console.log(`Satte manglende høringsfrist på ${fyltFrist} saker`);
 
     // Kostnads- OG ressurstak: maks antall saker som AI-vurderes per kjøring.
     // Overskytende utsettes til neste kjøring (dedup slår ikke inn — de er ikke

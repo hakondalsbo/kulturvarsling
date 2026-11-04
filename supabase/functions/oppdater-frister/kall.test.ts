@@ -204,4 +204,7 @@ test("bare api.einnsyn.no får navn og kontakt i User-Agent", () => {
   const kilde = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.match(kilde, /svarForFristjobb\(/);
   assert.match(kilde, /userAgentForUrl\(/);
+  assert.match(kilde, /regjeringenSideUrl\(/);
+  assert.match(kilde, /parseRegjeringenHoringSide\(/);
+  assert.doesNotMatch(kilde, /documenttype|id2000006|[?&]topic=|ownerid/);
 });

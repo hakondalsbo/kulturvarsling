@@ -1,12 +1,8 @@
 // Ren parsing av høringsfrister. Ingen nettverk.
-// Regjeringen har ikke JSON for frist (verifisert i KILDEKART). Stabil kilde er
-// dokumentlisten id2000006, og detaljsidens .horing-meta som reserve.
+// Regjeringen har ikke JSON for frist (verifisert i KILDEKART).
+// Fristen leses fra detaljsidens .horing-meta. Dokumentlisten kalles ikke.
 // Stortinget: HOERFRIST via finnHøringsfrist i logikk.ts.
 
-export const REGJERINGEN_HORING_LISTE =
-  "https://www.regjeringen.no/no/dokument/id2000006/?documenttype=dokumenter/h%C3%B8ringer&page=";
-
-export const MAKS_LISTE_SIDER = 2;
 export const MAKS_REGJERING_DETALJ = 10;
 export const MAKS_STORTING_OPPSLAG = 20;
 export const MAKS_SAMETING = 8;

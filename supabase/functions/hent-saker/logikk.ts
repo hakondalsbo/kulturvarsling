@@ -471,7 +471,7 @@ export function sideUrl(kilde: string): string {
   return q >= 0 ? ren.slice(0, q) : ren;
 }
 
-/** Tilleggsfeeder (KUD-nyheter, høringer, tilskudd, statsbudsjett) eldre enn dette droppes. */
+/** Tilleggsfeeder (KUD-nyheter, høringer, tilskudd) eldre enn dette droppes. */
 export const INNHENTINGSVINDU_DAGER = 120;
 
 export function innenInnhentingsvindu(

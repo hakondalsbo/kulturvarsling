@@ -41,8 +41,6 @@ export type AdapterUtfall = {
   vellykket: number;
   /** HTTP-status for vellykket kall, eller feilens status når kallet feilet. */
   httpStatus: number | null;
-  /** Innholds-id → frist fra høringslisten, når den lot seg hente. */
-  horingsfrister?: ReadonlyMap<string, string>;
   /**
    * Avlyste komitéhøringer. Bare stortinget-horinger setter feltet.
    * De blir ikke nye varsler og avpubliseres ikke.

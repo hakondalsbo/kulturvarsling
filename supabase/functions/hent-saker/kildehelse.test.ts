@@ -156,9 +156,10 @@ test("død KUD-feed er fjernet, statsråd og KUD-tillegg er med", () => {
   assert.equal(urls.some((u) => u.includes("aktuelt/nyheter") && u.includes("owner=545")), true);
   assert.equal(urls.some((u) => u.includes("dokumenter/h") && u.includes("owner=545")), true);
   assert.equal(urls.some((u) => u.includes("loverogregler/retningslinjer") && u.includes("owner=545")), true);
-  assert.equal(urls.some((u) => u.includes("topic=931/1437") && u.includes("owner=545")), true);
-  assert.equal(REGJERINGEN_FEEDS.filter((f) => f.vindu).length, 4);
-  assert.equal(urls.length, 9);
+  assert.equal(urls.some((u) => /[?&]topic=/.test(u)), false);
+  assert.equal(urls.some((u) => u.includes("documenttype=")), false);
+  assert.equal(REGJERINGEN_FEEDS.filter((f) => f.vindu).length, 3);
+  assert.equal(urls.length, 8);
 });
 
 test("én feilende feed stopper ikke senere feeder", async () => {
