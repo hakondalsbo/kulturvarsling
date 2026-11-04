@@ -18,7 +18,7 @@ import {
   planleggTommeHoringsfrister,
   type EksisterendeVarsel,
 } from "./backfill.ts";
-import { filtrerRegjeringenItems, hentHoringsliste } from "./regjeringen.ts";
+import { filtrerRegjeringenItems } from "./regjeringen.ts";
 import type { RssItem } from "./logikk.ts";
 
 const NÅ = Date.parse("2026-10-20T12:00:00Z");
@@ -101,11 +101,15 @@ function rad(over: Partial<EksisterendeVarsel> & Pick<EksisterendeVarsel, "id">)
 
 test("backfill-vinduet er 29.09–19.10 og bare KUD-tilleggsfeedene", () => {
   const feeds = backfillFeeds();
-  assert.equal(feeds.length, 4);
+  assert.equal(feeds.length, 3);
   for (const f of feeds) {
     assert.match(f.url, new RegExp(`from=${BACKFILL_FRA.replaceAll(".", "\\.")}`));
     assert.match(f.url, new RegExp(`to=${BACKFILL_TIL.replaceAll(".", "\\.")}`));
     assert.match(f.url, /owner=545/);
+    assert.doesNotMatch(f.url, /[?&]topic=/);
+    assert.doesNotMatch(f.url, /documenttype=/);
+    assert.doesNotMatch(f.url, /\?from=/);
+    assert.doesNotMatch(f.url, /\?to=/);
   }
 });
 
@@ -280,17 +284,7 @@ test("dataspillhøringen 90a26730 overskrives ikke", () => {
   assert.deepEqual(rettet.nye, []);
 });
 
-test("høringslisten som ikke svarer gir ingen frist og en tydelig feil", async () => {
-  const tom = await hentHoringsliste(async () => null);
-  assert.equal(tom.feil, "Høringslisten svarte ikke");
-  assert.equal(tom.treff.length, 0);
-  const utfordring = await hentHoringsliste(async () =>
-    "<html><title>Just a moment...</title></html>"
-  );
-  assert.equal(utfordring.feil, "Høringslisten manglet treff");
-});
-
-test("tom høringsfrist settes fra listen bare når raden ikke er manuelt redigert", () => {
+test("tom høringsfrist fra fristkartet settes bare når raden ikke er manuelt redigert", () => {
   const horing = rad({
     id: "horing-1",
     tittel: "Høring - forslag til endringer i kringkastingsforskriften",

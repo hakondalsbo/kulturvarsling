@@ -39,10 +39,8 @@ import { hentBergenAgendapunkter } from "../hent-saker/bergen.ts";
 import { finnHøringsfrist, kalenderdag } from "../hent-saker/logikk.ts";
 import {
   erRegjeringsHoring,
-  MAKS_LISTE_SIDER,
   MAKS_REGJERING_DETALJ,
   MAKS_STORTING_OPPSLAG,
-  parseRegjeringenHoringListe,
   parseRegjeringenHoringSide,
   bergenMoteOgSak,
   einnsynMoetesakId,
@@ -50,7 +48,6 @@ import {
   MAKS_MOTEOPPSLAG,
   MAKS_SAMETING,
   prioriterStorting,
-  REGJERINGEN_HORING_LISTE,
   regjeringenInnholdId,
   regjeringenSideUrl,
   skalOppdatereStortingFrist,
@@ -404,7 +401,7 @@ Deno.serve(async (req: Request) => {
   const idag = kalenderdag(Date.now());
 
   const stortinget = { kandidater: 0, oppdatert: 0, uendret: 0, feil: 0 };
-  const regjeringen = { liste_treff: 0, oppdatert: 0, detalj_forsok: 0, uendret: 0, feil: 0 };
+  const regjeringen = { oppdatert: 0, detalj_forsok: 0, uendret: 0, feil: 0 };
   const sametinget = { kandidater: 0, oppdatert: 0, uendret: 0, feil: 0 };
   const moter = { bergen: 0, einnsyn: 0, oppdatert: 0, feil: 0 };
   const kall = new Map<string, KallUtfall[]>();
@@ -429,25 +426,11 @@ Deno.serve(async (req: Request) => {
     if (error) return jsonSvar({ feil: "Kunne ikke hente saker" }, 503);
     const rader = (data ?? []) as Rad[];
 
-    const fristPerId = new Map<string, string>();
-    for (let side = 1; side <= MAKS_LISTE_SIDER; side++) {
-      const lest = await hentTekst(`${REGJERINGEN_HORING_LISTE}${side}`);
-      merk("regjeringen-rss", somUtfall(lest));
-      if ("feil" in lest) {
-        console.error(`Regjeringen liste side ${side}: ${lest.feil.melding}`);
-        regjeringen.feil++;
-        continue;
-      }
-      for (const item of parseRegjeringenHoringListe(lest.tekst)) {
-        if (item.frist) fristPerId.set(item.innholdId, item.frist);
-      }
-    }
-    regjeringen.liste_treff = fristPerId.size;
-
+    // Frist fra detaljsidens horing-meta, bare der raden mangler frist.
     for (const rad of rader.filter((r) => erRegjeringsHoring(r.kilde, r.instans) && skalSkriveFrist(r))) {
       const innholdId = regjeringenInnholdId(rad.kilde);
-      let frist = innholdId ? fristPerId.get(innholdId) ?? null : null;
-      if (!frist && !rad.frist && regjeringen.detalj_forsok < MAKS_REGJERING_DETALJ) {
+      let frist: string | null = null;
+      if (!rad.frist && regjeringen.detalj_forsok < MAKS_REGJERING_DETALJ) {
         const url = regjeringenSideUrl(rad.kilde);
         regjeringen.detalj_forsok++;
         if (!url) {

@@ -13,7 +13,6 @@ import {
   kategoriFraTittel,
   kildeNokkel,
   kildePublisertIso,
-  leggPaHoringsfrist,
   planleggEmneDedup,
   sakstypeFraSak,
   statusFraFrist,
@@ -21,9 +20,7 @@ import {
 } from "./logikk.ts";
 import { klassifiserKjøring } from "./kildehelse.ts";
 import {
-  fristkart,
   hentFeeder,
-  hentHoringsliste,
   hentRegjeringenSide,
   parseOgBerik,
   REGJERINGEN_FEEDS,
@@ -185,7 +182,9 @@ export function planleggBackfill(input: {
   return { nye, oppdateringer, koblinger };
 }
 
-/** Eksisterende høringer med tom frist. manuelt_redigert får ingen frist eller status. */
+/** Eksisterende høringer med tom frist. Kartet hentes ikke fra nett.
+ *  manuelt_redigert får ingen frist eller status.
+ */
 export function planleggTommeHoringsfrister(input: {
   eksisterende: EksisterendeVarsel[];
   frister: ReadonlyMap<string, string>;
@@ -264,10 +263,7 @@ export async function kjorRegjeringenBackfill(
     const kropp = res.ok ? await res.text() : "";
     return { status: res.status, kropp };
   });
-  const liste = await hentHoringsliste(hentSide);
-  if (liste.feil) console.error(`Høringsliste: ${liste.feil}`);
-  const medListe = leggPaHoringsfrist(utfall.items, liste.treff);
-  const beriket = await parseOgBerik(medListe, hentSide);
+  const beriket = await parseOgBerik(utfall.items, hentSide);
   const { data, error } = await supabase
     .from("varsler")
     .select("id, kilde, tittel, instans, sammendrag, kategori, frist, publisert, manuelt_redigert");
@@ -288,12 +284,6 @@ export async function kjorRegjeringenBackfill(
     items: beriket,
     eksisterende,
   });
-  const frister = fristkart(liste.treff);
-  for (const op of planleggTommeHoringsfrister({ eksisterende, frister })) {
-    const finnes = plan.oppdateringer.find((o) => o.id === op.id);
-    if (!finnes) plan.oppdateringer.push(op);
-    else if (!finnes.felt.frist) Object.assign(finnes.felt, op.felt);
-  }
 
   let lagret = 0;
   let horingerUtenFrist = 0;
