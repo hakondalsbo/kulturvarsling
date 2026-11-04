@@ -36,6 +36,7 @@ import {
   filtrerNyeEtterKildedato,
   planleggKildePublisertBackfill,
   tellDatofilter,
+  tallForKjoring,
   type Kjoeringstype,
 } from "./datofilter.ts";
 import { geografiSomLagres, hentEInnsynKultursaker } from "./einnsyn.ts";
@@ -787,12 +788,19 @@ Deno.serve(async (req: Request) => {
     // en sak om åndsverkloven mangler f.eks. ordet «kultur» i tittelen.
     // Regjeringen bruker eget filter: departementsnavnet alene er ikke treff,
     // mens KUD-porteføljen (medier, spill, budsjett, stipend, kulturbygg) er det.
+    const avvistRelevans = new Map<string, number>();
+    const avvistSperre = new Map<string, number>();
+    const publisertPerAdapter = new Map<string, number>();
     const kandidater = alle.filter((item) => {
       if (!item.kilde) return false;
-      if (item.adapter === "regjeringen-rss") {
-        return erRegjeringenRelevant(item.tittel, item.sammendrag_raa ?? "");
+      const relevant = item.adapter === "regjeringen-rss"
+        ? erRegjeringenRelevant(item.tittel, item.sammendrag_raa ?? "")
+        : item.forhåndsgodkjent || erKulturRelevant(item.tittel, item.sammendrag_raa);
+      if (!relevant) {
+        avvistRelevans.set(item.adapter, (avvistRelevans.get(item.adapter) ?? 0) + 1);
+        return false;
       }
-      return item.forhåndsgodkjent || erKulturRelevant(item.tittel, item.sammendrag_raa);
+      return true;
     });
     // Samme normaliserte URL to ganger i én kjøring (to sesjoner, eller samme
     // sak to ganger) blir én rad. Det var slik p=200362 og p=200367 ble doblet.
@@ -827,7 +835,6 @@ Deno.serve(async (req: Request) => {
     );
 
     let antallLagret = 0;
-    const lagretPerAdapter = new Map<string, number>();
     const horingUtenFrist = new Map<string, number>();
     const idEtterKilde = new Map<string, string>();
     const driftFeil: string[] = [];
@@ -930,6 +937,7 @@ Deno.serve(async (req: Request) => {
           // dedup via kilde-URL stopper den ved neste kjøring.
           // Porteføljesaker publiseres i grenen over. Avvisninger lagres
           // upublisert, med kilde_id, så samme sak ikke vurderes på nytt.
+          avvistRelevans.set(item.adapter, (avvistRelevans.get(item.adapter) ?? 0) + 1);
           const avvistGeo = item.adapter === "einnsyn"
             ? geografiSomLagres(item, analyse.niva)
             : { niva: analyse.niva ?? "nasjonalt", sted: "Norge" };
@@ -1035,10 +1043,8 @@ Deno.serve(async (req: Request) => {
         driftFeil.push(`${item.tittel}: ${lagret.error.message}`);
       } else {
         antallLagret++;
-        lagretPerAdapter.set(
-          item.adapter,
-          (lagretPerAdapter.get(item.adapter) ?? 0) + 1,
-        );
+        const maal = publisert ? publisertPerAdapter : avvistSperre;
+        maal.set(item.adapter, (maal.get(item.adapter) ?? 0) + 1);
         const nokkel = kildeNokkel(item.kilde);
         if (nokkel) {
           eksKilder.add(nokkel);
@@ -1138,13 +1144,23 @@ Deno.serve(async (req: Request) => {
     await lagreHoringOppfolging(supabase, horingPlan, driftFeil);
 
     // Kjøringslogg per kilde. antall_funnet = råtreff før filter/dedup.
+    // antall_nye er saker som ble lagret og publisert. Datofilter,
+    // relevansfilter og sperre ligger i antall_avvist.
     // «tom» bare når en kilde som kan være tom svarte OK med 0 råtreff.
     // Kilder med forventer_treff får feil_tomt_svar i stedet. http_status
     // lagres også når kallet gikk bra. feilmelding er saniteret.
     const kildeStatus = [];
     const kildeFeil: string[] = [];
+    const datoStoppet = new Map(datoTall.map((t) => [t.adapter, t.stoppet]));
     for (const k of kjøringer) {
-      const antallNye = lagretPerAdapter.get(k.navn) ?? 0;
+      const tall = tallForKjoring({
+        publisert: publisertPerAdapter.get(k.navn) ?? 0,
+        relevans: avvistRelevans.get(k.navn) ?? 0,
+        dato: datoStoppet.get(k.navn) ?? 0,
+        sperre: avvistSperre.get(k.navn) ?? 0,
+      });
+      const antallNye = tall.antallNye;
+      const antallAvvistKilde = tall.antallAvvist;
       const meta = kilderMap.get(k.navn);
       const klass = medClaudeFeil(klassifiserKjøring({
         raattAntall: k.utfall.raattAntall,
@@ -1167,6 +1183,7 @@ Deno.serve(async (req: Request) => {
         raatt_antall: k.utfall.raattAntall,
         antall_etter_filter: k.utfall.antallEtterFilter,
         antall_nye: antallNye,
+        antall_avvist: antallAvvistKilde,
         http_status: klass.httpStatus,
         feilmelding: klass.feilmelding,
         varighet_ms: k.varighetMs,
@@ -1192,6 +1209,7 @@ Deno.serve(async (req: Request) => {
           antallFunnet: k.utfall.raattAntall,
           antallEtterFilter: k.utfall.antallEtterFilter,
           antallNye,
+          antallAvvist: antallAvvistKilde,
           feilmelding,
           httpStatus: klass.httpStatus,
           varighetMs: k.varighetMs,

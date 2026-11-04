@@ -12,6 +12,7 @@ import {
   dekodXml,
   erKulturRelevant,
   erKulturSak,
+  STORTING_KULTUR_UNDEREMNER,
   erPortefoljesak,
   byggSammendragPrompt,
   kategoriForEinnsyn,
@@ -191,6 +192,76 @@ test("nøkkelord i tittel fanger kultursak utenfor komiteen", () => {
     erKulturSak({ komite: { id: "FINANS" }, tittel: "Momsfritak for musikkfestivaler" }),
     true,
   );
+});
+
+test("kulturunderemner er Massemedier, Kringkasting, Kunst og Språk", () => {
+  assert.deepEqual(
+    STORTING_KULTUR_UNDEREMNER.map((e) => [e.id, e.navn]),
+    [
+      [122, "Massemedier"],
+      [70, "Kringkasting"],
+      [68, "Kunst"],
+      [124, "Språk"],
+    ],
+  );
+});
+
+test("sak 200484 fanges av ordet aviser, selv uten emne", () => {
+  assert.equal(
+    erKulturSak({
+      komite: { id: "FINANS" },
+      emne_liste: [],
+      tittel: "Representantforslag fra stortingsrepresentantene Tone Wilhelmsen Trøen, Haagen Poppe, Nikolai Astrup og Henrik Asheim om forutsigbart fritak for merverdiavgift for elektroniske aviser",
+      korttittel: "Representantforslag om forutsigbart fritak for merverdiavgift for elektroniske aviser",
+    }),
+    true,
+  );
+});
+
+test("sak 200185 fanges av underemnet Massemedier", () => {
+  assert.equal(
+    erKulturSak({
+      komite: { id: "FINANS" },
+      emne_liste: [
+        { id: 81, navn: "Merverdiavgift", hovedemne_id: 187 },
+        { id: 122, navn: "Massemedier", hovedemne_id: 6 },
+      ],
+      tittel: "Representantforslag fra stortingsrepresentantene Tone Wilhelmsen Trøen, Haagen Poppe og Tage Pettersen om fastsettelse av provenyeffekt av fritak fra merverdiavgift på levende lyd og bilde",
+      korttittel: "Representantforslag om fastsettelse av provenyeffekt av fritak fra merverdiavgift på levende lyd og bilde",
+    }),
+    true,
+  );
+});
+
+test("underemne treffer på id eller navn, også nestet", () => {
+  assert.equal(erKulturSak({ emne_liste: [{ id: 70, navn: "Kringkasting" }], tittel: "Rammevilkår" }), true);
+  assert.equal(erKulturSak({ emne_liste: [{ id: "68", navn: "Kunst" }], tittel: "Bevilgning" }), true);
+  assert.equal(erKulturSak({ emne_liste: [{ navn: "Språk" }], tittel: "Bevilgning" }), true);
+  assert.equal(
+    erKulturSak({
+      emne_liste: [{ id: 187, navn: "Skatter", underemne_liste: [{ id: 122, navn: "Massemedier" }] }],
+      tittel: "Bevilgning",
+    }),
+    true,
+  );
+  assert.equal(erKulturSak({ tittel: "Mediestøtte til lokalradio" }), true);
+  assert.equal(erKulturSak({ korttittel: "En avis i distriktene", tittel: "Dokument 8" }), true);
+});
+
+test("hele ord unngår falske medie-treff", () => {
+  assert.equal(
+    erKulturSak({
+      komite: { id: "FINANS" },
+      emne_liste: [{ id: 81, navn: "Merverdiavgift" }],
+      tittel: "Representantforslag fra Haagen Poppe om skatt",
+    }),
+    false,
+  );
+  assert.equal(erKulturSak({ tittel: "Økt presset på budsjettet" }), false);
+  assert.equal(erKulturSak({ tittel: "Medisinsk forskning" }), false);
+  assert.equal(erKulturSak({ tittel: "Avvikling av fylkesvei" }), false);
+  assert.equal(erKulturSak({ tittel: "Mediepolitikk uten eget emne" }), false);
+  assert.equal(erKulturSak({ emne_liste: [{ navn: "Kunstnere" }], tittel: "Bevilgning" }), false);
 });
 
 // ─── finnHøringsfrist ─────────────────────────────────────────────────────────

@@ -360,6 +360,7 @@ async function loggKildeKall(
         antallFunnet: klass.forsok,
         antallEtterFilter: klass.vellykket,
         antallNye: 0,
+        antallAvvist: 0,
         antallOppdatert: klass.oppdatert,
         feilmelding: klass.feilmelding,
         httpStatus: klass.httpStatus,

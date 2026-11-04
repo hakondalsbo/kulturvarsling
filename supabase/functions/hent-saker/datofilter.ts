@@ -245,6 +245,20 @@ export function avklarKjoering(input: {
   return { kjoeringstype: "vanlig", spesialBackfill: false, avvist: null };
 }
 
+/** antall_nye er bare saker som ble publisert. Avvisninger telles ved siden av. */
+export function tallForKjoring(input: {
+  publisert: number;
+  relevans: number;
+  dato: number;
+  sperre: number;
+}): { antallNye: number; antallAvvist: number } {
+  const ikkeNegativ = (n: number) => (n > 0 ? n : 0);
+  return {
+    antallNye: ikkeNegativ(input.publisert),
+    antallAvvist: ikkeNegativ(input.relevans) + ikkeNegativ(input.dato) + ikkeNegativ(input.sperre),
+  };
+}
+
 export function byggKildeKjoringRad(input: {
   kildeId: string;
   status: string;
@@ -259,6 +273,11 @@ export function byggKildeKjoringRad(input: {
   jobb: KildeJobb;
   /** Frist- og møtedatoendringer. Ikke nye varsler. Bare oppdater-frister. */
   antallOppdatert?: number | null;
+  /**
+   * Datofilter, relevansfilter og sperre. Ikke med i antall_nye.
+   * Utelatt betyr 0, også for kall som ikke kjenner kolonnen.
+   */
+  antallAvvist?: number | null;
 }): Record<string, unknown> {
   const fristjobb = input.jobb === "oppdater-frister";
   return {
@@ -267,6 +286,7 @@ export function byggKildeKjoringRad(input: {
     antall_funnet: input.antallFunnet,
     antall_etter_filter: input.antallEtterFilter,
     antall_nye: fristjobb ? 0 : input.antallNye,
+    antall_avvist: input.antallAvvist ?? 0,
     antall_oppdatert: fristjobb ? (input.antallOppdatert ?? 0) : null,
     feilmelding: input.feilmelding,
     http_status: input.httpStatus,

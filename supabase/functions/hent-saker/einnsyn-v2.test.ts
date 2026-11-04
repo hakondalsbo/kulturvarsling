@@ -6,7 +6,6 @@ import { EINNSYN_V1_MAKS_GEO, EINNSYN_V1_SOK, hentEInnsynKultursaker } from "./e
 import { EINNSYN_USER_AGENT } from "./einnsyn.ts";
 import {
   EINNSYN_SPEC_FIL,
-  EINNSYN_SPEC_KJENT_SHA,
   EINNSYN_V2_BOLK_TIDSGRENSE_MS,
   EINNSYN_V2_BOLKER,
   EINNSYN_V2_LIMIT,
@@ -30,12 +29,18 @@ import {
   moetedatoFra,
   organerIBolk,
   roteringssteg,
-  specShaAvviker,
   tryggEinnsynUrl,
   validerEinnsynListe,
   v2ForhandsGodkjent,
   ventetidMs,
 } from "./einnsyn-v2.ts";
+import {
+  EINNSYN_SPEC_LEST_SHA,
+  EINNSYN_SPEC_UTDRAG_SHA256,
+  SpecParseFeil,
+  hentSpecUtdrag,
+  specUtdragSha256,
+} from "./einnsyn-spec.ts";
 import { KULTURVARSLING_USER_AGENT } from "./einnsyn.ts";
 
 test("flagget er av med mindre verdien er nøyaktig true", () => {
@@ -290,7 +295,7 @@ test("User-Agent, 429 med Retry-After og 404 gir alarmgrunnlag", async () => {
   assert.equal(form.items.length, 0);
 });
 
-test("backoff respekterer Retry-After og jitter, og spec-sha er pinnet", () => {
+test("backoff respekterer Retry-After og jitter", () => {
   assert.equal(ventetidMs({ forsok: 1, retryAfter: "2", tilfeldig: () => 0 }), 2000);
   assert.equal(ventetidMs({ forsok: 1, retryAfter: "120", tilfeldig: () => 0 }), "avbryt");
   assert.equal(ventetidMs({ forsok: 1, retryAfter: null, tilfeldig: () => 0 }), 250);
@@ -303,91 +308,185 @@ test("backoff respekterer Retry-After og jitter, og spec-sha er pinnet", () => {
     nå,
     tilfeldig: () => 0,
   }), 5000);
-  assert.equal(specShaAvviker(EINNSYN_SPEC_KJENT_SHA), false);
-  assert.equal(specShaAvviker("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), true);
-  assert.equal(specShaAvviker(""), false);
   assert.equal(validerEinnsynListe({ items: [] }, "sok").ok, true);
   assert.equal(validerEinnsynListe({ items: [{ hei: 1 }] }, "sok").ok, false);
 });
 
-test("ny spec-fil-commit blir en feil uten å skjule treff", async () => {
+const SPEC_FIXTURE = "supabase/functions/hent-saker/fixtures/einnsyn.openapi.yml";
+const NY_SPEC_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+function ymlSvar(tekst: string, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async text() { return tekst; },
+    async json() { return {}; },
+  };
+}
+
+function einnsynMedSpec(spec: (url: string) => ReturnType<typeof ymlSvar> | ReturnType<typeof svar>) {
+  return async (url: string) => {
+    const s = String(url);
+    if (s.includes("api.github.com") || s.includes("raw.githubusercontent.com")) return spec(s);
+    if (s.includes("/enhet?query=kommune")) {
+      return svar({ items: [{ id: "enh_stavanger", navn: "Stavanger kommune" }] });
+    }
+    if (s.includes("/enhet?query=")) return svar({ items: [] });
+    if (s.includes("/enhet/enh_")) return svar({ navn: "Stavanger kommune" });
+    if (s.includes("query=kultur")) {
+      return svar({
+        items: [{ id: "ms_1", offentligTittel: "Kultursak", journalenhet: "enh_stavanger" }],
+      });
+    }
+    if (s.includes("data.brreg.no")) return { ok: false, status: 404, async text() { return ""; } };
+    return svar({ items: [] });
+  };
+}
+
+test("dagens spec og tillegg fra PR 68/69 gir samme utdrag", async () => {
+  const yml = readFileSync(SPEC_FIXTURE, "utf8");
+  assert.equal(await specUtdragSha256(yml), EINNSYN_SPEC_UTDRAG_SHA256);
+  const utenMappeFilter = yml
+    .replaceAll("        - $ref: '#/components/parameters/QueryParameters.FilterParameters.saksmappe'\n", "")
+    .replaceAll("        - $ref: '#/components/parameters/QueryParameters.FilterParameters.moetemappe'\n", "");
+  assert.notEqual(utenMappeFilter, yml);
+  assert.equal(await specUtdragSha256(utenMappeFilter), EINNSYN_SPEC_UTDRAG_SHA256);
+});
+
+test("fjernet parameter, omdøpt felt eller sortBy uten publisertDato er avvik", async () => {
+  const yml = readFileSync(SPEC_FIXTURE, "utf8");
+  const utenDato = yml.replaceAll(
+    "        - $ref: '#/components/parameters/QueryParameters.FilterParameters.moetedatoFrom'\n",
+    "",
+  );
+  const omdopt = yml.replaceAll("offentligTittel:", "tittel:");
+  const utenSort = yml.replaceAll("\n          - publisertDato\n", "\n");
+  assert.notEqual(await specUtdragSha256(utenDato), EINNSYN_SPEC_UTDRAG_SHA256);
+  assert.notEqual(await specUtdragSha256(omdopt), EINNSYN_SPEC_UTDRAG_SHA256);
+  assert.notEqual(await specUtdragSha256(utenSort), EINNSYN_SPEC_UTDRAG_SHA256);
+  assert.throws(() => hentSpecUtdrag(":\n  - ["), (e: unknown) => e instanceof SpecParseFeil);
+});
+
+test("ny spec-commit med uendret innhold er info, og søket beholdes", async () => {
+  const yml = readFileSync(SPEC_FIXTURE, "utf8");
+  const info: string[] = [];
+  const opprinnelig = console.info;
+  console.info = (...deler: unknown[]) => { info.push(deler.map(String).join(" ")); };
   let specUrl = "";
+  let rawKall = 0;
+  try {
+    const utfall = await hentEInnsynV2({
+      pauseMs: 0,
+      sjekkSpec: true,
+      nå: Date.parse("2026-10-26T01:00:00Z"),
+      hent: einnsynMedSpec((s) => {
+        if (s.includes("api.github.com")) {
+          specUrl = s;
+          return svar([{ sha: NY_SPEC_SHA }]);
+        }
+        rawKall++;
+        return ymlSvar(yml);
+      }),
+    });
+    assert.equal(utfall.items.length, 1);
+    assert.equal(utfall.feil.some((f) => f.melding.includes("spec-innhold")), false);
+    assert.equal(rawKall, 1);
+    assert.match(specUrl, new RegExp(encodeURIComponent(EINNSYN_SPEC_FIL)));
+    assert.equal(info.some((linje) => linje.includes("uendret") && linje.includes(NY_SPEC_SHA)), true);
+    const klass = klassifiserKjøring({
+      raattAntall: utfall.raattAntall,
+      antallNye: 1,
+      feil: utfall.feil,
+      forsok: utfall.forsok,
+      vellykket: utfall.vellykket,
+      httpStatus: utfall.httpStatus,
+    });
+    assert.equal(klass.status, "ok_nye");
+  } finally {
+    console.info = opprinnelig;
+  }
+});
+
+test("endret spec-innhold blir delvis uten å skjule treff", async () => {
+  const yml = readFileSync(SPEC_FIXTURE, "utf8").replaceAll(
+    "        - $ref: '#/components/parameters/QueryParameters.FilterParameters.moetedatoFrom'\n",
+    "",
+  );
   const utfall = await hentEInnsynV2({
     pauseMs: 0,
     sjekkSpec: true,
-    nå: Date.parse("2026-10-26T01:00:00Z"),
-    hent: async (url) => {
-      const s = String(url);
-      if (s.includes("api.github.com")) {
-        specUrl = s;
-        return svar([{ sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }]);
-      }
-      if (s.includes("/enhet?query=kommune")) {
-        return svar({ items: [{ id: "enh_stavanger", navn: "Stavanger kommune" }] });
-      }
-      if (s.includes("/enhet?query=")) return svar({ items: [] });
-      if (s.includes("/enhet/enh_")) return svar({ navn: "Stavanger kommune" });
-      if (s.includes("query=kultur")) {
-        return svar({
-          items: [{
-            id: "ms_1",
-            offentligTittel: "Kultursak",
-            journalenhet: "enh_stavanger",
-          }],
-        });
-      }
-      if (s.includes("data.brreg.no")) return { ok: false, status: 404, async text() { return ""; } };
-      return svar({ items: [] });
-    },
+    hent: einnsynMedSpec((s) => {
+      if (s.includes("api.github.com")) return svar([{ sha: NY_SPEC_SHA }]);
+      return ymlSvar(yml);
+    }),
   });
   assert.equal(utfall.items.length, 1);
-  assert.equal(utfall.feil.some((f) => f.melding.includes("spec-commit")), true);
-  assert.match(specUrl, new RegExp(encodeURIComponent(EINNSYN_SPEC_FIL)));
-
-  const kjent = await hentEInnsynV2({
-    pauseMs: 0,
-    sjekkSpec: true,
-    hent: async (url) => {
-      const s = String(url);
-      if (s.includes("api.github.com")) return svar([{ sha: EINNSYN_SPEC_KJENT_SHA }]);
-      if (s.includes("/enhet?query=kommune")) {
-        return svar({ items: [{ id: "enh_stavanger", navn: "Stavanger kommune" }] });
-      }
-      if (s.includes("/enhet?query=")) return svar({ items: [] });
-      if (s.includes("/enhet/enh_")) return svar({ navn: "Stavanger kommune" });
-      if (s.includes("query=kultur")) {
-        return svar({
-          items: [{ id: "ms_1", offentligTittel: "Kultursak", journalenhet: "enh_stavanger" }],
-        });
-      }
-      if (s.includes("data.brreg.no")) return { ok: false, status: 404, async text() { return ""; } };
-      return svar({ items: [] });
-    },
+  assert.equal(utfall.feil.some((f) => f.melding.includes("spec-innhold")), true);
+  const klass = klassifiserKjøring({
+    raattAntall: utfall.raattAntall,
+    antallNye: 1,
+    feil: utfall.feil,
+    forsok: utfall.forsok,
+    vellykket: utfall.vellykket,
+    httpStatus: utfall.httpStatus,
   });
-  assert.equal(kjent.feil.some((f) => f.melding.includes("spec-commit")), false);
+  assert.equal(klass.status, "delvis");
+});
 
-  const docs = await hentEInnsynV2({
-    pauseMs: 0,
-    sjekkSpec: true,
-    hent: async (url) => {
-      const s = String(url);
-      if (s.includes("api.github.com")) return svar({ sha: "10f2b418fdbd7eb7cb523364a793549c37fff6fb" });
-      if (s.includes("/enhet?query=kommune")) {
-        return svar({ items: [{ id: "enh_stavanger", navn: "Stavanger kommune" }] });
-      }
-      if (s.includes("/enhet?query=")) return svar({ items: [] });
-      if (s.includes("/enhet/enh_")) return svar({ navn: "Stavanger kommune" });
-      if (s.includes("query=kultur")) {
-        return svar({
-          items: [{ id: "ms_1", offentligTittel: "Kultursak", journalenhet: "enh_stavanger" }],
-        });
-      }
-      if (s.includes("data.brreg.no")) return { ok: false, status: 404, async text() { return ""; } };
-      return svar({ items: [] });
-    },
-  });
-  assert.equal(docs.items.length, 1);
-  assert.equal(docs.feil.some((f) => f.melding.includes("spec-commit")), false);
+test("spec-fil som ikke kan hentes eller parses gir ingen alarm", async () => {
+  const advarsler: string[] = [];
+  const opprinnelig = console.warn;
+  console.warn = (...deler: unknown[]) => { advarsler.push(deler.map(String).join(" ")); };
+  try {
+    const mangler = await hentEInnsynV2({
+      pauseMs: 0,
+      sjekkSpec: true,
+      hent: einnsynMedSpec((s) => {
+        if (s.includes("api.github.com")) return svar([{ sha: NY_SPEC_SHA }]);
+        return ymlSvar("", 404);
+      }),
+    });
+    assert.equal(mangler.items.length, 1);
+    assert.equal(mangler.feil.some((f) => f.melding.includes("spec")), false);
+    assert.equal(advarsler.some((linje) => linje.includes("kunne ikke hentes")), true);
+
+    advarsler.length = 0;
+    const ulovlig = await hentEInnsynV2({
+      pauseMs: 0,
+      sjekkSpec: true,
+      hent: einnsynMedSpec((s) => {
+        if (s.includes("api.github.com")) return svar([{ sha: NY_SPEC_SHA }]);
+        return ymlSvar(":\n  - [");
+      }),
+    });
+    assert.equal(ulovlig.items.length, 1);
+    assert.equal(ulovlig.feil.some((f) => f.melding.includes("spec")), false);
+    assert.equal(advarsler.some((linje) => linje.includes("kunne ikke parses")), true);
+
+    const kjent = await hentEInnsynV2({
+      pauseMs: 0,
+      sjekkSpec: true,
+      hent: einnsynMedSpec((s) => {
+        if (s.includes("raw.githubusercontent.com")) throw new Error("skulle ikke hente spec-filen");
+        return svar([{ sha: EINNSYN_SPEC_LEST_SHA }]);
+      }),
+    });
+    assert.equal(kjent.items.length, 1);
+    assert.equal(kjent.feil.some((f) => f.melding.includes("spec")), false);
+
+    const docs = await hentEInnsynV2({
+      pauseMs: 0,
+      sjekkSpec: true,
+      hent: einnsynMedSpec((s) => {
+        if (s.includes("raw.githubusercontent.com")) throw new Error("skulle ikke hente spec-filen");
+        return svar({ sha: "10f2b418fdbd7eb7cb523364a793549c37fff6fb" });
+      }),
+    });
+    assert.equal(docs.items.length, 1);
+    assert.equal(docs.feil.some((f) => f.melding.includes("spec")), false);
+  } finally {
+    console.warn = opprinnelig;
+  }
 });
 
 test("Retry-After over 15 s logger faktisk status, også ved 5xx", async () => {
@@ -484,6 +583,8 @@ test("avbrudd skriver feil_timeout med bolk, og cron-migrasjonen feiler hardt", 
     kjoeringstype: "vanlig",
   });
   assert.equal(rad.status, "feil_timeout");
+  assert.equal(rad.antall_nye, 0);
+  assert.equal(rad.antall_avvist, 0);
   assert.equal(rad.kilde_id, "kilde-1");
   assert.equal(rad.jobb, "hent-saker");
   assert.match(String(rad.feilmelding), /Bolk 2/);
