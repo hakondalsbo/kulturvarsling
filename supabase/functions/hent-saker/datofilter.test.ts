@@ -8,6 +8,7 @@ import {
   byggKildeKjoringRad,
   filtrerNyeEtterKildedato,
   planleggKildePublisertBackfill,
+  tallForKjoring,
 } from "./datofilter.ts";
 import { BACKFILL_KODE } from "./backfill.ts";
 
@@ -153,6 +154,29 @@ test("backfill-modus logges som kjoeringstype og kan ikke utløses av cron", () 
   assert.equal(rad.kjoert_av, "manuell");
   assert.equal(rad.jobb, "hent-saker");
   assert.equal(rad.http_status, 200);
+  assert.equal(rad.antall_nye, 1);
+  assert.equal(rad.antall_avvist, 0);
+
+  const avvist = byggKildeKjoringRad({
+    kildeId: "kilde-1",
+    status: "ok_nye",
+    antallFunnet: 8,
+    antallEtterFilter: 2,
+    antallNye: 2,
+    antallAvvist: 8,
+    feilmelding: null,
+    httpStatus: 200,
+    varighetMs: 40,
+    kjoertAv: "manuell",
+    kjoeringstype: "vanlig",
+    jobb: "hent-saker",
+  });
+  assert.equal(avvist.antall_nye, 2);
+  assert.equal(avvist.antall_avvist, 8);
+  assert.deepEqual(tallForKjoring({ publisert: 2, relevans: 3, dato: 4, sperre: 1 }), {
+    antallNye: 2,
+    antallAvvist: 8,
+  });
 
   const cron = avklarKjoering({
     kjoertAv: "supabase_cron",

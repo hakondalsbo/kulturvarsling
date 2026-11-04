@@ -605,17 +605,79 @@ export function kildePublisertIso(item: {
 // ─── Klientside-filter for Stortingets saker ──────────────────────────────────
 // KILDEKART-funn (verifisert juli 2026): serverens komité-filter IGNORERES —
 // eksport/saker gir alltid hele sesjonen. Vi må velge kultursakene selv:
-// familie- og kulturkomiteen, hovedemne 6 (Kultur), eller nøkkelord-treff.
+// familie- og kulturkomiteen, hovedemne 6 (Kultur), underemnene under, eller
+// nøkkelord i tittelen.
+//
+// Underemner bekreftet mot data.stortinget.no/eksport/emner 4.11.2026.
+// Hovedemne Kultur er id 6. Underemnene hører til hovedemne_id 6.
+export const STORTING_KULTUR_UNDEREMNER = [
+  { id: 122, navn: "Massemedier" },
+  { id: 70, navn: "Kringkasting" },
+  { id: 68, navn: "Kunst" },
+  { id: 124, navn: "Språk" },
+] as const;
+
+const STORTING_KULTUR_UNDER_ID = new Set<number>(STORTING_KULTUR_UNDEREMNER.map((e) => e.id));
+const STORTING_KULTUR_UNDER_NAVN = new Set<string>(
+  STORTING_KULTUR_UNDEREMNER.map((e) => e.navn.toLowerCase()),
+);
+
+/**
+ * Hele ord i tittelen. «aviser» er med fordi sak 200484 heter
+ * «elektroniske aviser» og ikke har emne. «presset» og «medisin» skal ikke treffe.
+ */
+const STORTING_MEDIEORD =
+  /(?<![\p{L}\p{N}])(?:avisene|avisen|aviser|avisa|avis|mediestøtte|medier|medie|presse)(?![\p{L}\p{N}])/iu;
+
+type StortingEmne = {
+  id?: number | string;
+  navn?: string;
+  underemne_liste?: StortingEmne[] | { emne?: StortingEmne[] } | null;
+};
+
+function emneTall(id: number | string | undefined): number | null {
+  if (typeof id === "number" && Number.isFinite(id)) return id;
+  if (typeof id === "string" && /^\d+$/.test(id)) return Number(id);
+  return null;
+}
+
+function flateEmner(sak: {
+  emne_liste?: StortingEmne[] | { emne?: StortingEmne[] } | null;
+}): StortingEmne[] {
+  const rå = sak?.emne_liste;
+  const rot = Array.isArray(rå) ? rå : rå?.emne ?? [];
+  const ut: StortingEmne[] = [];
+  const ko = [...rot];
+  const sett = new Set<StortingEmne>();
+  while (ko.length) {
+    const emne = ko.pop();
+    if (!emne || sett.has(emne)) continue;
+    sett.add(emne);
+    ut.push(emne);
+    const under = emne.underemne_liste;
+    const liste = Array.isArray(under) ? under : under?.emne ?? [];
+    ko.push(...liste);
+  }
+  return ut;
+}
+
+function erKulturEmne(emne: StortingEmne): boolean {
+  const id = emneTall(emne.id);
+  const navn = (emne.navn ?? "").trim().toLowerCase();
+  if (id === 6 || navn === "kultur") return true;
+  if (id != null && STORTING_KULTUR_UNDER_ID.has(id)) return true;
+  return STORTING_KULTUR_UNDER_NAVN.has(navn);
+}
+
 export function erKulturSak(sak: {
   komite?: { id?: string } | null;
-  emne_liste?: Array<{ id?: number; navn?: string }> | { emne?: Array<{ id?: number; navn?: string }> } | null;
+  emne_liste?: StortingEmne[] | { emne?: StortingEmne[] } | null;
   tittel?: string;
   korttittel?: string;
 }): boolean {
   if (sak?.komite?.id === "FAMKULT") return true;
-  const rå = sak?.emne_liste;
-  const emner = Array.isArray(rå) ? rå : rå?.emne ?? [];
-  if (emner.some((e) => e?.id === 6 || /^kultur$/i.test(e?.navn ?? ""))) return true;
+  if (flateEmner(sak).some(erKulturEmne)) return true;
+  if (STORTING_MEDIEORD.test(`${sak?.tittel ?? ""} ${sak?.korttittel ?? ""}`)) return true;
   return erKulturRelevant(sak?.tittel ?? "", sak?.korttittel ?? "");
 }
 

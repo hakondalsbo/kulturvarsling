@@ -48,6 +48,11 @@ import {
   type HenteFeil,
 } from "./kildehelse.ts";
 import { erKulturRelevant, erRenIdrett } from "./logikk.ts";
+import {
+  EINNSYN_SPEC_LEST_SHA,
+  EINNSYN_SPEC_UTDRAG_SHA256,
+  specUtdragSha256,
+} from "./einnsyn-spec.ts";
 
 const API = "https://api.einnsyn.no";
 /** Publisert kontrakt. Dokumentasjon og CI på main endrer ikke denne filen. */
@@ -57,10 +62,9 @@ const SPEC_COMMITS =
   + encodeURIComponent(EINNSYN_SPEC_FIL)
   + "&sha=main&per_page=1";
 
-/**
- * Siste commit som endret openapi/einnsyn.openapi.yml, lest 29.10.2026 (Base.deleted valgfri, ingen felt vi bruker).
- */
-export const EINNSYN_SPEC_KJENT_SHA = "583442e1792dc6bd375cf0c10915c845cdac1ff3";
+function specFilUrl(sha: string): string {
+  return `https://raw.githubusercontent.com/felleslosninger/einnsyn-api-spec/${sha}/${EINNSYN_SPEC_FIL}`;
+}
 
 export const EINNSYN_V2_SOKEORD = [
   "kultur",
@@ -313,6 +317,7 @@ export function avbruddsKjoringRad(input: {
     antallFunnet: 0,
     antallEtterFilter: 0,
     antallNye: 0,
+    antallAvvist: 0,
     feilmelding: `Kjøringen ble avbrutt før den var ferdig.${ekstra}`,
     httpStatus: null,
     varighetMs: Math.max(0, input.varighetMs),
@@ -497,10 +502,6 @@ export function ventetidMs(opts: {
   return Math.round(exp * (0.5 + rnd() * 0.5));
 }
 
-export function specShaAvviker(sha: unknown, kjent = EINNSYN_SPEC_KJENT_SHA): boolean {
-  return typeof sha === "string" && sha.length > 0 && sha !== kjent;
-}
-
 type Hent = typeof fetch;
 
 type Ctx = {
@@ -654,6 +655,7 @@ function lesOrgan(item: unknown): Organ | null {
 }
 
 async function sjekkSpec(hent: Hent): Promise<HenteFeil | null> {
+  let sha: string | null = null;
   try {
     const res = await hent(SPEC_COMMITS, {
       headers: {
@@ -662,15 +664,52 @@ async function sjekkSpec(hent: Hent): Promise<HenteFeil | null> {
       },
       signal: AbortSignal.timeout(8_000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`eInnsyn spec-commit kunne ikke hentes: HTTP ${res.status}`);
+      return null;
+    }
     const data = await res.json();
-    // Liste filtrert på spec-filen. HEAD på main, og et objekt med sha,
-    // er ikke et avvik: dokumentasjonscommits skal ikke gi delvis-alarm.
-    const sha = Array.isArray(data) ? data[0]?.sha : null;
-    if (!specShaAvviker(sha)) return null;
-    console.warn(`eInnsyn spec-fil ${EINNSYN_SPEC_FIL} avviker fra pin: ${sha}`);
-    return uventetFormat(API, "spec-commit avviker");
+    // Liste filtrert på spec-filen. HEAD på main som ett objekt er ikke
+    // et fil-endringssignal, og skal ikke hente yml eller gi alarm.
+    const kandidat = Array.isArray(data) ? data[0]?.sha : null;
+    sha = typeof kandidat === "string" && kandidat.length > 0 ? kandidat : null;
   } catch {
+    console.warn("eInnsyn spec-commit kunne ikke hentes");
+    return null;
+  }
+  if (!sha || sha === EINNSYN_SPEC_LEST_SHA) return null;
+
+  let yml = "";
+  try {
+    const res = await hent(specFilUrl(sha), {
+      headers: {
+        Accept: "application/yaml, text/yaml, text/plain",
+        "User-Agent": EINNSYN_USER_AGENT,
+      },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) {
+      console.warn(`eInnsyn spec-fil kunne ikke hentes: HTTP ${res.status}`);
+      return null;
+    }
+    yml = await res.text();
+  } catch {
+    console.warn("eInnsyn spec-fil kunne ikke hentes");
+    return null;
+  }
+
+  try {
+    const hash = await specUtdragSha256(yml);
+    if (hash === EINNSYN_SPEC_UTDRAG_SHA256) {
+      console.info(
+        `eInnsyn spec-fil ${EINNSYN_SPEC_FIL} commit ${sha} er ny, men søk, felter og paginering vi bruker er uendret`,
+      );
+      return null;
+    }
+    console.warn(`eInnsyn spec-fil ${EINNSYN_SPEC_FIL} commit ${sha} endrer felt vi bruker`);
+    return uventetFormat(API, "spec-innhold avviker");
+  } catch {
+    console.warn("eInnsyn spec-fil kunne ikke parses");
     return null;
   }
 }
