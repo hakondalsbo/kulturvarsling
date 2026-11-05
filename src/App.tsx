@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta, Rollemerke } from "./avis.tsx";
 import { vurderSak } from "./handling.ts";
 import { DesignSide } from "./design.tsx";
+import { DekningSide } from "./dekning.tsx";
+import { erDekningSti } from "./innhold/hva-vi-dekker.ts";
 import { MerketTekst, OrdlisteSide } from "./ord.tsx";
 import { delOppDokument } from "./innhold/treff.ts";
 import { UNDERTEKST } from "./tekster.ts";
@@ -789,6 +791,7 @@ const FORHANDSBRUKER = {
 function visningFraSti(): string {
   const p = window.location.pathname.replace(/\/$/, "");
   if (p === "/ordliste" || p === "/app/ordliste") return "ordliste";
+  if (erDekningSti(p)) return "dekning";
   if (p === "/design" || p === "/app/design") return "design";
   if (p === "/min-side" || p === "/app/min-side") return "minside";
   if (komiteFraSti()) return "komite";
@@ -973,17 +976,19 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     setMerÅpen(false);
     if(id==="premium"&&!isPremium){setShowPremium(true);return;}
     const demo = demoNå();
+    const sti = window.location.pathname.replace(/\/$/, "") || "/";
     if(id==="mobiliser"&&!user&&!demo){beOmInnlogging("");return;}
     if(id==="ordliste") window.history.pushState({}, "", "/ordliste");
+    else if(id==="dekning") window.history.pushState({}, "", "/hva-vi-dekker");
     else if(id==="minside") {
       const m = demo === "tom" || demo === "oppsett" ? demo : demo ? "side" : "";
       window.history.pushState({}, "", m ? `/min-side?demo=${m}` : "/min-side");
     }
     else if(id==="forside"||id==="varsler"||id==="mobiliser"||id==="kampanjer") {
       if(demo==="side"||demo==="forside") window.history.pushState({}, "", "/?demo=forside");
-      else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
+      else if(sti==="/min-side"||erDekningSti(sti)) window.history.pushState({}, "", "/");
     }
-    else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
+    else if(sti==="/min-side"||erDekningSti(sti)) window.history.pushState({}, "", "/");
     setView(id);
     window.scrollTo({top:0});
   }
@@ -994,6 +999,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   function tilMetode(){
     setMenyÅpen(false);
     setMerÅpen(false);
+    if(erDekningSti(window.location.pathname)) window.history.pushState({}, "", "/");
     setView("forside");
     window.setTimeout(()=>document.getElementById("metode")?.scrollIntoView({behavior:"smooth",block:"start"}),40);
   }
@@ -1052,6 +1058,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   }
 
   const mer=[
+    {id:"dekning",label:"Hva vi dekker"},
     {id:"ordliste",label:"Ordliste"},
     {id:"kampanjer",label:"Kampanjer"},
     {id:"mobiliser",label:"Mobiliser"},
@@ -1208,6 +1215,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         )}
         {view==="kilder" && <KildeHelseSide onBack={()=>gå("forside")}/>}
         {view==="ordliste" && <OrdlisteSide />}
+        {view==="dekning" && <DekningSide />}
         {view==="design" && <DesignSide />}
         {view==="horing" && <HoringForhandsvisning />}
         {view==="innspill" && <InnspillForhandsvisning />}
@@ -1253,7 +1261,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             skriv={skrivFulgteKomite}
           />
         )}
-        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&view!=="komite"&&(
+        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="dekning"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&view!=="komite"&&(
           <div className="avis-wrap avis-annet">
             {annenTittel&&<h1>{annenTittel}</h1>}
             {view==="historikk" && <SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
@@ -1285,6 +1293,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             <div className="kv-meta">org.nr. {orgnr} · {poststed}</div>
           </div>
           <div>
+            <a href="/hva-vi-dekker">Hva vi dekker</a>
             <a href="/ordliste">Ordliste</a>
             <a href="/personvern">Personvern</a>
             <button type="button" onClick={()=>setShowFeedback(true)}>Gi tilbakemelding</button>

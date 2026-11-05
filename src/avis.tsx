@@ -581,6 +581,7 @@ export function ForsideAvis({
               <p>Velg fagområdene dine, så sier vi fra før fristen – med lenke til originaldokumentet.</p>
             </div>
           </div>
+          <p className="avis-metode-mer"><a href="/hva-vi-dekker">Hva vi dekker</a></p>
         </div>
       </section>
     </>

@@ -43,6 +43,8 @@ export function DesignSide() {
       <section aria-labelledby="galleri-lenker">
         <h2 id="galleri-lenker" className="kv-undertittel">Lenker</h2>
         <p>
+          <a className="kv-lenke" href="/hva-vi-dekker">Hva vi dekker</a>
+          {" · "}
           <a className="kv-lenke" href="/ordliste">Ordliste</a>
           {" · "}
           <a className="kv-lenke" href="/personvern">Personvern</a>
