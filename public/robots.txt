@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+Disallow: /design
+Disallow: /design/
+Disallow: /app/design
+
+Sitemap: https://www.kulturvarsling.no/sitemap.xml

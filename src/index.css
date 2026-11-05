@@ -106,6 +106,13 @@ p {
   color: var(--dempet);
 }
 
+.avis-prove {
+  font: 500 11px/1.2 var(--sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dempet);
+}
+
 .avis-kildelinje {
   display: flex;
   gap: 10px;

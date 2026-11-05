@@ -1,5 +1,5 @@
 import type { VarselHandling } from "./avis.tsx";
-import { dagerTilFrist } from "./frist.ts";
+import { dagerTilFrist, fristTilstand } from "./frist.ts";
 
 /**
  * Skiller saker man kan gjøre noe med fra saker til orientering.
@@ -198,4 +198,24 @@ export function matcherHandling(sak: SakForVurdering, filter: HandlingFilter, n�
   if (filter === "handling") return v.handlingsrettet;
   if (filter === "orientering") return !v.handlingsrettet;
   return v.mobiliserNaa;
+}
+
+/** Forsidens hovedsak. Utløpt frist fremheves ikke, selv om saken er merket handling_mulig. */
+export function forsideHovedsak<T extends SakForVurdering & { opprettet?: string | null }>(
+  saker: readonly T[],
+  nå: Date = new Date(),
+): T | null {
+  const apne = saker.filter((s) => fristTilstand(s, nå) !== "passert");
+  const kan = apne.filter((s) => vurderSak(s, nå).handlingsrettet);
+  const grunnlag = kan.length > 0 ? kan : apne;
+  if (grunnlag.length === 0) return null;
+  return [...grunnlag].sort((a, b) => {
+    const rang = forsidePrioritet(a, nå) - forsidePrioritet(b, nå);
+    if (rang !== 0) return rang;
+    const da = dagerTilFrist(a.frist, nå);
+    const db = dagerTilFrist(b.frist, nå);
+    const frist = (da == null || da < 0 ? 10_000 : da) - (db == null || db < 0 ? 10_000 : db);
+    if (frist !== 0) return frist;
+    return String(b.opprettet ?? "").localeCompare(String(a.opprettet ?? ""));
+  })[0] ?? null;
 }

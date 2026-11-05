@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { forsidePrioritet, matcherHandling, vurderSak, type HandlingFilter } from "./handling.ts";
+import { forsideHovedsak, matcherHandling, vurderSak, type HandlingFilter } from "./handling.ts";
+import { fristTilstand } from "./frist.ts";
 import { utvalgErDekket } from "./preferanser.ts";
 import { StatsbudsjettInngang } from "./statsbudsjett.tsx";
 
@@ -330,24 +331,12 @@ export function KildeDetaljer({ kilder, lastet }: { kilder: KildeRad[]; lastet: 
   );
 }
 
-function sammenlignForside(a: Sak, b: Sak, nå: Date) {
-  const rang = forsidePrioritet(a, nå) - forsidePrioritet(b, nå);
-  if (rang !== 0) return rang;
-  const fristRang = (s: Sak) => (s.frist && dagerTil(s.frist, nå) >= 0 ? dagerTil(s.frist, nå) : 10_000);
-  const frist = fristRang(a) - fristRang(b);
-  if (frist !== 0) return frist;
-  return (b.opprettet || "").localeCompare(a.opprettet || "");
-}
-
-function velgHovedsak(saker: Sak[], nå: Date) {
-  const kan = saker.filter((s) => vurderSak(s, nå).handlingsrettet);
-  const grunnlag = kan.length > 0 ? kan : saker;
-  if (grunnlag.length === 0) return null;
-  return [...grunnlag].sort((a, b) => sammenlignForside(a, b, nå))[0];
+function apneSaker(saker: Sak[], nå: Date) {
+  return saker.filter((s) => fristTilstand(s, nå) !== "passert");
 }
 
 function ogsaaDenneUka(saker: Sak[], lead: Sak | null, nå: Date) {
-  const resten = saker.filter((s) => s.id !== lead?.id);
+  const resten = saker.filter((s) => s.id !== lead?.id && fristTilstand(s, nå) !== "passert");
   const uke = mandag(nå);
   const grense = new Date(uke);
   grense.setDate(uke.getDate() + 7);
@@ -413,17 +402,18 @@ export function ForsideAvis({
   onKampanjer: () => void;
 }) {
   const nå = new Date();
-  const lead = velgHovedsak(saker, nå);
-  const side = ogsaaDenneUka(saker, lead, nå);
+  const apne = apneSaker(saker, nå);
+  const lead = forsideHovedsak(apne, nå);
+  const side = ogsaaDenneUka(apne, lead, nå);
   const følger = lead ? fulgte.includes(lead.id) : false;
   const leadV = lead ? vurderSak(lead, nå) : null;
   const vist = new Set<string | number>([lead?.id, ...side.saker.map((s) => s.id)].filter((id) => id != null) as Array<string | number>);
-  const handling = saker.filter((s) => vurderSak(s, nå).handlingsrettet && !vist.has(s.id));
-  const orientering = saker.filter((s) => !vurderSak(s, nå).handlingsrettet && !vist.has(s.id));
-  const antallHandling = saker.filter((s) => vurderSak(s, nå).handlingsrettet).length;
-  const antallOrientering = saker.length - antallHandling;
-  const fag = fagMedTall(saker);
-  const mange = saker.length > 4;
+  const handling = apne.filter((s) => vurderSak(s, nå).handlingsrettet && !vist.has(s.id));
+  const orientering = apne.filter((s) => !vurderSak(s, nå).handlingsrettet && !vist.has(s.id));
+  const antallHandling = apne.filter((s) => vurderSak(s, nå).handlingsrettet).length;
+  const antallOrientering = apne.length - antallHandling;
+  const fag = fagMedTall(apne);
+  const mange = apne.length > 4;
   return (
     <>
       <StatsbudsjettInngang />

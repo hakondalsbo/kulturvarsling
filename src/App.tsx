@@ -2,10 +2,9 @@ import { useState, useMemo, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta, Rollemerke } from "./avis.tsx";
 import { vurderSak } from "./handling.ts";
-import { DesignSide } from "./design.tsx";
 import { MerketTekst, OrdlisteSide } from "./ord.tsx";
 import { delOppDokument } from "./innhold/treff.ts";
-import { UNDERTEKST } from "./tekster.ts";
+import { KONTAKT_EPOST, TILBAKEMELDING_HREF, UNDERTEKST } from "./tekster.ts";
 import { behandlingsansvarlig, orgnr, poststed } from "./selskap.ts";
 import { Knapp, Felt, Tekstfelt, Velger, Dialog } from "./ui.tsx";
 import { HoringForhandsvisning, HoringssvarSkjema } from "./horingssvar.tsx";
@@ -13,7 +12,7 @@ import { horingshjelpAktiv } from "./horingshjelp.ts";
 import { InnspillForhandsvisning, KommuneInnspillSkjema } from "./kommuneinnspill.tsx";
 import { kommuneLoginSynlig } from "./kommunelogin.ts";
 import { PREMIUM_AAR_KR, PREMIUM_MAANED_KR, sparProsentArlig } from "./priser.ts";
-import { dagerTilFrist, fristEtikett } from "./frist.ts";
+import { dagerTilFrist, fristEtikett, fristTilstand } from "./frist.ts";
 import { geografiskFraNivaa, leggTilUtvalg, nivaaFraGeografisk, preferanserFraProfil, utvalgErDekket } from "./preferanser.ts";
 import { MinSide } from "./minside/MinSide.tsx";
 import { kategorierForMeny } from "./minside/kategorier.ts";
@@ -69,7 +68,7 @@ function skrivFulgteKomite(brukerId: string, komiteId: string, skalFolge: boolea
 function komiteFraSti(): string | null {
   if (!folgKomiteAktiv()) return null;
   const p = window.location.pathname.replace(/\/$/, "");
-  const m = p.match(/^\/komite\/([A-Za-zÆØÅæøå0-9]{2,16})$/);
+  const m = p.match(/^(?:\/app)?\/komite\/([A-Za-zÆØÅæøå0-9]{2,16})$/);
   return m ? m[1].toUpperCase() : null;
 }
 const PERSONVERN_VERSJON = "personvern-2026-10";
@@ -127,6 +126,14 @@ async function lagreProfil(userId: any, oppdateringer: any) {
 // handle_new_user oppretter raden ved registrering. Klienten oppdaterer den.
 async function upsertProfil(userId: any, data: any) {
   return lagreProfil(userId, data);
+}
+
+/** Samme kall som Min profil. Sletter ikke mer enn funksjonen slett-konto allerede gjør. */
+async function slettInnloggetKonto(): Promise<boolean> {
+  const { data, error } = await sb.functions.invoke("slett-konto", { body: {} });
+  if (error || !data?.ok) return false;
+  await sb.auth.signOut();
+  return true;
 }
 
 async function toggleFølgSak(brukerId: any, sakId: any, følger: any) {
@@ -294,9 +301,9 @@ const NIVÅ_VALG = [
   {id:"kommune",label:"Kommune"},
 ];
 const FREKVENS_VALG = [
-  {id:"straks",label:"Straks",tekst:"Bare saker med under 7 dager til frist og status kritisk."},
-  {id:"daglig",label:"Daglig",tekst:"Én e-post per dag med nye saker."},
-  {id:"ukentlig",label:"Ukentlig",tekst:"Én e-post per uke med saker fra de siste 7 dagene."},
+  {id:"straks",label:"Straks",tekst:"Bare saker med under 7 dager til frist. E-postvarsler kommer senere."},
+  {id:"daglig",label:"Daglig",tekst:"Sakene samles én gang om dagen. E-postvarsler kommer senere."},
+  {id:"ukentlig",label:"Ukentlig",tekst:"Sakene samles én gang i uken. E-postvarsler kommer senere."},
 ];
 const ORG_TYPE_VALG = [
   {id:"organisasjon",label:"Organisasjon"},
@@ -410,6 +417,7 @@ export function Landing({setScreen,varsler=[],kampanjer=[]}: any) {
       <div className="avis-dato">
         <div className="avis-wrap avis-dato-rad">
           <div className="avis-dato-venstre">
+            <span className="avis-prove">Prøvedrift</span>
             <span className="avis-dato-meta">{datoMeta(varsler.length)}</span>
           </div>
           <div className="avis-dato-hoyre">
@@ -435,9 +443,11 @@ export function Landing({setScreen,varsler=[],kampanjer=[]}: any) {
       <footer className="avis-fot">
         <div className="avis-wrap avis-fot-rad">
           <span>Kulturvarsling</span>
-          <span>
+          <div>
+            <a href="/personvern">Personvern</a>
+            <a href={TILBAKEMELDING_HREF}>Gi tilbakemelding</a>
             <button type="button" onClick={()=>setScreen("bruker-login")}>Logg inn</button>
-          </span>
+          </div>
         </div>
       </footer>
       {valgt&&<SaksModal sak={valgt} startTab={fane} onClose={()=>setValgt(null)} kampanjer={kampanjer} onKrevInnlogging={()=>setScreen("bruker-login")} saker={varsler}/>}
@@ -524,13 +534,14 @@ function OnboardingWizard({user,setUser,onDone}: any) {
             <div>
               <Enkeltvalg valg={FREKVENS_VALG} valgt={frekvens} onVelg={setFrekvens} />
               <p className="kv-meta">{FREKVENS_VALG.find(f=>f.id===frekvens)?.tekst}</p>
+              <p className="kv-meta">E-postvarsler kommer senere. Ingenting sendes nå.</p>
             </div>
           )}
           {steg===3&&(
             <div className="kv-stakk">
               <p className="kv-brod">
                 Du registrerer deg med <strong>{user?.epost}</strong> som representant for <strong>{org||"organisasjonen din"}</strong>.
-                E-postadressen brukes til varsler du har slått på. Opplysningene deles ikke videre til kommersielle formål.
+                E-postvarsler kommer senere, og ingenting sendes nå. Opplysningene deles ikke videre til kommersielle formål.
               </p>
               <label className="kv-samtykke">
                 <input id="kv-samtykke" type="checkbox" checked={samtykke} onChange={e=>setSamtykke(e.target.checked)} />
@@ -760,6 +771,11 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
           {kommuneLoginSynlig && <Knapp variant="stille" onClick={()=>setScreen("kommune-login")}>For kommuner</Knapp>}
           <Knapp variant="stille" onClick={()=>setScreen("bruker-app")}>Tilbake</Knapp>
         </div>
+        <p className="kv-meta">
+          <a className="kv-lenke" href="/personvern">Personvern</a>
+          {" · "}
+          <a className="kv-lenke" href={TILBAKEMELDING_HREF}>Gi tilbakemelding</a>
+        </p>
       </div>
     </div>
   );
@@ -787,10 +803,17 @@ const FORHANDSBRUKER = {
 };
 
 function visningFraSti(): string {
-  const p = window.location.pathname.replace(/\/$/, "");
-  if (p === "/ordliste" || p === "/app/ordliste") return "ordliste";
-  if (p === "/design" || p === "/app/design") return "design";
-  if (p === "/min-side" || p === "/app/min-side") return "minside";
+  let p = window.location.pathname.replace(/\/$/, "") || "/";
+  if (p === "/app") p = "/";
+  else if (p.startsWith("/app/")) p = p.slice(4);
+  if (p === "/ordliste") return "ordliste";
+  if (p === "/arkiv") return "varsler";
+  if (p === "/min-side") return "minside";
+  if (p === "/kilder") return "kilder";
+  if (p === "/kampanjer") return "kampanjer";
+  if (p === "/historikk") return "historikk";
+  if (p === "/profil") return "profil";
+  if (p === "/mobiliser") return "mobiliser";
   if (komiteFraSti()) return "komite";
   const vis = forhandsvisning();
   if (vis === "profil" || vis === "varsler") return "profil";
@@ -806,7 +829,6 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [showPremium,setShowPremium]=useState(false);
   const [showVarselReg,setShowVarselReg]=useState(forhandsvisning()==="varsler");
   const [showOnboarding,setShowOnboarding]=useState(user&&!user.onboardingDone);
-  const [showFeedback,setShowFeedback]=useState(false);
   const [fulgte,setFullgte]=useState<any[]>([]);
   const [lagredeSok,setLagredeSok]=useState<LagretSok[]>([]);
   const [sokLastet,setSokLastet]=useState(false);
@@ -968,22 +990,39 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   function demoNå() {
     return demoParameter();
   }
+  function pushSti(sti: string) {
+    const neste = new URL(sti, window.location.origin);
+    const demo = demoNå();
+    if (demo && !neste.searchParams.has("demo")) {
+      const q = new URLSearchParams(window.location.search);
+      for (const n of ["demo", "steg", "endre"]) {
+        const v = q.get(n);
+        if (v && !neste.searchParams.has(n)) neste.searchParams.set(n, v);
+      }
+    }
+    const maal = `${neste.pathname}${neste.search}`;
+    if (`${window.location.pathname}${window.location.search}` !== maal) {
+      window.history.pushState({}, "", maal);
+    }
+  }
   function gå(id: string){
     setMenyÅpen(false);
     setMerÅpen(false);
     if(id==="premium"&&!isPremium){setShowPremium(true);return;}
     const demo = demoNå();
     if(id==="mobiliser"&&!user&&!demo){beOmInnlogging("");return;}
-    if(id==="ordliste") window.history.pushState({}, "", "/ordliste");
+    if(id==="ordliste") pushSti("/ordliste");
     else if(id==="minside") {
       const m = demo === "tom" || demo === "oppsett" ? demo : demo ? "side" : "";
-      window.history.pushState({}, "", m ? `/min-side?demo=${m}` : "/min-side");
+      pushSti(m ? `/min-side?demo=${m}` : "/min-side");
     }
-    else if(id==="forside"||id==="varsler"||id==="mobiliser"||id==="kampanjer") {
-      if(demo==="side"||demo==="forside") window.history.pushState({}, "", "/?demo=forside");
-      else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
-    }
-    else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
+    else if(id==="forside") pushSti(demo==="side"||demo==="forside" ? "/?demo=forside" : "/");
+    else if(id==="varsler") pushSti("/arkiv");
+    else if(id==="kilder") pushSti("/kilder");
+    else if(id==="kampanjer") pushSti("/kampanjer");
+    else if(id==="historikk") pushSti("/historikk");
+    else if(id==="profil") pushSti("/profil");
+    else if(id==="mobiliser") pushSti("/app/mobiliser");
     setView(id);
     window.scrollTo({top:0});
   }
@@ -997,16 +1036,20 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     setView("forside");
     window.setTimeout(()=>document.getElementById("metode")?.scrollIntoView({behavior:"smooth",block:"start"}),40);
   }
-  async function lagreMinSide(felt: MinValg) {
+  async function lagreMinSide(felt: MinValg, ferdig = false) {
     if(!user?.id) return false;
-    const ok = await lagreProfil(user.id, {
+    const oppdatering: Record<string, unknown> = {
       fagfelt: felt.fagfelt,
       geografisk: felt.geografisk,
       organ: felt.organ,
       komiteer: felt.komiteer,
       varsler_aktive: felt.varslerAktive,
-      minside_klar: true,
-    });
+    };
+    if (ferdig) {
+      oppdatering.minside_klar = true;
+      oppdatering.onboarding_done = true;
+    }
+    const ok = await lagreProfil(user.id, oppdatering);
     if(!ok) {
       showToast("Kunne ikke lagre valgene. Prøv igjen.","feil");
       return false;
@@ -1020,8 +1063,9 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
       varslerAktive: felt.varslerAktive,
       varselKat: felt.fagfelt,
       varselNivå: nivaaFraGeografisk(felt.geografisk),
-      minsideKlar: true,
+      ...(ferdig ? { minsideKlar: true, onboardingDone: true } : {}),
     }:u);
+    if (ferdig) setShowOnboarding(false);
     return true;
   }
 
@@ -1093,12 +1137,12 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
       {showPremium&&<PremiumModal user={user} onClose={()=>setShowPremium(false)} onLogin={()=>{setShowPremium(false);beOmInnlogging("");}}/>}
       {showVarselReg&&<VarselRegistreringModal user={user} setUser={setUser} onClose={()=>setShowVarselReg(false)} beOmInnlogging={beOmInnlogging}/>}
       {showOnboarding&&user&&view!=="minside"&&<OnboardingWizard user={user} setUser={setUser} onDone={()=>setShowOnboarding(false)}/>}
-      {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
 
       <div className="avis-dato">
         <div className="avis-wrap avis-dato-rad">
           <div className="avis-dato-venstre">
-            <span className="avis-dato-meta">{datoMeta(dataLastet?aktiveVarsler.length:null)}</span>
+            <span className="avis-prove">Prøvedrift</span>
+            <span className="avis-dato-meta">{datoMeta(dataLastet?aktiveVarsler.filter((v)=>fristTilstand(v)!=="passert").length:null)}</span>
             <KildeTillitsstrip onÅpne={()=>gå("kilder")}/>
           </div>
           <div className="avis-dato-hoyre">
@@ -1172,7 +1216,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         {view==="forside" && (
           <BrukerForside
             setView={gå}
-            varsler={personlig.mock ? personlig.saker : aktiveVarsler}
+            varsler={(personlig.mock ? personlig.saker : aktiveVarsler).filter((v: { frist?: string | null; status?: string | null }) => fristTilstand(v) !== "passert")}
             kampanjer={personlig.mock ? personlig.kampanjer : kampanjer}
             setShowPremium={setShowPremium}
             isPremium={isPremium}
@@ -1208,7 +1252,6 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         )}
         {view==="kilder" && <KildeHelseSide onBack={()=>gå("forside")}/>}
         {view==="ordliste" && <OrdlisteSide />}
-        {view==="design" && <DesignSide />}
         {view==="horing" && <HoringForhandsvisning />}
         {view==="innspill" && <InnspillForhandsvisning />}
         {view==="minside" && (
@@ -1219,6 +1262,13 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             sok={lagredeSok}
             sokLastet={sokLastet}
             onLagreValg={lagreMinSide}
+            onSlettKonto={async () => {
+              const ok = await slettInnloggetKonto();
+              if (!ok) return false;
+              setUser(null);
+              setScreen("bruker-login");
+              return true;
+            }}
             onLagreSok={lagreSokMinSide}
             onSlettSok={slettSokMinSide}
             onToggleFolg={toggleFølg}
@@ -1253,7 +1303,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             skriv={skrivFulgteKomite}
           />
         )}
-        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&view!=="komite"&&(
+        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&view!=="komite"&&(
           <div className="avis-wrap avis-annet">
             {annenTittel&&<h1>{annenTittel}</h1>}
             {view==="historikk" && <SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
@@ -1287,8 +1337,8 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
           <div>
             <a href="/ordliste">Ordliste</a>
             <a href="/personvern">Personvern</a>
-            <button type="button" onClick={()=>setShowFeedback(true)}>Gi tilbakemelding</button>
-            <span>post@kulturvarsling.no</span>
+            <a href={TILBAKEMELDING_HREF}>Gi tilbakemelding</a>
+            <span>{KONTAKT_EPOST}</span>
           </div>
         </div>
       </footer>
@@ -1321,13 +1371,12 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
   async function slettKonto() {
     setSlettSteg("jobber");
     setSlettFeil("");
-    const { data, error } = await sb.functions.invoke("slett-konto", { body: {} });
-    if (error || !data?.ok) {
+    const ok = await slettInnloggetKonto();
+    if (!ok) {
       setSlettSteg("idle");
       setSlettFeil("Kontoen ble ikke slettet. Prøv igjen, eller skriv til post@kulturvarsling.no.");
       return;
     }
-    await sb.auth.signOut();
     setUser(null);
     setScreen("bruker-login");
   }
@@ -1450,7 +1499,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
           <section className="kv-kort">
             <h2 className="kv-undertittel">Varsler</h2>
             <p className="kv-brod">
-              {user?.varslerAktive ? "Varsler er slått på. Ingenting sendes ut ennå. Valgene er bare lagret." : "Ingen varsler er slått på."}
+              {user?.varslerAktive ? "Valgene er lagret på kontoen. E-postvarsler kommer senere. Ingenting sendes nå." : "Ingen varsler er slått på. E-postvarsler kommer senere."}
             </p>
             <div className="kv-klynge">
               <Knapp variant="linje" onClick={()=>setShowVarselReg(true)}>Endre varsler og fagfelt</Knapp>
@@ -2355,13 +2404,13 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
     <Dialog tittel={lagret?"Varsler lagret":"E-postvarsler"} onClose={onClose} smal>
       {lagret?(
         <div className="kv-stakk">
-          <p className="kv-brod">{epost ? `Valgene er lagret. Varslene sendes til ${epost}.` : "Valgene er lagret. Varsler sendes ikke før kontoens e-post er bekreftet."} Ingenting sendes ut ennå.</p>
+          <p className="kv-brod">Valgene er lagret. E-postvarsler kommer senere. Ingenting sendes nå.</p>
           <p className="kv-meta">Du kan endre innstillingene under Min profil.</p>
           <Knapp onClick={onClose}>Lukk</Knapp>
         </div>
       ):(
         <div className="kv-stakk">
-          <p className="kv-brod">Varselet lagres på kontoen. Utsending er ikke startet.</p>
+          <p className="kv-brod">Valget lagres på kontoen. E-postvarsler kommer senere. Ingenting sendes nå.</p>
           <div>
             <p className="kv-feltnavn">Fagområde</p>
             <Flervalg valg={KATEGORIER} valgt={valgtKat} onToggle={(id)=>setValgtKat(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])} />
@@ -2377,7 +2426,7 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
           </div>
           <p className="kv-feltnavn">E-postadresse for varsler</p>
           <p className="kv-brod">{epost || "Kontoen har ingen bekreftet e-post ennå."}</p>
-          <p className="kv-meta">Varslene sendes til den bekreftede adressen på kontoen.</p>
+          <p className="kv-meta">E-postvarsler kommer senere. Adressen brukes ikke til utsending nå.</p>
           {feil&&<p className="kv-feil" role="alert">{feil}</p>}
           <div className="kv-klynge">
             <Knapp className="vokse" onClick={lagre} disabled={lagrer}>{lagrer?"Lagrer":"Lagre varsler"}</Knapp>

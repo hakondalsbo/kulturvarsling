@@ -1,21 +1,42 @@
 {
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        { "type": "host", "value": "kulturvarsling.no" }
+      ],
+      "destination": "https://www.kulturvarsling.no/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
+    { "source": "/design", "destination": "/404.html", "statusCode": 404 },
+    { "source": "/design/", "destination": "/404.html", "statusCode": 404 },
+    { "source": "/app/design", "destination": "/404.html", "statusCode": 404 },
+    { "source": "/app/design/", "destination": "/404.html", "statusCode": 404 },
     { "source": "/app", "destination": "/index.html" },
-    { "source": "/app/(.*)", "destination": "/index.html" },
     { "source": "/personvern", "destination": "/personvern.html" },
     { "source": "/bekreft", "destination": "/bekreft.html" },
     { "source": "/avmelding", "destination": "/avmelding.html" },
     { "source": "/statsbudsjett", "destination": "/index.html" },
     { "source": "/statsbudsjett/", "destination": "/index.html" },
     { "source": "/ordliste", "destination": "/index.html" },
+    { "source": "/ordliste/", "destination": "/index.html" },
     { "source": "/app/ordliste", "destination": "/index.html" },
-    { "source": "/design", "destination": "/index.html" },
-    { "source": "/app/design", "destination": "/index.html" },
+    { "source": "/arkiv", "destination": "/index.html" },
+    { "source": "/arkiv/", "destination": "/index.html" },
+    { "source": "/app/arkiv", "destination": "/index.html" },
     { "source": "/min-side", "destination": "/index.html" },
+    { "source": "/min-side/", "destination": "/index.html" },
     { "source": "/app/min-side", "destination": "/index.html" },
+    { "source": "/kilder", "destination": "/index.html" },
+    { "source": "/kampanjer", "destination": "/index.html" },
+    { "source": "/historikk", "destination": "/index.html" },
+    { "source": "/profil", "destination": "/index.html" },
     { "source": "/mobiliser", "destination": "/index.html" },
     { "source": "/mobiliser/", "destination": "/index.html" },
     { "source": "/komite/:id", "destination": "/index.html" },
+    { "source": "/app/(.*)", "destination": "/index.html" },
     { "source": "/(.*)", "destination": "/404.html", "statusCode": 404 }
   ],
   "github": {

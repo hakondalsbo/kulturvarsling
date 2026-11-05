@@ -67,7 +67,19 @@ function reneStier(): Plugin {
     "/bekreft": "/bekreft.html",
     "/avmelding": "/avmelding.html",
   };
-  const appSti = new Set(["/", "/ordliste", "/design", "/statsbudsjett", "/min-side", "/app", "/mobiliser"]);
+  const appSti = new Set([
+    "/",
+    "/ordliste",
+    "/arkiv",
+    "/statsbudsjett",
+    "/min-side",
+    "/app",
+    "/mobiliser",
+    "/kilder",
+    "/kampanjer",
+    "/historikk",
+    "/profil",
+  ]);
   const omskriv = (req: { url?: string; headers?: { accept?: string } }, res: { statusCode?: number }, next: () => void) => {
     const url = req.url ?? "/";
     const q = url.indexOf("?");
@@ -80,7 +92,8 @@ function reneStier(): Plugin {
     }
     const accept = req.headers?.accept ?? "";
     const erDokument = accept.includes("text/html");
-    const kjent = appSti.has(sti) || sti.startsWith("/app/") || sti.startsWith("/komite/") || sti.includes(".") || sti.startsWith("/@") || sti.startsWith("/src/") || sti.startsWith("/node_modules/");
+    const design = sti === "/design" || sti.startsWith("/app/design");
+    const kjent = !design && (appSti.has(sti) || sti.startsWith("/app/") || sti.startsWith("/komite/") || sti.includes(".") || sti.startsWith("/@") || sti.startsWith("/src/") || sti.startsWith("/node_modules/"));
     if (erDokument && !kjent) {
       const svar = res as { statusCode: number; setHeader: (n: string, v: string) => void; end: (b: string) => void };
       svar.statusCode = 404;

@@ -1,5 +1,4 @@
-import { dagerTilFrist } from "../frist.ts";
-import { forsidePrioritet, vurderSak } from "../handling.ts";
+import { forsideHovedsak } from "../handling.ts";
 import {
   DEMO_DAG,
   DEMO_FULGTE,
@@ -30,17 +29,8 @@ export type BoksLinje = {
 
 /** Samme hovedsak som avisen velger, så boksen ikke gjentar den. */
 function hovedsakId(saker: MinSak[], nå: Date): string | null {
-  const kan = saker.filter((s) => vurderSak(s, nå).handlingsrettet);
-  const grunnlag = kan.length > 0 ? kan : saker;
-  if (grunnlag.length === 0) return null;
-  const sortert = [...grunnlag].sort((a, b) => {
-    const rang = forsidePrioritet(a, nå) - forsidePrioritet(b, nå);
-    if (rang !== 0) return rang;
-    const da = dagerTilFrist(a.frist, nå);
-    const db = dagerTilFrist(b.frist, nå);
-    return (da == null || da < 0 ? 10_000 : da) - (db == null || db < 0 ? 10_000 : db);
-  });
-  return String(sortert[0].id);
+  const lead = forsideHovedsak(saker, nå);
+  return lead ? String(lead.id) : null;
 }
 
 /**
