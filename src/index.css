@@ -2331,6 +2331,83 @@ textarea.kv-input,
   background: var(--granitt-lys);
 }
 
+.dekning {
+  padding-top: 64px;
+  padding-bottom: 104px;
+}
+
+.dekning h1 {
+  margin: 0 0 18px;
+  font: 500 48px/1.08 var(--serif);
+  letter-spacing: -0.03em;
+  color: var(--tekst);
+}
+
+.dekning h2 {
+  margin: 52px 0 14px;
+  font: 500 28px/1.25 var(--serif);
+  letter-spacing: -0.015em;
+  color: var(--tekst);
+}
+
+.dekning p {
+  margin: 0 0 16px;
+  max-width: 66ch;
+  font: 400 17px/1.7 var(--sans);
+  color: var(--brod);
+}
+
+.dekning p.dekning-innledning {
+  margin: 0;
+  max-width: 40em;
+  font: 400 21px/1.6 var(--serif);
+  color: var(--brod);
+}
+
+.dekning p.dekning-tall {
+  margin: 28px 0 8px;
+  padding: 2px 0 2px 18px;
+  border-left: 2px solid var(--linje-mork);
+  max-width: 62ch;
+}
+
+.dekning ul {
+  margin: 4px 0 8px;
+  padding: 0 0 0 1.25em;
+  max-width: 66ch;
+}
+
+.dekning li {
+  margin: 0 0 10px;
+  padding-left: 0.15em;
+  font: 400 17px/1.65 var(--sans);
+  color: var(--brod);
+}
+
+.dekning li::marker {
+  color: var(--dempet);
+}
+
+.dekning strong {
+  font-weight: 600;
+  color: var(--tekst);
+}
+
+.avis-metode-mer {
+  margin: 48px 0 0;
+  text-align: center;
+}
+
+.avis-metode-mer a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  color: var(--granitt);
+  font: 500 16px/1 var(--sans);
+  text-underline-offset: 0.18em;
+}
+
 .avis-sb {
   border-bottom: 1px solid var(--linje-mork);
 }
@@ -2544,6 +2621,10 @@ textarea.kv-utkast {
   .ordliste h1 { font-size: 34px; }
   .ordliste-innledning { font-size: 18px; }
   .ordliste-innslag p { font-size: 17px; }
+  .dekning { padding-top: 36px; padding-bottom: 80px; }
+  .dekning h1 { font-size: 34px; }
+  .dekning h2 { margin-top: 40px; font-size: 24px; }
+  .dekning p.dekning-innledning { font-size: 18px; }
   .avis-forklar { font-size: 17px; }
   .avis-oversikt p { font-size: 18px; }
   .avis-fagnav .avis-wrap { padding-left: 24px; padding-right: 24px; }
