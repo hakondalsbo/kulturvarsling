@@ -11,6 +11,7 @@ import {
   renInline,
 } from "./innhold/statsbudsjett2027.ts";
 import kilde from "./innhold/statsbudsjett2027.md?raw";
+import { TILBAKEMELDING_HREF } from "./tekster.ts";
 import "./statsbudsjett.css";
 
 const dok = parseDokument(kilde);
@@ -179,6 +180,11 @@ export function StatsbudsjettSide() {
   }, []);
   return (
     <div className="avis sb">
+      <div className="avis-dato">
+        <div className="avis-wrap avis-dato-rad">
+          <span className="avis-prove">Prøvedrift</span>
+        </div>
+      </div>
       <header className="avis-mast">
         <a className="avis-tittel sb-logo" href="/app">Kultur<span>varsling</span></a>
         <p className="avis-under">Kulturpolitikken, før den er vedtatt.</p>
@@ -199,7 +205,10 @@ export function StatsbudsjettSide() {
       <footer className="avis-fot">
         <div className="avis-wrap avis-fot-rad">
           <div>© {new Date().getFullYear()} Kulturvarsling AS</div>
-          <div><a href="/personvern">Personvern</a></div>
+          <div>
+            <a href="/personvern">Personvern</a>
+            <a href={TILBAKEMELDING_HREF}>Gi tilbakemelding</a>
+          </div>
         </div>
       </footer>
     </div>

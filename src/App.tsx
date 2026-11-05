@@ -2,10 +2,9 @@ import { useState, useMemo, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta, Rollemerke } from "./avis.tsx";
 import { vurderSak } from "./handling.ts";
-import { DesignSide } from "./design.tsx";
 import { MerketTekst, OrdlisteSide } from "./ord.tsx";
 import { delOppDokument } from "./innhold/treff.ts";
-import { UNDERTEKST } from "./tekster.ts";
+import { KONTAKT_EPOST, TILBAKEMELDING_HREF, UNDERTEKST } from "./tekster.ts";
 import { behandlingsansvarlig, orgnr, poststed } from "./selskap.ts";
 import { Knapp, Felt, Tekstfelt, Velger, Dialog } from "./ui.tsx";
 import { HoringForhandsvisning, HoringssvarSkjema } from "./horingssvar.tsx";
@@ -13,7 +12,7 @@ import { horingshjelpAktiv } from "./horingshjelp.ts";
 import { InnspillForhandsvisning, KommuneInnspillSkjema } from "./kommuneinnspill.tsx";
 import { kommuneLoginSynlig } from "./kommunelogin.ts";
 import { PREMIUM_AAR_KR, PREMIUM_MAANED_KR, sparProsentArlig } from "./priser.ts";
-import { dagerTilFrist, fristEtikett } from "./frist.ts";
+import { dagerTilFrist, fristEtikett, fristTilstand } from "./frist.ts";
 import { geografiskFraNivaa, leggTilUtvalg, nivaaFraGeografisk, preferanserFraProfil, utvalgErDekket } from "./preferanser.ts";
 import { MinSide } from "./minside/MinSide.tsx";
 import { kategorierForMeny } from "./minside/kategorier.ts";
@@ -69,7 +68,7 @@ function skrivFulgteKomite(brukerId: string, komiteId: string, skalFolge: boolea
 function komiteFraSti(): string | null {
   if (!folgKomiteAktiv()) return null;
   const p = window.location.pathname.replace(/\/$/, "");
-  const m = p.match(/^\/komite\/([A-Za-zÆØÅæøå0-9]{2,16})$/);
+  const m = p.match(/^(?:\/app)?\/komite\/([A-Za-zÆØÅæøå0-9]{2,16})$/);
   return m ? m[1].toUpperCase() : null;
 }
 const PERSONVERN_VERSJON = "personvern-2026-10";
@@ -410,6 +409,7 @@ export function Landing({setScreen,varsler=[],kampanjer=[]}: any) {
       <div className="avis-dato">
         <div className="avis-wrap avis-dato-rad">
           <div className="avis-dato-venstre">
+            <span className="avis-prove">Prøvedrift</span>
             <span className="avis-dato-meta">{datoMeta(varsler.length)}</span>
           </div>
           <div className="avis-dato-hoyre">
@@ -435,9 +435,11 @@ export function Landing({setScreen,varsler=[],kampanjer=[]}: any) {
       <footer className="avis-fot">
         <div className="avis-wrap avis-fot-rad">
           <span>Kulturvarsling</span>
-          <span>
+          <div>
+            <a href="/personvern">Personvern</a>
+            <a href={TILBAKEMELDING_HREF}>Gi tilbakemelding</a>
             <button type="button" onClick={()=>setScreen("bruker-login")}>Logg inn</button>
-          </span>
+          </div>
         </div>
       </footer>
       {valgt&&<SaksModal sak={valgt} startTab={fane} onClose={()=>setValgt(null)} kampanjer={kampanjer} onKrevInnlogging={()=>setScreen("bruker-login")} saker={varsler}/>}
@@ -760,6 +762,11 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
           {kommuneLoginSynlig && <Knapp variant="stille" onClick={()=>setScreen("kommune-login")}>For kommuner</Knapp>}
           <Knapp variant="stille" onClick={()=>setScreen("bruker-app")}>Tilbake</Knapp>
         </div>
+        <p className="kv-meta">
+          <a className="kv-lenke" href="/personvern">Personvern</a>
+          {" · "}
+          <a className="kv-lenke" href={TILBAKEMELDING_HREF}>Gi tilbakemelding</a>
+        </p>
       </div>
     </div>
   );
@@ -787,10 +794,17 @@ const FORHANDSBRUKER = {
 };
 
 function visningFraSti(): string {
-  const p = window.location.pathname.replace(/\/$/, "");
-  if (p === "/ordliste" || p === "/app/ordliste") return "ordliste";
-  if (p === "/design" || p === "/app/design") return "design";
-  if (p === "/min-side" || p === "/app/min-side") return "minside";
+  let p = window.location.pathname.replace(/\/$/, "") || "/";
+  if (p === "/app") p = "/";
+  else if (p.startsWith("/app/")) p = p.slice(4);
+  if (p === "/ordliste") return "ordliste";
+  if (p === "/arkiv") return "varsler";
+  if (p === "/min-side") return "minside";
+  if (p === "/kilder") return "kilder";
+  if (p === "/kampanjer") return "kampanjer";
+  if (p === "/historikk") return "historikk";
+  if (p === "/profil") return "profil";
+  if (p === "/mobiliser") return "mobiliser";
   if (komiteFraSti()) return "komite";
   const vis = forhandsvisning();
   if (vis === "profil" || vis === "varsler") return "profil";
@@ -806,7 +820,6 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [showPremium,setShowPremium]=useState(false);
   const [showVarselReg,setShowVarselReg]=useState(forhandsvisning()==="varsler");
   const [showOnboarding,setShowOnboarding]=useState(user&&!user.onboardingDone);
-  const [showFeedback,setShowFeedback]=useState(false);
   const [fulgte,setFullgte]=useState<any[]>([]);
   const [lagredeSok,setLagredeSok]=useState<LagretSok[]>([]);
   const [sokLastet,setSokLastet]=useState(false);
@@ -968,22 +981,39 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   function demoNå() {
     return demoParameter();
   }
+  function pushSti(sti: string) {
+    const neste = new URL(sti, window.location.origin);
+    const demo = demoNå();
+    if (demo && !neste.searchParams.has("demo")) {
+      const q = new URLSearchParams(window.location.search);
+      for (const n of ["demo", "steg", "endre"]) {
+        const v = q.get(n);
+        if (v && !neste.searchParams.has(n)) neste.searchParams.set(n, v);
+      }
+    }
+    const maal = `${neste.pathname}${neste.search}`;
+    if (`${window.location.pathname}${window.location.search}` !== maal) {
+      window.history.pushState({}, "", maal);
+    }
+  }
   function gå(id: string){
     setMenyÅpen(false);
     setMerÅpen(false);
     if(id==="premium"&&!isPremium){setShowPremium(true);return;}
     const demo = demoNå();
     if(id==="mobiliser"&&!user&&!demo){beOmInnlogging("");return;}
-    if(id==="ordliste") window.history.pushState({}, "", "/ordliste");
+    if(id==="ordliste") pushSti("/ordliste");
     else if(id==="minside") {
       const m = demo === "tom" || demo === "oppsett" ? demo : demo ? "side" : "";
-      window.history.pushState({}, "", m ? `/min-side?demo=${m}` : "/min-side");
+      pushSti(m ? `/min-side?demo=${m}` : "/min-side");
     }
-    else if(id==="forside"||id==="varsler"||id==="mobiliser"||id==="kampanjer") {
-      if(demo==="side"||demo==="forside") window.history.pushState({}, "", "/?demo=forside");
-      else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
-    }
-    else if(window.location.pathname.replace(/\/$/,"")==="/min-side") window.history.pushState({}, "", "/");
+    else if(id==="forside") pushSti(demo==="side"||demo==="forside" ? "/?demo=forside" : "/");
+    else if(id==="varsler") pushSti("/arkiv");
+    else if(id==="kilder") pushSti("/kilder");
+    else if(id==="kampanjer") pushSti("/kampanjer");
+    else if(id==="historikk") pushSti("/historikk");
+    else if(id==="profil") pushSti("/profil");
+    else if(id==="mobiliser") pushSti("/app/mobiliser");
     setView(id);
     window.scrollTo({top:0});
   }
@@ -1093,12 +1123,12 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
       {showPremium&&<PremiumModal user={user} onClose={()=>setShowPremium(false)} onLogin={()=>{setShowPremium(false);beOmInnlogging("");}}/>}
       {showVarselReg&&<VarselRegistreringModal user={user} setUser={setUser} onClose={()=>setShowVarselReg(false)} beOmInnlogging={beOmInnlogging}/>}
       {showOnboarding&&user&&view!=="minside"&&<OnboardingWizard user={user} setUser={setUser} onDone={()=>setShowOnboarding(false)}/>}
-      {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
 
       <div className="avis-dato">
         <div className="avis-wrap avis-dato-rad">
           <div className="avis-dato-venstre">
-            <span className="avis-dato-meta">{datoMeta(dataLastet?aktiveVarsler.length:null)}</span>
+            <span className="avis-prove">Prøvedrift</span>
+            <span className="avis-dato-meta">{datoMeta(dataLastet?aktiveVarsler.filter((v)=>fristTilstand(v)!=="passert").length:null)}</span>
             <KildeTillitsstrip onÅpne={()=>gå("kilder")}/>
           </div>
           <div className="avis-dato-hoyre">
@@ -1172,7 +1202,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         {view==="forside" && (
           <BrukerForside
             setView={gå}
-            varsler={personlig.mock ? personlig.saker : aktiveVarsler}
+            varsler={(personlig.mock ? personlig.saker : aktiveVarsler).filter((v: { frist?: string | null; status?: string | null }) => fristTilstand(v) !== "passert")}
             kampanjer={personlig.mock ? personlig.kampanjer : kampanjer}
             setShowPremium={setShowPremium}
             isPremium={isPremium}
@@ -1208,7 +1238,6 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         )}
         {view==="kilder" && <KildeHelseSide onBack={()=>gå("forside")}/>}
         {view==="ordliste" && <OrdlisteSide />}
-        {view==="design" && <DesignSide />}
         {view==="horing" && <HoringForhandsvisning />}
         {view==="innspill" && <InnspillForhandsvisning />}
         {view==="minside" && (
@@ -1253,7 +1282,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             skriv={skrivFulgteKomite}
           />
         )}
-        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&view!=="komite"&&(
+        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&view!=="komite"&&(
           <div className="avis-wrap avis-annet">
             {annenTittel&&<h1>{annenTittel}</h1>}
             {view==="historikk" && <SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
@@ -1287,8 +1316,8 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
           <div>
             <a href="/ordliste">Ordliste</a>
             <a href="/personvern">Personvern</a>
-            <button type="button" onClick={()=>setShowFeedback(true)}>Gi tilbakemelding</button>
-            <span>post@kulturvarsling.no</span>
+            <a href={TILBAKEMELDING_HREF}>Gi tilbakemelding</a>
+            <span>{KONTAKT_EPOST}</span>
           </div>
         </div>
       </footer>
