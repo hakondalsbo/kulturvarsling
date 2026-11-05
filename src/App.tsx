@@ -128,6 +128,14 @@ async function upsertProfil(userId: any, data: any) {
   return lagreProfil(userId, data);
 }
 
+/** Samme kall som Min profil. Sletter ikke mer enn funksjonen slett-konto allerede gjør. */
+async function slettInnloggetKonto(): Promise<boolean> {
+  const { data, error } = await sb.functions.invoke("slett-konto", { body: {} });
+  if (error || !data?.ok) return false;
+  await sb.auth.signOut();
+  return true;
+}
+
 async function toggleFølgSak(brukerId: any, sakId: any, følger: any) {
   if (følger) {
     const { error } = await sb.from("fulgte_saker").delete()
@@ -293,9 +301,9 @@ const NIVÅ_VALG = [
   {id:"kommune",label:"Kommune"},
 ];
 const FREKVENS_VALG = [
-  {id:"straks",label:"Straks",tekst:"Bare saker med under 7 dager til frist og status kritisk."},
-  {id:"daglig",label:"Daglig",tekst:"Én e-post per dag med nye saker."},
-  {id:"ukentlig",label:"Ukentlig",tekst:"Én e-post per uke med saker fra de siste 7 dagene."},
+  {id:"straks",label:"Straks",tekst:"Bare saker med under 7 dager til frist. E-postvarsler kommer senere."},
+  {id:"daglig",label:"Daglig",tekst:"Sakene samles én gang om dagen. E-postvarsler kommer senere."},
+  {id:"ukentlig",label:"Ukentlig",tekst:"Sakene samles én gang i uken. E-postvarsler kommer senere."},
 ];
 const ORG_TYPE_VALG = [
   {id:"organisasjon",label:"Organisasjon"},
@@ -526,13 +534,14 @@ function OnboardingWizard({user,setUser,onDone}: any) {
             <div>
               <Enkeltvalg valg={FREKVENS_VALG} valgt={frekvens} onVelg={setFrekvens} />
               <p className="kv-meta">{FREKVENS_VALG.find(f=>f.id===frekvens)?.tekst}</p>
+              <p className="kv-meta">E-postvarsler kommer senere. Ingenting sendes nå.</p>
             </div>
           )}
           {steg===3&&(
             <div className="kv-stakk">
               <p className="kv-brod">
                 Du registrerer deg med <strong>{user?.epost}</strong> som representant for <strong>{org||"organisasjonen din"}</strong>.
-                E-postadressen brukes til varsler du har slått på. Opplysningene deles ikke videre til kommersielle formål.
+                E-postvarsler kommer senere, og ingenting sendes nå. Opplysningene deles ikke videre til kommersielle formål.
               </p>
               <label className="kv-samtykke">
                 <input id="kv-samtykke" type="checkbox" checked={samtykke} onChange={e=>setSamtykke(e.target.checked)} />
@@ -1027,16 +1036,20 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     setView("forside");
     window.setTimeout(()=>document.getElementById("metode")?.scrollIntoView({behavior:"smooth",block:"start"}),40);
   }
-  async function lagreMinSide(felt: MinValg) {
+  async function lagreMinSide(felt: MinValg, ferdig = false) {
     if(!user?.id) return false;
-    const ok = await lagreProfil(user.id, {
+    const oppdatering: Record<string, unknown> = {
       fagfelt: felt.fagfelt,
       geografisk: felt.geografisk,
       organ: felt.organ,
       komiteer: felt.komiteer,
       varsler_aktive: felt.varslerAktive,
-      minside_klar: true,
-    });
+    };
+    if (ferdig) {
+      oppdatering.minside_klar = true;
+      oppdatering.onboarding_done = true;
+    }
+    const ok = await lagreProfil(user.id, oppdatering);
     if(!ok) {
       showToast("Kunne ikke lagre valgene. Prøv igjen.","feil");
       return false;
@@ -1050,8 +1063,9 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
       varslerAktive: felt.varslerAktive,
       varselKat: felt.fagfelt,
       varselNivå: nivaaFraGeografisk(felt.geografisk),
-      minsideKlar: true,
+      ...(ferdig ? { minsideKlar: true, onboardingDone: true } : {}),
     }:u);
+    if (ferdig) setShowOnboarding(false);
     return true;
   }
 
@@ -1248,6 +1262,13 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             sok={lagredeSok}
             sokLastet={sokLastet}
             onLagreValg={lagreMinSide}
+            onSlettKonto={async () => {
+              const ok = await slettInnloggetKonto();
+              if (!ok) return false;
+              setUser(null);
+              setScreen("bruker-login");
+              return true;
+            }}
             onLagreSok={lagreSokMinSide}
             onSlettSok={slettSokMinSide}
             onToggleFolg={toggleFølg}
@@ -1350,13 +1371,12 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
   async function slettKonto() {
     setSlettSteg("jobber");
     setSlettFeil("");
-    const { data, error } = await sb.functions.invoke("slett-konto", { body: {} });
-    if (error || !data?.ok) {
+    const ok = await slettInnloggetKonto();
+    if (!ok) {
       setSlettSteg("idle");
       setSlettFeil("Kontoen ble ikke slettet. Prøv igjen, eller skriv til post@kulturvarsling.no.");
       return;
     }
-    await sb.auth.signOut();
     setUser(null);
     setScreen("bruker-login");
   }
@@ -1479,7 +1499,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
           <section className="kv-kort">
             <h2 className="kv-undertittel">Varsler</h2>
             <p className="kv-brod">
-              {user?.varslerAktive ? "Varsler er slått på. Ingenting sendes ut ennå. Valgene er bare lagret." : "Ingen varsler er slått på."}
+              {user?.varslerAktive ? "Valgene er lagret på kontoen. E-postvarsler kommer senere. Ingenting sendes nå." : "Ingen varsler er slått på. E-postvarsler kommer senere."}
             </p>
             <div className="kv-klynge">
               <Knapp variant="linje" onClick={()=>setShowVarselReg(true)}>Endre varsler og fagfelt</Knapp>
@@ -2384,13 +2404,13 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
     <Dialog tittel={lagret?"Varsler lagret":"E-postvarsler"} onClose={onClose} smal>
       {lagret?(
         <div className="kv-stakk">
-          <p className="kv-brod">{epost ? `Valgene er lagret. Varslene sendes til ${epost}.` : "Valgene er lagret. Varsler sendes ikke før kontoens e-post er bekreftet."} Ingenting sendes ut ennå.</p>
+          <p className="kv-brod">Valgene er lagret. E-postvarsler kommer senere. Ingenting sendes nå.</p>
           <p className="kv-meta">Du kan endre innstillingene under Min profil.</p>
           <Knapp onClick={onClose}>Lukk</Knapp>
         </div>
       ):(
         <div className="kv-stakk">
-          <p className="kv-brod">Varselet lagres på kontoen. Utsending er ikke startet.</p>
+          <p className="kv-brod">Valget lagres på kontoen. E-postvarsler kommer senere. Ingenting sendes nå.</p>
           <div>
             <p className="kv-feltnavn">Fagområde</p>
             <Flervalg valg={KATEGORIER} valgt={valgtKat} onToggle={(id)=>setValgtKat(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])} />
@@ -2406,7 +2426,7 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
           </div>
           <p className="kv-feltnavn">E-postadresse for varsler</p>
           <p className="kv-brod">{epost || "Kontoen har ingen bekreftet e-post ennå."}</p>
-          <p className="kv-meta">Varslene sendes til den bekreftede adressen på kontoen.</p>
+          <p className="kv-meta">E-postvarsler kommer senere. Adressen brukes ikke til utsending nå.</p>
           {feil&&<p className="kv-feil" role="alert">{feil}</p>}
           <div className="kv-klynge">
             <Knapp className="vokse" onClick={lagre} disabled={lagrer}>{lagrer?"Lagrer":"Lagre varsler"}</Knapp>

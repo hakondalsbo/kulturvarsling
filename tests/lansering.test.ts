@@ -47,6 +47,23 @@ test("utlogget flate har personvern og mailto, ikke vilkår", () => {
   assert.match(app, /p === "\/arkiv"\) return "varsler"/);
 });
 
+test("min side lagrer valg, setter onboarding og lover ikke e-post", () => {
+  const side = readFileSync("src/minside/MinSide.tsx", "utf8");
+  const app = readFileSync("src/App.tsx", "utf8");
+  assert.match(side, /Slett min konto/);
+  assert.match(side, /onSlettKonto/);
+  assert.match(side, /E-postvarsler kommer senere/);
+  assert.match(side, /lagre\(medAktiv\(valg\), false\)/);
+  assert.match(side, /lagre\(nesteValg, true\)/);
+  assert.match(app, /functions\.invoke\(\s*"slett-konto"/);
+  assert.match(app, /onboarding_done = true/);
+  assert.match(app, /if \(ferdig\)/);
+  assert.doesNotMatch(app, /Én e-post per dag/);
+  assert.doesNotMatch(app, /Én e-post per uke/);
+  assert.doesNotMatch(side, /utsending blir skrudd på/);
+  assert.doesNotMatch(app, /UTSENDING_AKTIV\s*=\s*["']true["']/);
+});
+
 test("favicon er ikke lenger den tunge 520 kB-fila", () => {
   const logo = statSync("public/logo.png").size;
   const navn = statSync("public/Kulturvarsling logo.png").size;
