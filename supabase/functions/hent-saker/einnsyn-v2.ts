@@ -27,6 +27,8 @@
 // samme bolk samme natt idempotent. En bolk som feiler, stopper ikke de andre.
 // Absolutt tak: 600 kall mot api.einnsyn.no per kjøring. Hele natten er
 // om lag 480 kall.
+// 5.11.2026: oppdagelsen gir fortsatt 43 enheter. Ni kandidater er sjekket
+// og ikke tatt inn, se EINNSYN_V2_UTEN_MOETESAK og EINNSYN_V2_UTEN_ENHET.
 // 429 og 5xx: inntil 3 forsøk, eksponentiell backoff med jitter,
 // Retry-After respekteres opp til 15 s. Lengre ventetid avbryter.
 
@@ -127,6 +129,31 @@ const KOMMUNER = [
   "gjerstad", "vegarshei", "amli", "rodoy",
 ];
 const FYLKER = ["akershus", "buskerud", "vestland", "ostfold", "agder"];
+
+/**
+ * Enhet finnes i eInnsyn, men søk entity=Moetesak på enheten er 0
+ * (Trøndelag: også alle 11 underenheter og Moetemappe). Teksttreff på
+ * navnet ligger hos andre organ. Sjekket 5.11.2026. Skal ikke søkes.
+ */
+export const EINNSYN_V2_UTEN_MOETESAK = [
+  { id: "enh_01j73r5z2efh5bzzqmvbyhrzbx", navn: "Trøndelag fylkeskommune" },
+  { id: "enh_01m3bm2drre0pv7tbj70wpb3wc", navn: "Innlandet fylkeskommune" },
+] as const;
+
+/**
+ * Brreg-orgnummer (KOMM/FYLK) uten treff på GET /enhet?orgnummer=, og uten
+ * kommune- eller fylkeskommuneenhet på navnesøk. Sjekket 5.11.2026.
+ * Bærum er også sjekket som 971198648, samme tomme svar.
+ */
+export const EINNSYN_V2_UTEN_ENHET = [
+  { orgnummer: "820852982", navn: "Kristiansand kommune" },
+  { orgnummer: "921234554", navn: "Drammen kommune" },
+  { orgnummer: "935478715", navn: "Bærum kommune" },
+  { orgnummer: "820710592", navn: "Lillestrøm kommune" },
+  { orgnummer: "942110464", navn: "Trondheim kommune" },
+  { orgnummer: "940101808", navn: "Tromsø kommune" },
+  { orgnummer: "971045698", navn: "Rogaland fylkeskommune" },
+] as const;
 
 export function einnsynV2Aktiv(
   les?: (navn: string) => string | undefined,
