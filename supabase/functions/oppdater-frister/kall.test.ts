@@ -5,7 +5,9 @@ import { byggKildeKjoringRad } from "../hent-saker/datofilter.ts";
 import {
   harKildeAlarm,
   klassifiserKildeKall,
+  okIngenOppdateringUtenKall,
   planleggDatoSkriving,
+  regjeringenRssUtenDetalj,
   svarForFristjobb,
   tolkSkriving,
   userAgentForUrl,
@@ -172,6 +174,19 @@ test("oppdaterte frister er ikke nye saker", () => {
   assert.equal(ingen.status, "ok_ingen_oppdatering");
   assert.equal(ingen.oppdatert, 0);
   assert.equal(klassifiserKildeKall([]), null);
+});
+
+test("regjeringen-rss uten detaljkall skriver ok_ingen_oppdatering", () => {
+  assert.deepEqual(regjeringenRssUtenDetalj(0), ["regjeringen-rss"]);
+  assert.deepEqual(regjeringenRssUtenDetalj(1), []);
+  const rad = okIngenOppdateringUtenKall();
+  assert.equal(rad.status, "ok_ingen_oppdatering");
+  assert.equal(rad.alarm, false);
+  assert.equal(rad.forsok, 0);
+  assert.equal(rad.oppdatert, 0);
+  const kilde = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  assert.match(kilde, /regjeringenRssUtenDetalj\(regjeringen\.detalj_forsok\)/);
+  assert.match(kilde, /okIngenOppdateringUtenKall/);
 });
 
 test("delvis fristjobb er 200 med advarsel, totalfeil er 502", () => {
