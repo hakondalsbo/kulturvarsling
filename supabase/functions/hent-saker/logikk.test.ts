@@ -4,6 +4,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { publiseresEtterKontroll } from "../_shared/kildekontroll.ts";
 import {
   adapterFraKildeUrl,
   byggVarselRad,
@@ -27,6 +29,8 @@ import {
   erRegjeringenRelevant,
   finnHøringsfrist,
   innholdDedupNokkel,
+  stortingAutoPubliser,
+  stortingAutoPubliserFra,
   kildeNokkel,
   kildeUuidForAdapter,
   normaliserKildeUrl,
@@ -216,6 +220,135 @@ test("sak 200484 fanges av ordet aviser, selv uten emne", () => {
     }),
     true,
   );
+});
+
+const NÅ_5_NOV = Date.parse("2026-11-05T08:00:00Z");
+const SESJON_NÅ = "2026-2027";
+
+function vilPublisere(autoPubliser: boolean, tall = { aar: [] as string[], tall: [] as string[] }): boolean {
+  const etterTall = publiseresEtterKontroll(tall);
+  return etterTall && autoPubliser !== false;
+}
+
+function åpenSak(over: Record<string, unknown> = {}) {
+  return stortingAutoPubliserFra({
+    hentetSesjon: SESJON_NÅ,
+    gjeldendeSesjon: SESJON_NÅ,
+    nå: NÅ_5_NOV,
+    detalj: {
+      ferdigbehandlet: false,
+      status: 2,
+      sak_sesjon: SESJON_NÅ,
+      saksgang: {
+        saksgang_steg_liste: [{
+          saksgang_hendelse_liste: [{ id: "HOERFRIST", dato: "01.12.2026 00:00:00" }],
+        }],
+      },
+      ...over,
+    },
+  });
+}
+
+test("forrige sesjon, ferdigbehandlet og utløpt frist blir upublisert", () => {
+  assert.equal(stortingsSesjoner(NÅ_5_NOV)[0], SESJON_NÅ);
+  assert.equal(vilPublisere(åpenSak()), true);
+
+  assert.equal(vilPublisere(stortingAutoPubliserFra({
+    hentetSesjon: "2025-2026",
+    gjeldendeSesjon: SESJON_NÅ,
+    nå: NÅ_5_NOV,
+    detalj: {
+      ferdigbehandlet: false,
+      status: 2,
+      sak_sesjon: "2025-2026",
+      saksgang: {
+        saksgang_steg_liste: [{
+          saksgang_hendelse_liste: [{ id: "HOERFRIST", dato: "01.12.2026 00:00:00" }],
+        }],
+      },
+    },
+  })), false);
+
+  assert.equal(vilPublisere(åpenSak({ sak_sesjon: "2025-2026" })), false);
+  assert.equal(vilPublisere(åpenSak({ ferdigbehandlet: true, status: 1 })), false);
+  assert.equal(vilPublisere(åpenSak({ status: "passert" })), false);
+  assert.equal(vilPublisere(åpenSak({ status: "behandlet" })), false);
+  assert.equal(vilPublisere(åpenSak({ status: 5 })), false);
+  assert.equal(vilPublisere(åpenSak({ status: 6, ferdigbehandlet: true })), false);
+
+  assert.equal(vilPublisere(åpenSak({
+    saksgang: {
+      saksgang_steg_liste: [{
+        saksgang_hendelse_liste: [
+          { id: "HOERFRIST", dato: "17.10.2025 00:00:00" },
+          { id: "HOERFRIST", dato: "28.10.2025 00:00:00" },
+        ],
+      }],
+    },
+  })), false);
+  assert.equal(statusForSak("2025-10-28", null, NÅ_5_NOV), "passert");
+
+  const likeFørMidnattOslo = Date.parse("2026-11-04T22:30:00Z");
+  assert.equal(kalenderdag(likeFørMidnattOslo), "2026-11-04");
+  assert.equal(stortingAutoPubliser({
+    forrigeSesjon: false,
+    ferdigbehandlet: false,
+    status: 2,
+    frist: "2026-11-04",
+    nå: likeFørMidnattOslo,
+  }), true);
+  const likeEtterMidnattOslo = Date.parse("2026-11-04T23:30:00Z");
+  assert.equal(kalenderdag(likeEtterMidnattOslo), "2026-11-05");
+  assert.equal(stortingAutoPubliser({
+    forrigeSesjon: false,
+    ferdigbehandlet: false,
+    status: 2,
+    frist: "2026-11-04",
+    nå: likeEtterMidnattOslo,
+  }), false);
+  assert.equal(statusForSak("2026-11-04", null, likeEtterMidnattOslo), "passert");
+});
+
+test("sak i denne sesjonen med frist fram i tid kan publiseres", () => {
+  const auto = åpenSak();
+  assert.equal(auto, true);
+  assert.equal(vilPublisere(auto), true);
+  assert.equal(vilPublisere(auto, { aar: [], tall: ["374"] }), false);
+  assert.equal(stortingAutoPubliser({
+    forrigeSesjon: false,
+    ferdigbehandlet: false,
+    status: 3,
+    frist: kalenderdag(NÅ_5_NOV),
+    nå: NÅ_5_NOV,
+  }), true);
+  assert.equal(åpenSak({
+    saksgang: { saksgang_steg_liste: [] },
+  }), true);
+});
+
+test("sak 200484 kan publiseres når den hører til denne sesjonen", () => {
+  const tittel = "Representantforslag fra stortingsrepresentantene Tone Wilhelmsen Trøen, Haagen Poppe, Nikolai Astrup og Henrik Asheim om forutsigbart fritak for merverdiavgift for elektroniske aviser";
+  assert.equal(erKulturSak({
+    komite: { id: "FINANS" },
+    emne_liste: [],
+    tittel,
+    korttittel: "Representantforslag om forutsigbart fritak for merverdiavgift for elektroniske aviser",
+  }), true);
+  assert.equal(vilPublisere(stortingAutoPubliserFra({
+    hentetSesjon: SESJON_NÅ,
+    gjeldendeSesjon: SESJON_NÅ,
+    nå: NÅ_5_NOV,
+    listeStatus: 2,
+    detalj: { ferdigbehandlet: false, status: 2, sak_sesjon: SESJON_NÅ },
+  })), true);
+});
+
+test("publisering i hent-saker krever tallkontroll og autoPubliser", () => {
+  const kilde = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  assert.match(kilde, /stortinget-saker" && status === "passert"\) item\.autoPubliser = false/);
+  assert.match(kilde, /const publisert = publiseresEtterKontroll\(tallavvik\) && item\.autoPubliser !== false/);
+  assert.match(kilde, /stortingAutoPubliserFra\(/);
+  assert.match(kilde, /ignoreDuplicates: true/);
 });
 
 test("sak 200185 fanges av underemnet Massemedier", () => {
@@ -1072,6 +1205,31 @@ test("innsettingsrad setter kilde_id og normalisert kilde, aldri kilde_nokkel", 
   assert.equal("handling" in rad, false);
   assert.equal(rad.publisert, true);
   assert.equal(rad.sakstype, "høring");
+});
+
+test("upublisert stortingssak blir en rad, så dedup kan hindre ny vurdering", () => {
+  const rad = byggVarselRad(
+    {
+      tittel: "Representantforslag om mediestøtte",
+      adapter: "stortinget-saker",
+      instans: "Finanskomiteen, Stortinget",
+      kilde: "https://www.stortinget.no/no/Saker-og-publikasjoner/Saker/Sak/?p=104901",
+      frist: "2025-10-28",
+    },
+    {
+      publisert: false,
+      kategori: "kulturpolitikk",
+      niva: "nasjonalt",
+      status: "passert",
+      sammendrag: "Fristen er ute",
+    },
+    REGISTER,
+  );
+  assert.ok(rad);
+  assert.equal(rad.publisert, false);
+  assert.equal(rad.status, "passert");
+  assert.equal(rad.frist, "2025-10-28");
+  assert.match(String(rad.kilde), /p=104901/);
 });
 
 test("avvist rad får kilde_id, men ikke sakstype-feltene", () => {

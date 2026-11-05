@@ -705,6 +705,78 @@ export function finnHøringsfrist(sakDetalj: {
   return frister.length ? frister.sort()[frister.length - 1] : null;
 }
 
+/**
+ * JSON-status fra data.stortinget.no. XML bruker tekst.
+ * 1 behandlet, 2 til behandling, 3 mottatt, 5 trukket, 6 bortfalt.
+ * behandlet, trukket og bortfalt har ferdigbehandlet=true.
+ * «passert» er vår egen status når fristen er ute.
+ */
+const STORTING_FERDIG_STATUS = new Set([
+  "1",
+  "5",
+  "6",
+  "behandlet",
+  "trukket",
+  "bortfalt",
+  "passert",
+  "ferdigbehandlet",
+]);
+
+export function erStortingFerdigbehandlet(input: {
+  ferdigbehandlet?: boolean | null;
+  status?: number | string | null;
+}): boolean {
+  if (input.ferdigbehandlet === true) return true;
+  if (input.status == null) return false;
+  return STORTING_FERDIG_STATUS.has(String(input.status).trim().toLowerCase());
+}
+
+/**
+ * false: lagres for dedup, men auto-publiseres ikke.
+ * Forrige sesjon, ferdigbehandlet/status passert, eller frist før
+ * dagens kalenderdag i Europe/Oslo. Frist i dag kan fortsatt publiseres.
+ * true: kan publiseres hvis tallkontrollen slipper den.
+ */
+export function stortingAutoPubliser(input: {
+  forrigeSesjon: boolean;
+  ferdigbehandlet?: boolean | null;
+  status?: number | string | null;
+  frist?: string | null;
+  nå?: number;
+}): boolean {
+  if (input.forrigeSesjon) return false;
+  if (erStortingFerdigbehandlet(input)) return false;
+  const frist = input.frist?.slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(frist) && frist < kalenderdag(input.nå ?? Date.now())) {
+    return false;
+  }
+  return true;
+}
+
+/** Les sesjon, ferdigbehandlet og HOERFRIST fra eksport/sak. */
+export function stortingAutoPubliserFra(input: {
+  hentetSesjon: string;
+  gjeldendeSesjon: string;
+  detalj: unknown;
+  listeStatus?: number | string | null;
+  nå?: number;
+}): boolean {
+  const d = input.detalj && typeof input.detalj === "object"
+    ? input.detalj as Record<string, unknown>
+    : {};
+  const sakSesjon = typeof d.sak_sesjon === "string" ? d.sak_sesjon : "";
+  const forrigeSesjon = input.hentetSesjon !== input.gjeldendeSesjon
+    || (sakSesjon !== "" && sakSesjon !== input.gjeldendeSesjon);
+  const status = d.status ?? input.listeStatus ?? null;
+  return stortingAutoPubliser({
+    forrigeSesjon,
+    ferdigbehandlet: d.ferdigbehandlet === true,
+    status: typeof status === "number" || typeof status === "string" ? status : null,
+    frist: finnHøringsfrist(input.detalj as Parameters<typeof finnHøringsfrist>[0]),
+    nå: input.nå,
+  });
+}
+
 // ─── RSS-parsing ──────────────────────────────────────────────────────────────
 export type RssItem = {
   tittel: string;

@@ -23,7 +23,9 @@
 // Upubliserte varsler hoppes over, for alle kilder.
 // Én saks 404/500 logges per sak og gjør ikke kilden til http_feil.
 // antall_nye er alltid 0. Status er ok_oppdatert eller
-// ok_ingen_oppdatering, aldri ok_nye.
+// ok_ingen_oppdatering, aldri ok_nye. regjeringen-rss skriver
+// ok_ingen_oppdatering også når detalj_forsok er 0, så en gammel
+// 403 ikke blir stående i kilde_alarmer_frister.
 
 import { byggKildeKjoringRad } from "../hent-saker/datofilter.ts";
 import {
@@ -57,7 +59,9 @@ import {
 import { REDAKTOR_FELT_LAAS, skalSkriveFrist, skalSkriveMotedato } from "../_shared/varselvern.ts";
 import {
   klassifiserKildeKall,
+  okIngenOppdateringUtenKall,
   planleggDatoSkriving,
+  regjeringenRssUtenDetalj,
   svarForFristjobb,
   tolkSkriving,
   userAgentForUrl,
@@ -320,9 +324,10 @@ async function loggKildeKall(
   oppdatert: Map<string, number>,
   startet: Map<string, number>,
   kjoertAv: KjoertAv,
+  stilleOk: readonly string[] = [],
 ): Promise<{ rader: KildeStatusRad[]; loggFeil: string | null }> {
   const rader: KildeStatusRad[] = [];
-  const adaptere = [...kall.keys()];
+  const adaptere = [...new Set([...kall.keys(), ...stilleOk])];
   if (adaptere.length === 0) return { rader, loggFeil: null };
   const { data, error } = await supabase.from("kilder").select("id, adapter").in("adapter", adaptere);
   if (error) return { rader, loggFeil: error.message };
@@ -331,7 +336,10 @@ async function loggKildeKall(
   );
   let loggFeil: string | null = null;
   for (const adapter of adaptere) {
-    const klass = klassifiserKildeKall(kall.get(adapter) ?? [], oppdatert.get(adapter) ?? 0);
+    const antallOppdatert = oppdatert.get(adapter) ?? 0;
+    const liste = kall.get(adapter) ?? [];
+    const klass = klassifiserKildeKall(liste, antallOppdatert)
+      ?? (stilleOk.includes(adapter) ? okIngenOppdateringUtenKall(antallOppdatert) : null);
     if (!klass) continue;
     const rad: KildeStatusRad = {
       adapter,
@@ -577,7 +585,14 @@ Deno.serve(async (req: Request) => {
     }
 
     const status = await merkFristStatus(supabase, idag);
-    const logg = await loggKildeKall(supabase, kall, oppdatertPerKilde, startet, kjoertAv);
+    const logg = await loggKildeKall(
+      supabase,
+      kall,
+      oppdatertPerKilde,
+      startet,
+      kjoertAv,
+      regjeringenRssUtenDetalj(regjeringen.detalj_forsok),
+    );
     const kropp = {
       kjørt: new Date().toISOString(),
       kjoert_av: kjoertAv,

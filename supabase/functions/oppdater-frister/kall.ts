@@ -135,6 +135,29 @@ function alarmFraStatus(status: string): boolean {
   return status.startsWith("feil_") || status === "delvis";
 }
 
+/**
+ * regjeringen-rss uten detaljkall. En rad med ok_ingen_oppdatering
+ * gjør at en gammel 403 ikke blir stående som siste kjøring i
+ * kilde_alarmer_frister. Andre kilder uten kall skriver fortsatt ingen rad.
+ */
+export function regjeringenRssUtenDetalj(detaljForsok: number): string[] {
+  return detaljForsok === 0 ? ["regjeringen-rss"] : [];
+}
+
+/** Kilden ble vurdert, men ingen HTTP-kall trengtes. */
+export function okIngenOppdateringUtenKall(oppdatert = 0): KildeKallResultat {
+  return {
+    status: oppdatert > 0 ? "ok_oppdatert" : "ok_ingen_oppdatering",
+    httpStatus: null,
+    feilmelding: null,
+    alarm: false,
+    forsok: 0,
+    feilede: 0,
+    vellykket: 0,
+    oppdatert,
+  };
+}
+
 /** Tom liste betyr at kilden ikke ble kalt. Da skrives ingen rad. */
 export function klassifiserKildeKall(
   kall: KallUtfall[],

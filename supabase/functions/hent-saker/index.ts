@@ -19,6 +19,7 @@ import {
   erRegjeringenRelevant,
   finnHøringsfrist,
   innholdDedupNokkel,
+  stortingAutoPubliserFra,
   kategoriForEinnsyn,
   kategoriFraAdapter,
   kategoriFraTittel,
@@ -93,6 +94,9 @@ import {
 //
 // Begge sesjonene (gjeldende + forrige, Europe/Oslo) blir ETT utfall.
 // Feiler én, fortsetter den andre, og kjøringen klassifiseres som delvis.
+// Forrige sesjon, ferdigbehandlet og frist før i dag lagres upublisert
+// (autoPubliser=false). Datofilteret gjelder ikke disse sakene.
+// Eksisterende rader skrives ikke om.
 //
 // Stille tomme svar (fram til 20.10): endepunktet paginerer ikke — `side`
 // ignoreres og hele sesjonen kommer i ett JSON-dokument. Et kall som henger
@@ -108,6 +112,7 @@ function tomStortingDel(feil: AdapterDel["feil"], httpStatus: number | null): Ad
 async function hentEnStortingssesjon(
   sesjon: string,
   eksKilder: Set<string>,
+  gjeldendeSesjon: string,
 ): Promise<AdapterDel> {
   const url =
     `https://data.stortinget.no/eksport/saker?sesjonid=${encodeURIComponent(sesjon)}&format=json`;
@@ -161,6 +166,8 @@ async function hentEnStortingssesjon(
       if (nokkel && eksKilder.has(nokkel)) continue; // detaljoppslag kun for nye saker
 
       let frist: string | null = null;
+      // Ukjent detalj publiseres ikke. Vellykket oppslag setter flagget under.
+      let autoPubliser = false;
       const detUrl =
         `https://data.stortinget.no/eksport/sak?sakid=${sak.id}&format=json`;
       try {
@@ -179,7 +186,14 @@ async function hentEnStortingssesjon(
             httpStatus: feil.httpStatus,
           };
         }
-        frist = finnHøringsfrist(await detRes.json());
+        const detalj = await detRes.json();
+        frist = finnHøringsfrist(detalj);
+        autoPubliser = stortingAutoPubliserFra({
+          hentetSesjon: sesjon,
+          gjeldendeSesjon,
+          detalj,
+          listeStatus: sak.status,
+        });
       } catch (e) {
         const feil = feilFraUnntak(e, detUrl);
         console.error(`Detaljoppslag for sak ${sak.id} feilet:`, e);
@@ -205,6 +219,7 @@ async function hentEnStortingssesjon(
         // sist_oppdatert er ikke publiseringstid og brukes ikke som datogrense.
         kilde_publisert: null,
         forhåndsgodkjent: true, // valgt via komité/emne — skal ikke stoppes av nøkkelordfilteret
+        autoPubliser,
       });
     }
     return {
@@ -222,9 +237,11 @@ async function hentEnStortingssesjon(
 }
 
 async function hentStortingetSaker(eksKilder: Set<string>): Promise<AdapterUtfall> {
+  const sesjoner = stortingsSesjoner();
+  const gjeldende = sesjoner[0];
   const deler: AdapterDel[] = [];
-  for (const sesjon of stortingsSesjoner()) {
-    deler.push(await hentEnStortingssesjon(sesjon, eksKilder));
+  for (const sesjon of sesjoner) {
+    deler.push(await hentEnStortingssesjon(sesjon, eksKilder, gjeldende));
   }
   return slåSammenAdapterdeler(deler);
 }
@@ -970,14 +987,19 @@ Deno.serve(async (req: Request) => {
 
       // Tall og årstall som ikke står i kilden logges. Raden lagres likevel,
       // men upublisert, så en redaktør ser den før den blir synlig.
-      // Eksisterende rader, også manuelt_redigert, skrives ikke om (ignoreDuplicates).
+      // Stortinget-saker med status passert, forrige sesjon, ferdigbehandling
+      // eller utløpt frist har autoPubliser=false. De lagres også upublisert,
+      // så dedup hindrer ny vurdering. Eksisterende rader, også
+      // manuelt_redigert, skrives ikke om (ignoreDuplicates).
       const tallavvik = loggUdokumenterteTall(
         "hent-saker",
         sammendrag,
         kildegrunnlag([item.tittel, item.sammendrag_raa, item.instans, item.frist]),
         typeof item.kilde === "string" ? item.kilde : "",
       );
-      const publisert = publiseresEtterKontroll(tallavvik);
+      if (item.adapter === "stortinget-saker" && status === "passert") item.autoPubliser = false;
+      const etterTall = publiseresEtterKontroll(tallavvik);
+      const publisert = publiseresEtterKontroll(tallavvik) && item.autoPubliser !== false;
 
       item.sakstype = item.sakstype ?? sakstypeFraSak(item);
       const rad = byggVarselRad(item, {
@@ -1007,8 +1029,11 @@ Deno.serve(async (req: Request) => {
         driftFeil.push(`${item.tittel}: ${lagret.error.message}`);
       } else {
         antallLagret++;
-        const maal = publisert ? publisertPerAdapter : avvistSperre;
-        maal.set(item.adapter, (maal.get(item.adapter) ?? 0) + 1);
+        if (publisert) {
+          publisertPerAdapter.set(item.adapter, (publisertPerAdapter.get(item.adapter) ?? 0) + 1);
+        } else if (!etterTall) {
+          avvistSperre.set(item.adapter, (avvistSperre.get(item.adapter) ?? 0) + 1);
+        }
         const nokkel = kildeNokkel(item.kilde);
         if (nokkel) {
           eksKilder.add(nokkel);
@@ -1020,7 +1045,7 @@ Deno.serve(async (req: Request) => {
         }
         const innhold = innholdDedupNokkel(item);
         if (innhold) eksInnhold.add(innhold);
-        if (!publisert && lagret.id) {
+        if (!etterTall && lagret.id) {
           const sperreFeil = await lagreTallSperring(supabase, lagret.id, "hent-saker", tallavvik);
           if (sperreFeil) driftFeil.push(`${lagret.id}: tall_uten_kilde ble ikke lagret`);
           else sperret.push({ id: lagret.id, arsak: "tall_uten_kilde", oppgave: "hent-saker" });

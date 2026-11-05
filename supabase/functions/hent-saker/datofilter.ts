@@ -5,7 +5,9 @@
 // Bergens møtedato og Stortingets ventede saker (uten tidsstempel) er
 // ikke det, og stoppes ikke her. Dedup på kilde-URL holder for dem.
 // Stortingets saker har sist_oppdatert, men hele sesjonen er korpuset
-// og URL-en er stabil, så de får heller ingen grense.
+// og URL-en er stabil, så de får heller ingen grense. Forrige sesjon,
+// ferdigbehandlet og utløpt frist stoppes med autoPubliser=false
+// i adapteren, og lagres upublisert.
 //
 // Marginen er 72 timer under siste vellykkede hent-saker-kjøring.
 // Cron er døgnlig. Én feilet natt, RSS som viser pubDate noen timer
