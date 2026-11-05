@@ -9,6 +9,8 @@ import {
   EINNSYN_V2_BOLK_TIDSGRENSE_MS,
   EINNSYN_V2_BOLKER,
   EINNSYN_V2_LIMIT,
+  EINNSYN_V2_UTEN_ENHET,
+  EINNSYN_V2_UTEN_MOETESAK,
   EINNSYN_V2_MAKS_FORSOK,
   EINNSYN_V2_MAKS_KALL,
   EINNSYN_V2_SOKEORD,
@@ -117,6 +119,31 @@ test("organlisten er de 16 kommunene, fem fylkene og Oslos bydeler", () => {
   assert.equal(erEinnsynV2Organ("Bergen kommune"), false);
   assert.equal(erEinnsynV2Organ("Trondheim kommune"), false);
   assert.equal(erEinnsynV2Organ("Oslo universitetssykehus"), false);
+  assert.equal(EINNSYN_V2_UTEN_MOETESAK.length, 2);
+  assert.equal(EINNSYN_V2_UTEN_ENHET.length, 7);
+  for (const rad of [...EINNSYN_V2_UTEN_MOETESAK, ...EINNSYN_V2_UTEN_ENHET]) {
+    assert.equal(erEinnsynV2Organ(rad.navn), false, rad.navn);
+  }
+  assert.deepEqual(
+    EINNSYN_V2_UTEN_MOETESAK.map((rad) => rad.id),
+    [
+      "enh_01j73r5z2efh5bzzqmvbyhrzbx",
+      "enh_01m3bm2drre0pv7tbj70wpb3wc",
+    ],
+  );
+  assert.deepEqual(
+    EINNSYN_V2_UTEN_ENHET.map((rad) => rad.orgnummer),
+    [
+      "820852982",
+      "921234554",
+      "935478715",
+      "820710592",
+      "942110464",
+      "940101808",
+      "971045698",
+    ],
+  );
+  assert.equal(EINNSYN_V2_BOLKER, 8);
   assert.equal(erKulturutvalg("Komité for kultur, Akershus"), true);
   assert.equal(erKulturutvalg("Stavanger kommune"), false);
   assert.equal(erEinnsynV2Organ("Stavanger kommune før 2016"), false);
