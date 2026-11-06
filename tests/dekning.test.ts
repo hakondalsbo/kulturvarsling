@@ -42,7 +42,7 @@ test("siden gjengir den godkjente teksten ordrett", () => {
   assert.match(md, /Tallene på denne siden er fra 5\. november 2026\./);
   assert.match(
     md,
-    /5\. november 2026 var det 168 publiserte varsler\. eInnsyn står for 43 av dem, Kulturdirektoratet for 38, Bergen for 30, Stortinget for 25, Regjeringen for 18 og Sametinget for 13\. Ett varsel er lagt inn fra Stavanger kommunes nettsider\./,
+    /6\. november 2026 var det 166 publiserte varsler\. 43 kom fra eInnsyn, 39 fra Kulturdirektoratet, 30 fra Bergen kommune, 20 fra Stortinget, 18 fra Regjeringen og 15 fra Sametinget\. Ett varsel er lagt inn fra Stavanger kommunes nettsider\./,
   );
   assert.match(md, /16 kommuner og 5 fylkeskommuner/);
   assert.match(md, /5\. november hadde ni kommuner minst ett publisert varsel\./);
