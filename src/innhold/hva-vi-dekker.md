@@ -1,6 +1,6 @@
 # Hva vi dekker
 
-Kulturvarsling er i åpen prøvedrift. Vi følger et utvalg av kilder, og dekningen er ikke komplett. Tallene på denne siden er fra 5. november 2026.
+Kulturvarsling er i åpen prøvedrift. Vi følger et utvalg av kilder, og dekningen er ikke komplett. Tallene på denne siden er fra 6. november 2026.
 
 ## Hva slags saker
 
@@ -22,13 +22,13 @@ Vi følger saker fra offentlige organer som har betydning for kulturlivet:
 - **Kulturdirektoratet:** tildelinger fra direktoratets vedtaksdatabase.
 - **Sametinget:** nyheter, blant annet de ukentlige listene over innvilgede tilskudd.
 
-5. november 2026 var det 168 publiserte varsler. eInnsyn står for 43 av dem, Kulturdirektoratet for 38, Bergen for 30, Stortinget for 25, Regjeringen for 18 og Sametinget for 13. Ett varsel er lagt inn fra Stavanger kommunes nettsider.
+6. november 2026 var det 166 publiserte varsler. 43 kom fra eInnsyn, 39 fra Kulturdirektoratet, 30 fra Bergen kommune, 20 fra Stortinget, 18 fra Regjeringen og 15 fra Sametinget. Ett varsel er lagt inn fra Stavanger kommunes nettsider.
 
 ## Kommuner og fylker
 
 Fra eInnsyn henter vi saker fra 16 kommuner og 5 fylkeskommuner, og fra bydelene i Oslo. Bergen kommer i tillegg. Hele listen står nederst på siden.
 
-At en kommune er med, betyr ikke at den alltid har saker hos oss. 5. november hadde ni kommuner minst ett publisert varsel.
+At en kommune er med, betyr ikke at den alltid har saker hos oss. 6. november hadde ni kommuner minst ett publisert varsel.
 
 De fleste kommuner i Norge er ikke med ennå.
 

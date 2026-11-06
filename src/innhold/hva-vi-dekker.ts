@@ -103,7 +103,7 @@ export function seksjon(blokker: Blokk[], tittel: string): Blokk[] {
 
 /** Det daterte øyeblikksbildet, slik at det kan settes litt ut fra brødteksten. */
 export function erTallavsnitt(barn: Inline[]): boolean {
-  return inlineTekst(barn).startsWith("5. november 2026 var det ");
+  return inlineTekst(barn).startsWith("6. november 2026 var det ");
 }
 
 export function erDekningSti(sti: string): boolean {
