@@ -39,13 +39,13 @@ function sterk(barn: Inline[]): string {
 test("siden gjengir den godkjente teksten ordrett", () => {
   assert.equal(renTekst(dok), utenMarkdown(md));
   assert.match(md, /Kulturvarsling er i åpen prøvedrift\./);
-  assert.match(md, /Tallene på denne siden er fra 5\. november 2026\./);
+  assert.match(md, /Tallene på denne siden er fra 6\. november 2026\./);
   assert.match(
     md,
     /6\. november 2026 var det 166 publiserte varsler\. 43 kom fra eInnsyn, 39 fra Kulturdirektoratet, 30 fra Bergen kommune, 20 fra Stortinget, 18 fra Regjeringen og 15 fra Sametinget\. Ett varsel er lagt inn fra Stavanger kommunes nettsider\./,
   );
   assert.match(md, /16 kommuner og 5 fylkeskommuner/);
-  assert.match(md, /5\. november hadde ni kommuner minst ett publisert varsel\./);
+  assert.match(md, /6\. november hadde ni kommuner minst ett publisert varsel\./);
   assert.match(md, /fra eInnsyn mellom kl\. 02\.00 og 03\.10/);
   assert.match(md, /fra de andre kildene kl\. 07\.00/);
   assert.match(md, /frister og status oppdateres kl\. 07\.30/);

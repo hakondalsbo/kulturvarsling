@@ -1,6 +1,6 @@
 # Hva vi dekker
 
-Kulturvarsling er i åpen prøvedrift. Vi følger et utvalg av kilder, og dekningen er ikke komplett. Tallene på denne siden er fra 5. november 2026.
+Kulturvarsling er i åpen prøvedrift. Vi følger et utvalg av kilder, og dekningen er ikke komplett. Tallene på denne siden er fra 6. november 2026.
 
 ## Hva slags saker
 
@@ -28,7 +28,7 @@ Vi følger saker fra offentlige organer som har betydning for kulturlivet:
 
 Fra eInnsyn henter vi saker fra 16 kommuner og 5 fylkeskommuner, og fra bydelene i Oslo. Bergen kommer i tillegg. Hele listen står nederst på siden.
 
-At en kommune er med, betyr ikke at den alltid har saker hos oss. 5. november hadde ni kommuner minst ett publisert varsel.
+At en kommune er med, betyr ikke at den alltid har saker hos oss. 6. november hadde ni kommuner minst ett publisert varsel.
 
 De fleste kommuner i Norge er ikke med ennå.
 
