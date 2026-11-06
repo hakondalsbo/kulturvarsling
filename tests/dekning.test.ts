@@ -44,13 +44,33 @@ test("siden gjengir den godkjente teksten ordrett", () => {
     md,
     /6\. november 2026 var det 166 publiserte varsler\. 43 kom fra eInnsyn, 39 fra Kulturdirektoratet, 30 fra Bergen kommune, 20 fra Stortinget, 18 fra Regjeringen og 15 fra Sametinget\. Ett varsel er lagt inn fra Stavanger kommunes nettsider\./,
   );
-  assert.match(md, /16 kommuner og 5 fylkeskommuner/);
+  assert.match(
+    md,
+    /Fra eInnsyn henter vi saker fra 16 kommuner og 5 fylkeskommuner, og fra bydelene i Oslo\. Bergen kommer i tillegg\./,
+  );
   assert.match(md, /6\. november hadde ni kommuner minst ett publisert varsel\./);
+  assert.doesNotMatch(md, /5\. november/);
   assert.match(md, /fra eInnsyn mellom kl\. 02\.00 og 03\.10/);
   assert.match(md, /fra de andre kildene kl\. 07\.00/);
   assert.match(md, /frister og status oppdateres kl\. 07\.30/);
   const tall = dok.find((b) => b.type === "p" && erTallavsnitt(b.barn));
   assert.ok(tall && tall.type === "p");
+});
+
+test("16 kommuner og 5 fylker er KOMMUNER og FYLKER, Bergen kommer i tillegg", () => {
+  const v2 = readFileSync("supabase/functions/hent-saker/einnsyn-v2.ts", "utf8");
+  const liste = (navn: string) => {
+    const m = v2.match(new RegExp(`const ${navn} = \\[([\\s\\S]*?)\\];`));
+    assert.ok(m, navn);
+    return [...m[1].matchAll(/"([a-z]+)"/g)].map((treff) => treff[1]);
+  };
+  const kommuner = liste("KOMMUNER");
+  const fylker = liste("FYLKER");
+  assert.equal(kommuner.length, 16);
+  assert.equal(fylker.length, 5);
+  assert.equal(kommuner.includes("bergen"), false);
+  assert.match(md, /16 kommuner og 5 fylkeskommuner/);
+  assert.match(md, /Bergen kommer i tillegg/);
 });
 
 test("kilde- og kommunelisten beholder de godkjente navnene", () => {
