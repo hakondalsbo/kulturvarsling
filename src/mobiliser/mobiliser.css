@@ -171,6 +171,28 @@
   margin: 0 0 8px;
 }
 
+.mobiliser-trekk h1:focus {
+  outline: 2px solid var(--tekst);
+  outline-offset: 3px;
+}
+
+.mobiliser-trekk-status {
+  color: var(--tekst);
+  font-size: 1.05rem;
+  line-height: 1.55;
+  margin: 0 0 18px;
+}
+
+.mobiliser-trekk .kv-knapp {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
+.mobiliser-trekk a {
+  color: var(--granitt);
+}
+
 .mobiliser-demo-lenker {
   display: flex;
   flex-wrap: wrap;
