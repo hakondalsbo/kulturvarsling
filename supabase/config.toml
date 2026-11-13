@@ -44,3 +44,11 @@ verify_jwt = true
 
 [functions.mine-innspill]
 verify_jwt = true
+
+# Utloggede skal kunne sende. Funksjonen sjekker valgfri JWT selv.
+[functions.send-tilbakemelding]
+verify_jwt = false
+
+# Oversikt. Gateway krever JWT, og funksjonen sjekker ADMIN_EPOSTER.
+[functions.tilbakemeldinger]
+verify_jwt = true

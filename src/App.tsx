@@ -1,13 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { ForsideAvis, VarselArkiv, KildeSetning, KildeDetaljer, datoMeta, Rollemerke } from "./avis.tsx";
 import { vurderSak } from "./handling.ts";
-import { DesignSide } from "./design.tsx";
 import { DekningSide } from "./dekning.tsx";
 import { erDekningSti } from "./innhold/hva-vi-dekker.ts";
 import { MerketTekst, OrdlisteSide } from "./ord.tsx";
 import { delOppDokument } from "./innhold/treff.ts";
-import { UNDERTEKST } from "./tekster.ts";
+import { KONTAKT_EPOST, UNDERTEKST } from "./tekster.ts";
 import { behandlingsansvarlig, orgnr, poststed } from "./selskap.ts";
 import { Knapp, Felt, Tekstfelt, Velger, Dialog } from "./ui.tsx";
 import { HoringForhandsvisning, HoringssvarSkjema } from "./horingssvar.tsx";
@@ -15,7 +13,7 @@ import { horingshjelpAktiv } from "./horingshjelp.ts";
 import { InnspillForhandsvisning, KommuneInnspillSkjema } from "./kommuneinnspill.tsx";
 import { kommuneLoginSynlig } from "./kommunelogin.ts";
 import { PREMIUM_AAR_KR, PREMIUM_MAANED_KR, sparProsentArlig } from "./priser.ts";
-import { dagerTilFrist, fristEtikett } from "./frist.ts";
+import { dagerTilFrist, fristEtikett, fristTilstand } from "./frist.ts";
 import { geografiskFraNivaa, leggTilUtvalg, nivaaFraGeografisk, preferanserFraProfil, utvalgErDekket } from "./preferanser.ts";
 import { MinSide } from "./minside/MinSide.tsx";
 import { kategorierForMeny } from "./minside/kategorier.ts";
@@ -30,13 +28,12 @@ import { stotteFraSvar, type StottetInnspill as StotteRad } from "./mobiliser/st
 import { DEMO_SKRIFTLIG, erStortingetHoring, folgKomiteAktiv, komiteIdFraInstans, lagreFulgteKomite } from "./horing.ts";
 import { FolgKomiteStyring, HoringFristBlokker, HoringOmSak, KomiteSide, MineKomiteer } from "./horing.tsx";
 import { TurnstileFelt, turnstileNokkel } from "./turnstile.tsx";
+import { sb } from "./klient.ts";
+import { premiumAktiv, premiumFlate, verktøyÅpent } from "./premium.ts";
+import { registreringErInnlogget } from "./registrering.ts";
+import { apneTilbakemelding, TilbakemeldingOversikt } from "./tilbakemelding.tsx";
 
 // ─── Supabase klient ──────────────────────────────────────────────────────
-// Bytt ut disse to verdiene med dine egne fra Supabase, Settings, API
-const SUPABASE_URL  = "https://zyyijlvmgoanjdzngmon.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5eWlqbHZtZ29hbmpkem5nbW9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI1NzMsImV4cCI6MjA4ODkxODU3M30.k2WWIg_7STiIOPSGojZ2zH_QCShvvSw8Ax0hk1yGjOI";
-
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 function hashErPassordGjenoppretting() {
   if (typeof window === "undefined") return false;
@@ -52,7 +49,7 @@ function settPassordGjenoppretting(aktiv: boolean) {
   for (const lytt of passordLyttere) lytt(aktiv);
 }
 
-// Må stå ved createClient. Supabase leser hash-en før React-effekten rekker å lytte.
+// Må stå ved klienten. Supabase leser hash-en før React-effekten rekker å lytte.
 sb.auth.onAuthStateChange((event) => {
   if (event === "PASSWORD_RECOVERY") settPassordGjenoppretting(true);
 });
@@ -71,7 +68,7 @@ function skrivFulgteKomite(brukerId: string, komiteId: string, skalFolge: boolea
 function komiteFraSti(): string | null {
   if (!folgKomiteAktiv()) return null;
   const p = window.location.pathname.replace(/\/$/, "");
-  const m = p.match(/^\/komite\/([A-Za-zÆØÅæøå0-9]{2,16})$/);
+  const m = p.match(/^(?:\/app)?\/komite\/([A-Za-zÆØÅæøå0-9]{2,16})$/);
   return m ? m[1].toUpperCase() : null;
 }
 const PERSONVERN_VERSJON = "personvern-2026-10";
@@ -129,6 +126,14 @@ async function lagreProfil(userId: any, oppdateringer: any) {
 // handle_new_user oppretter raden ved registrering. Klienten oppdaterer den.
 async function upsertProfil(userId: any, data: any) {
   return lagreProfil(userId, data);
+}
+
+/** Samme kall som Min profil. Sletter ikke mer enn funksjonen slett-konto allerede gjør. */
+async function slettInnloggetKonto(): Promise<boolean> {
+  const { data, error } = await sb.functions.invoke("slett-konto", { body: {} });
+  if (error || !data?.ok) return false;
+  await sb.auth.signOut();
+  return true;
 }
 
 async function toggleFølgSak(brukerId: any, sakId: any, følger: any) {
@@ -229,48 +234,6 @@ async function hentAktivitet(brukerId: any) {
   return data ?? [];
 }
 
-async function sendFeedbackDB(brukerId: any, type: any, tekst: any, sakTittel: any) {
-  const { data } = await sb.auth.getSession();
-  const token = data?.session?.access_token ?? null;
-  const innlogget = data?.session?.user?.id ?? null;
-  // Kolonnene er public.feedback: bruker_id, type, tekst, sak_tittel.
-  // id, status ('ny') og opprettet har default. type må være en av
-  // feil | mangler | utdatert | forslag | annet.
-  // Prefer return=minimal: return=representation krever SELECT-policy, og den
-  // finnes ikke. Da svarer API-et 42501 og raden lagres ikke.
-  const bruker_id = token && innlogget ? innlogget : null;
-  if (brukerId && bruker_id && brukerId !== bruker_id) {
-    console.error("Feedback: bruker_id fra kalleren matchet ikke sesjonen, bruker sesjonen");
-  }
-  let res;
-  try {
-    res = await fetch(`${SUPABASE_URL}/rest/v1/feedback`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON,
-        Authorization: `Bearer ${token ?? SUPABASE_ANON}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        bruker_id,
-        type,
-        tekst,
-        sak_tittel: sakTittel ?? null,
-      }),
-    });
-  } catch (e) {
-    return { message: "Kunne ikke nå serveren. Prøv igjen." };
-  }
-  if (res.ok) return null;
-  let message = `Kunne ikke lagre tilbakemeldingen (HTTP ${res.status}).`;
-  try {
-    const body = await res.json();
-    if (typeof body?.message === "string" && body.message.trim()) message = body.message;
-  } catch { /* tom feilkropp */ }
-  return { message };
-}
-
 // ─── Static data ────────────────────────────────────────────────────────────
 const KATEGORIER = kategorierForMeny();
 
@@ -296,9 +259,9 @@ const NIVÅ_VALG = [
   {id:"kommune",label:"Kommune"},
 ];
 const FREKVENS_VALG = [
-  {id:"straks",label:"Straks",tekst:"Bare saker med under 7 dager til frist og status kritisk."},
-  {id:"daglig",label:"Daglig",tekst:"Én e-post per dag med nye saker."},
-  {id:"ukentlig",label:"Ukentlig",tekst:"Én e-post per uke med saker fra de siste 7 dagene."},
+  {id:"straks",label:"Straks",tekst:"Bare saker med under 7 dager til frist. E-postvarsler kommer senere."},
+  {id:"daglig",label:"Daglig",tekst:"Sakene samles én gang om dagen. E-postvarsler kommer senere."},
+  {id:"ukentlig",label:"Ukentlig",tekst:"Sakene samles én gang i uken. E-postvarsler kommer senere."},
 ];
 const ORG_TYPE_VALG = [
   {id:"organisasjon",label:"Organisasjon"},
@@ -526,18 +489,19 @@ function OnboardingWizard({user,setUser,onDone}: any) {
             <div>
               <Enkeltvalg valg={FREKVENS_VALG} valgt={frekvens} onVelg={setFrekvens} />
               <p className="kv-meta">{FREKVENS_VALG.find(f=>f.id===frekvens)?.tekst}</p>
+              <p className="kv-meta">E-postvarsler kommer senere. Ingenting sendes nå.</p>
             </div>
           )}
           {steg===3&&(
             <div className="kv-stakk">
               <p className="kv-brod">
                 Du registrerer deg med <strong>{user?.epost}</strong> som representant for <strong>{org||"organisasjonen din"}</strong>.
-                E-postadressen brukes til varsler du har slått på. Opplysningene deles ikke videre til kommersielle formål.
+                E-postvarsler kommer senere, og ingenting sendes nå. Opplysningene deles ikke videre til kommersielle formål.
               </p>
               <label className="kv-samtykke">
                 <input id="kv-samtykke" type="checkbox" checked={samtykke} onChange={e=>setSamtykke(e.target.checked)} />
                 <span>
-                  Jeg har lest og akseptert <a className="kv-lenke" href="/personvern" target="_blank" rel="noopener noreferrer">personvernerklæringen</a> og samtykker til at Kulturvarsling kan behandle personopplysningene mine.
+                  Jeg har lest og akseptert <a className="kv-lenke" href="/vilkar" target="_blank" rel="noopener noreferrer">brukervilkårene</a> og <a className="kv-lenke" href="/personvern" target="_blank" rel="noopener noreferrer">personvernerklæringen</a>, og samtykker til at Kulturvarsling kan behandle personopplysningene mine.
                 </span>
               </label>
               <p className="kv-meta">Du kan trekke samtykket tilbake og slette kontoen. Spørsmål sendes til post@kulturvarsling.no.</p>
@@ -560,73 +524,6 @@ function OnboardingWizard({user,setUser,onDone}: any) {
         </div>
       </div>
     </div>
-  );
-}
-
-function FeedbackModal({onClose, kontekst=null as any}: any) {
-  const [type,setType]=useState(kontekst?.type||"feil");
-  const [tekst,setTekst]=useState("");
-  const [sendt,setSendt]=useState(false);
-  const [feil,setFeil]=useState("");
-  const [laster,setLaster]=useState(false);
-  const typer=[
-    {id:"feil",label:"Feil i saken"},
-    {id:"mangler",label:"Manglende sak"},
-    {id:"utdatert",label:"Utdatert info"},
-    {id:"forslag",label:"Forslag"},
-    {id:"annet",label:"Annet"},
-  ];
-
-  async function send(){
-    if(!tekst.trim()||laster) return;
-    setLaster(true); setFeil("");
-    let brukerId=null;
-    try {
-      const { data } = await sb.auth.getSession();
-      brukerId = data?.session?.user?.id ?? null;
-    } catch { brukerId = null; }
-    const error = await sendFeedbackDB(brukerId, type, tekst.trim(), kontekst?.sakTittel ?? null);
-    setLaster(false);
-    if(error){
-      console.error("Feedback-feil:", error);
-      setFeil(error.message
-        ? `Kunne ikke lagre tilbakemeldingen: ${error.message}`
-        : "Kunne ikke lagre tilbakemeldingen. Prøv igjen.");
-      return;
-    }
-    setSendt(true);
-  }
-
-  return (
-    <Dialog tittel={sendt?"Tilbakemelding lagret":"Tilbakemelding"} onClose={onClose} smal>
-      {sendt?(
-        <div className="kv-stakk">
-          <p className="kv-brod">Tilbakemeldingen er lagret. Den brukes til å rette saker og forbedre oversikten.</p>
-          <Knapp variant="linje" onClick={onClose}>Lukk</Knapp>
-        </div>
-      ):(
-        <div className="kv-stakk">
-          {kontekst?.sakTittel&&<p className="kv-meta">Gjelder saken: {kontekst.sakTittel}</p>}
-          <div>
-            <p className="kv-feltnavn">Type</p>
-            <Enkeltvalg valg={typer} valgt={type} onVelg={setType} />
-          </div>
-          <Tekstfelt
-            id="fb-tekst"
-            label={type==="feil"?"Hva er feil?":type==="mangler"?"Hvilken sak mangler?":type==="utdatert"?"Hva er utdatert?":type==="forslag"?"Forslaget":"Beskrivelse"}
-            value={tekst}
-            onChange={e=>setTekst(e.target.value)}
-            rows={4}
-            placeholder={type==="feil"?"For eksempel feil frist, feil instans eller faktafeil i sammendraget.":type==="mangler"?"Beskriv saken og hvem som behandler den.":type==="forslag"?"Hva bør endres?":""}
-          />
-          {feil&&<p className="kv-feil" role="alert">{feil}</p>}
-          <div className="kv-klynge">
-            <Knapp className="vokse" disabled={!tekst.trim()||laster} onClick={send}>{laster?"Sender":"Send tilbakemelding"}</Knapp>
-            <Knapp variant="linje" onClick={onClose}>Avbryt</Knapp>
-          </div>
-        </div>
-      )}
-    </Dialog>
   );
 }
 
@@ -688,7 +585,7 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
     if(data?.user?.identities?.length === 0) {
       setFeil("E-post allerede registrert."); nullstillCaptcha(); setLaster(false); return;
     }
-    if(data.user) {
+    if(registreringErInnlogget(data) && data.user) {
       await upsertProfil(data.user.id, { navn, onboarding_done: false });
       await new Promise(r=>setTimeout(r,500));
       setUser({ ...brukerFraSesjon(data.user, null), navn, onboardingDone: false });
@@ -741,7 +638,7 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
         {mode==="register"&&<Felt id="login-navn" label="Navn eller organisasjon" value={navn} onChange={e=>setNavn(e.target.value)} />}
         {mode==="register"&&(
           <p className="kv-meta">
-            Ved å opprette konto aksepterer du <a className="kv-lenke" href="/personvern" target="_blank" rel="noopener noreferrer">personvernerklæringen</a>.
+            Ved å opprette konto aksepterer du <a className="kv-lenke" href="/vilkar" target="_blank" rel="noopener noreferrer">brukervilkårene</a> og <a className="kv-lenke" href="/personvern" target="_blank" rel="noopener noreferrer">personvernerklæringen</a>.
           </p>
         )}
         <TurnstileFelt key={captchaOmstart} onToken={setCaptchaToken} />
@@ -762,6 +659,11 @@ function BrukerLogin({setScreen,setUser,grunn="",start="login"}: any) {
           {kommuneLoginSynlig && <Knapp variant="stille" onClick={()=>setScreen("kommune-login")}>For kommuner</Knapp>}
           <Knapp variant="stille" onClick={()=>setScreen("bruker-app")}>Tilbake</Knapp>
         </div>
+        <p className="kv-meta">
+          <a className="kv-lenke" href="/personvern">Personvern</a>
+          {" · "}
+          <a className="kv-lenke" href="/vilkar">Vilkår</a>
+        </p>
       </div>
     </div>
   );
@@ -789,13 +691,23 @@ const FORHANDSBRUKER = {
 };
 
 function visningFraSti(): string {
-  const p = window.location.pathname.replace(/\/$/, "");
-  if (p === "/ordliste" || p === "/app/ordliste") return "ordliste";
+  let p = window.location.pathname.replace(/\/$/, "") || "/";
+  if (p === "/app") p = "/";
+  else if (p.startsWith("/app/")) p = p.slice(4);
+  if (p === "/ordliste") return "ordliste";
   if (erDekningSti(p)) return "dekning";
-  if (p === "/design" || p === "/app/design") return "design";
-  if (p === "/min-side" || p === "/app/min-side") return "minside";
+  if (p === "/arkiv") return "varsler";
+  if (p === "/min-side") return "minside";
+  if (p === "/kilder") return "kilder";
+  if (p === "/kampanjer") return "kampanjer";
+  if (p === "/historikk") return "historikk";
+  if (p === "/profil") return "profil";
+  if (p === "/mobiliser") return "mobiliser";
+  if (p === "/admin/tilbakemeldinger") return "tilbakemeldinger";
   if (komiteFraSti()) return "komite";
   const vis = forhandsvisning();
+  if (vis === "tilbakemeldinger") return "tilbakemeldinger";
+  if (vis === "verktoy" || vis === "premium") return "premium";
   if (vis === "profil" || vis === "varsler") return "profil";
   if (vis === "mobiliser") return "mobiliser";
   if (vis === "horing") return "horing";
@@ -809,7 +721,6 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [showPremium,setShowPremium]=useState(false);
   const [showVarselReg,setShowVarselReg]=useState(forhandsvisning()==="varsler");
   const [showOnboarding,setShowOnboarding]=useState(user&&!user.onboardingDone);
-  const [showFeedback,setShowFeedback]=useState(false);
   const [fulgte,setFullgte]=useState<any[]>([]);
   const [lagredeSok,setLagredeSok]=useState<LagretSok[]>([]);
   const [sokLastet,setSokLastet]=useState(false);
@@ -817,7 +728,8 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   const [minFane,setMinFane]=useState("horingssvar");
   const [apneOppsett,setApneOppsett]=useState(false);
   const [stotte,setStotte]=useState<StotteRad[]>([]);
-  const isPremium = user?.plan==="premium";
+  const flate = premiumFlate(premiumAktiv(), user?.plan);
+  const isPremium = verktøyÅpent(user?.plan, premiumAktiv());
   const [aktivitet,setAktivitet]=useState<any[]>(AKTIVITET_INIT);
 
   const [varsler,setVarsler]=useState<any[]>([]);
@@ -971,24 +883,41 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
   function demoNå() {
     return demoParameter();
   }
+  function pushSti(sti: string) {
+    const neste = new URL(sti, window.location.origin);
+    const demo = demoNå();
+    if (demo && !neste.searchParams.has("demo")) {
+      const q = new URLSearchParams(window.location.search);
+      for (const n of ["demo", "steg", "endre", "vis"]) {
+        const v = q.get(n);
+        if (v && !neste.searchParams.has(n)) neste.searchParams.set(n, v);
+      }
+    }
+    const maal = `${neste.pathname}${neste.search}`;
+    if (`${window.location.pathname}${window.location.search}` !== maal) {
+      window.history.pushState({}, "", maal);
+    }
+  }
   function gå(id: string){
     setMenyÅpen(false);
     setMerÅpen(false);
     if(id==="premium"&&!isPremium){setShowPremium(true);return;}
     const demo = demoNå();
-    const sti = window.location.pathname.replace(/\/$/, "") || "/";
     if(id==="mobiliser"&&!user&&!demo){beOmInnlogging("");return;}
-    if(id==="ordliste") window.history.pushState({}, "", "/ordliste");
-    else if(id==="dekning") window.history.pushState({}, "", "/hva-vi-dekker");
+    if(id==="ordliste") pushSti("/ordliste");
+    else if(id==="dekning") pushSti("/hva-vi-dekker");
     else if(id==="minside") {
       const m = demo === "tom" || demo === "oppsett" ? demo : demo ? "side" : "";
-      window.history.pushState({}, "", m ? `/min-side?demo=${m}` : "/min-side");
+      pushSti(m ? `/min-side?demo=${m}` : "/min-side");
     }
-    else if(id==="forside"||id==="varsler"||id==="mobiliser"||id==="kampanjer") {
-      if(demo==="side"||demo==="forside") window.history.pushState({}, "", "/?demo=forside");
-      else if(sti==="/min-side"||erDekningSti(sti)) window.history.pushState({}, "", "/");
-    }
-    else if(sti==="/min-side"||erDekningSti(sti)) window.history.pushState({}, "", "/");
+    else if(id==="forside") pushSti(demo==="side"||demo==="forside" ? "/?demo=forside" : "/");
+    else if(id==="varsler") pushSti("/arkiv");
+    else if(id==="kilder") pushSti("/kilder");
+    else if(id==="kampanjer") pushSti("/kampanjer");
+    else if(id==="historikk") pushSti("/historikk");
+    else if(id==="profil") pushSti("/profil");
+    else if(id==="mobiliser") pushSti("/app/mobiliser");
+    else if(id==="tilbakemeldinger") pushSti("/admin/tilbakemeldinger");
     setView(id);
     window.scrollTo({top:0});
   }
@@ -1003,16 +932,20 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     setView("forside");
     window.setTimeout(()=>document.getElementById("metode")?.scrollIntoView({behavior:"smooth",block:"start"}),40);
   }
-  async function lagreMinSide(felt: MinValg) {
+  async function lagreMinSide(felt: MinValg, ferdig = false) {
     if(!user?.id) return false;
-    const ok = await lagreProfil(user.id, {
+    const oppdatering: Record<string, unknown> = {
       fagfelt: felt.fagfelt,
       geografisk: felt.geografisk,
       organ: felt.organ,
       komiteer: felt.komiteer,
       varsler_aktive: felt.varslerAktive,
-      minside_klar: true,
-    });
+    };
+    if (ferdig) {
+      oppdatering.minside_klar = true;
+      oppdatering.onboarding_done = true;
+    }
+    const ok = await lagreProfil(user.id, oppdatering);
     if(!ok) {
       showToast("Kunne ikke lagre valgene. Prøv igjen.","feil");
       return false;
@@ -1026,8 +959,9 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
       varslerAktive: felt.varslerAktive,
       varselKat: felt.fagfelt,
       varselNivå: nivaaFraGeografisk(felt.geografisk),
-      minsideKlar: true,
+      ...(ferdig ? { minsideKlar: true, onboardingDone: true } : {}),
     }:u);
+    if (ferdig) setShowOnboarding(false);
     return true;
   }
 
@@ -1063,7 +997,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     {id:"kampanjer",label:"Kampanjer"},
     {id:"mobiliser",label:"Mobiliser"},
     {id:"historikk",label:"Historikk"},
-    {id:"premium",label:"Premium"},
+    flate.meny,
     ...(user?[{id:"profil",label:"Min profil"}]:[]),
   ];
   const annenTittel =
@@ -1071,7 +1005,8 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
     view==="kampanjer"?"Kampanjer":
     view==="mobiliser"?"Mobiliser":
     view==="profil"?"Min profil":
-    view==="premium"?"Premium-verktøy":"";
+    view==="premium"?flate.tittel:
+    view==="tilbakemeldinger"?"Tilbakemeldinger":"";
   const fagAktiv = (id: string) => view==="varsler" && arkivKat===id;
   const personlig = personligKilde({
     userId: user?.id,
@@ -1097,15 +1032,15 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
 
   return (
     <div className="avis">
-      {showPremium&&<PremiumModal user={user} onClose={()=>setShowPremium(false)} onLogin={()=>{setShowPremium(false);beOmInnlogging("");}}/>}
+      {premiumAktiv() && showPremium&&<PremiumModal user={user} onClose={()=>setShowPremium(false)} onLogin={()=>{setShowPremium(false);beOmInnlogging("");}}/>}
       {showVarselReg&&<VarselRegistreringModal user={user} setUser={setUser} onClose={()=>setShowVarselReg(false)} beOmInnlogging={beOmInnlogging}/>}
       {showOnboarding&&user&&view!=="minside"&&<OnboardingWizard user={user} setUser={setUser} onDone={()=>setShowOnboarding(false)}/>}
-      {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
 
       <div className="avis-dato">
         <div className="avis-wrap avis-dato-rad">
           <div className="avis-dato-venstre">
-            <span className="avis-dato-meta">{datoMeta(dataLastet?aktiveVarsler.length:null)}</span>
+            <span className="avis-prove">Prøvedrift</span>
+            <span className="avis-dato-meta">{datoMeta(dataLastet?aktiveVarsler.filter((v)=>fristTilstand(v)!=="passert").length:null)}</span>
             <KildeTillitsstrip onÅpne={()=>gå("kilder")}/>
           </div>
           <div className="avis-dato-hoyre">
@@ -1179,7 +1114,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         {view==="forside" && (
           <BrukerForside
             setView={gå}
-            varsler={personlig.mock ? personlig.saker : aktiveVarsler}
+            varsler={(personlig.mock ? personlig.saker : aktiveVarsler).filter((v: { frist?: string | null; status?: string | null }) => fristTilstand(v) !== "passert")}
             kampanjer={personlig.mock ? personlig.kampanjer : kampanjer}
             setShowPremium={setShowPremium}
             isPremium={isPremium}
@@ -1216,7 +1151,6 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
         {view==="kilder" && <KildeHelseSide onBack={()=>gå("forside")}/>}
         {view==="ordliste" && <OrdlisteSide />}
         {view==="dekning" && <DekningSide />}
-        {view==="design" && <DesignSide />}
         {view==="horing" && <HoringForhandsvisning />}
         {view==="innspill" && <InnspillForhandsvisning />}
         {view==="minside" && (
@@ -1227,6 +1161,13 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             sok={lagredeSok}
             sokLastet={sokLastet}
             onLagreValg={lagreMinSide}
+            onSlettKonto={async () => {
+              const ok = await slettInnloggetKonto();
+              if (!ok) return false;
+              setUser(null);
+              setScreen("bruker-login");
+              return true;
+            }}
             onLagreSok={lagreSokMinSide}
             onSlettSok={slettSokMinSide}
             onToggleFolg={toggleFølg}
@@ -1261,7 +1202,7 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             skriv={skrivFulgteKomite}
           />
         )}
-        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="dekning"&&view!=="design"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&view!=="komite"&&(
+        {view!=="forside"&&view!=="varsler"&&view!=="kilder"&&view!=="ordliste"&&view!=="dekning"&&view!=="horing"&&view!=="innspill"&&view!=="minside"&&view!=="komite"&&(
           <div className="avis-wrap avis-annet">
             {annenTittel&&<h1>{annenTittel}</h1>}
             {view==="historikk" && <SaksHistorikkSide aktivitet={aktivitet} historiske={historiskeVarsler}/>}
@@ -1281,7 +1222,8 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
                 varslerData={varsler}
               />
             )}
-            {view==="premium" && <PremiumVerktøy varslerData={varsler} user={user}/>}
+            {view==="premium" && <PremiumVerktøy varslerData={varsler} user={user} apenProvedrift={!premiumAktiv()}/>}
+            {view==="tilbakemeldinger" && <TilbakemeldingOversikt eksempel={forhandsvisning()==="tilbakemeldinger"} />}
           </div>
         )}
       </main>
@@ -1296,8 +1238,9 @@ function BrukerApp({user,setUser,setScreen,beOmInnlogging}: any) {
             <a href="/hva-vi-dekker">Hva vi dekker</a>
             <a href="/ordliste">Ordliste</a>
             <a href="/personvern">Personvern</a>
-            <button type="button" onClick={()=>setShowFeedback(true)}>Gi tilbakemelding</button>
-            <span>post@kulturvarsling.no</span>
+            <a href="/vilkar">Vilkår</a>
+            <button type="button" onClick={() => apneTilbakemelding()}>Gi tilbakemelding</button>
+            <span>{KONTAKT_EPOST}</span>
           </div>
         </div>
       </footer>
@@ -1330,13 +1273,12 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
   async function slettKonto() {
     setSlettSteg("jobber");
     setSlettFeil("");
-    const { data, error } = await sb.functions.invoke("slett-konto", { body: {} });
-    if (error || !data?.ok) {
+    const ok = await slettInnloggetKonto();
+    if (!ok) {
       setSlettSteg("idle");
       setSlettFeil("Kontoen ble ikke slettet. Prøv igjen, eller skriv til post@kulturvarsling.no.");
       return;
     }
-    await sb.auth.signOut();
     setUser(null);
     setScreen("bruker-login");
   }
@@ -1459,7 +1401,7 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
           <section className="kv-kort">
             <h2 className="kv-undertittel">Varsler</h2>
             <p className="kv-brod">
-              {user?.varslerAktive ? "Varsler er slått på. Ingenting sendes ut ennå. Valgene er bare lagret." : "Ingen varsler er slått på."}
+              {user?.varslerAktive ? "Valgene er lagret på kontoen. E-postvarsler kommer senere. Ingenting sendes nå." : "Ingen varsler er slått på. E-postvarsler kommer senere."}
             </p>
             <div className="kv-klynge">
               <Knapp variant="linje" onClick={()=>setShowVarselReg(true)}>Endre varsler og fagfelt</Knapp>
@@ -1500,11 +1442,17 @@ function MinProfilSide({user,setUser,setScreen,aktivitet,fulgte,toggleFølg,setS
             )}
             {slettFeil&&<p className="kv-feil" role="alert">{slettFeil}</p>}
           </section>
-          {user?.plan!=="premium"&&(
+          {premiumFlate(premiumAktiv(), user?.plan).visBetaling&&(
             <section className="kv-kort">
               <h2 className="kv-undertittel">Premium</h2>
               <p className="kv-brod">Budsjettolkning, trender og eksport.</p>
               <Knapp onClick={()=>setShowPremium(true)}>Se planene</Knapp>
+            </section>
+          )}
+          {premiumFlate(premiumAktiv(), user?.plan).profilTekst&&(
+            <section className="kv-kort">
+              <h2 className="kv-undertittel">Prøvedrift</h2>
+              <p className="kv-brod">{premiumFlate(premiumAktiv(), user?.plan).profilTekst}</p>
             </section>
           )}
         </div>
@@ -1595,13 +1543,12 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
   useEffect(()=>{ setTab(startTab||"info"); },[sak?.id, startTab]);
   useEffect(()=>{
     document.body.style.overflow="hidden";
-    const esc=(e:KeyboardEvent)=>{ if(e.key==="Escape") onClose(); };
+    const esc=(e:KeyboardEvent)=>{ if(e.key==="Escape" && document.body.dataset.tilbakemelding!=="apne") onClose(); };
     window.addEventListener("keydown",esc);
     return ()=>{ document.body.style.overflow=""; window.removeEventListener("keydown",esc); };
   },[onClose]);
   const [malModal,setMalModal]=useState<any>(null);
   const [visNyKampanje,setVisNyKampanje]=useState(false);
-  const [visFeedback,setVisFeedback]=useState(false);
   const [nyKampTittel,setNyKampTittel]=useState(`Stopp: ${sak.tittel}`);
   const [nyKampBeskr,setNyKampBeskr]=useState("");
   const [nyKampOpprettet,setNyKampOpprettet]=useState(false);
@@ -1631,7 +1578,6 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
   return (
     <Dialog tittel={<MerketTekst deler={merket[0]} />} etikett={sak.tittel} onClose={onClose}>
       {malModal&&<MalModal type={malModal.type} kontekst={malModal.kontekst} onClose={()=>setMalModal(null)}/>}
-      {visFeedback&&<FeedbackModal onClose={()=>setVisFeedback(false)} kontekst={{sakTittel:sak.tittel,type:"feil"}}/>}
       <div className={vurdering.handlingsrettet ? "kv-sakrolle handling" : "kv-sakrolle orientering"}>
         <Rollemerke sak={sak} nå={new Date()} />
       </div>
@@ -1700,7 +1646,7 @@ function SaksModal({sak,onClose,kampanjer=[],startTab="info",user=null,onKrevInn
               {relKampanjer.length} kampanje{relKampanjer.length===1?"":"r"} på denne saken
             </button>
           )}
-          <button type="button" className="kv-knapp stille" onClick={()=>setVisFeedback(true)}>Rapporter feil i saken</button>
+          <button type="button" className="kv-knapp stille" onClick={()=>apneTilbakemelding({ type:"feil", sakTittel:sak.tittel, sakId:sak.id==null?null:String(sak.id) })}>Rapporter feil i saken</button>
         </div>
       )}
       {tab==="mobiliser"&&(
@@ -2177,7 +2123,7 @@ function BrukerMobiliser({loggAktivitet: _loggAktivitet=()=>{},user=null,varsler
   );
 }
 
-function PremiumVerktøy({varslerData=[],user=null}:{varslerData?:any[];user?:any}) {
+function PremiumVerktøy({varslerData=[],user=null,apenProvedrift=false}:{varslerData?:any[];user?:any;apenProvedrift?:boolean}) {
   const [tool,setTool]=useState("budsjett");
   const [nivå,setNivå]=useState("kommune");
   const [kommuner,setKommuner]=useState<any[]>([]);
@@ -2208,6 +2154,9 @@ function PremiumVerktøy({varslerData=[],user=null}:{varslerData?:any[];user?:an
 
   return (
     <div className="kv-stakk">
+      {apenProvedrift && (
+        <p className="kv-brod">Åpen prøvedrift. Verktøyene er åpne for innloggede, uten betaling. Forklaringer og analyser har fortsatt en døgnkvote.</p>
+      )}
       <Faner
         faner={[
           {id:"budsjett",label:"Budsjett"},
@@ -2364,13 +2313,13 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
     <Dialog tittel={lagret?"Varsler lagret":"E-postvarsler"} onClose={onClose} smal>
       {lagret?(
         <div className="kv-stakk">
-          <p className="kv-brod">{epost ? `Valgene er lagret. Varslene sendes til ${epost}.` : "Valgene er lagret. Varsler sendes ikke før kontoens e-post er bekreftet."} Ingenting sendes ut ennå.</p>
+          <p className="kv-brod">Valgene er lagret. E-postvarsler kommer senere. Ingenting sendes nå.</p>
           <p className="kv-meta">Du kan endre innstillingene under Min profil.</p>
           <Knapp onClick={onClose}>Lukk</Knapp>
         </div>
       ):(
         <div className="kv-stakk">
-          <p className="kv-brod">Varselet lagres på kontoen. Utsending er ikke startet.</p>
+          <p className="kv-brod">Valget lagres på kontoen. E-postvarsler kommer senere. Ingenting sendes nå.</p>
           <div>
             <p className="kv-feltnavn">Fagområde</p>
             <Flervalg valg={KATEGORIER} valgt={valgtKat} onToggle={(id)=>setValgtKat(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id])} />
@@ -2386,7 +2335,7 @@ function VarselRegistreringModal({user,setUser,onClose,beOmInnlogging}: any) {
           </div>
           <p className="kv-feltnavn">E-postadresse for varsler</p>
           <p className="kv-brod">{epost || "Kontoen har ingen bekreftet e-post ennå."}</p>
-          <p className="kv-meta">Varslene sendes til den bekreftede adressen på kontoen.</p>
+          <p className="kv-meta">E-postvarsler kommer senere. Adressen brukes ikke til utsending nå.</p>
           {feil&&<p className="kv-feil" role="alert">{feil}</p>}
           <div className="kv-klynge">
             <Knapp className="vokse" onClick={lagre} disabled={lagrer}>{lagrer?"Lagrer":"Lagre varsler"}</Knapp>

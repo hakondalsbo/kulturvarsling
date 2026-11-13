@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aiKvoteGrense, harPremium, reserverAiKvote } from "./tilgang.ts";
+import { aiKvoteGrense, brukPremiumKvote, harFagtilgang, harPremium, premiumMurAktiv, reserverAiKvote } from "./tilgang.ts";
 
 test("harPremium leser kun profiler.plan === premium", () => {
   assert.equal(harPremium({ plan: "premium" }), true);
@@ -10,6 +10,22 @@ test("harPremium leser kun profiler.plan === premium", () => {
   assert.equal(harPremium({ plan: "Premium" }), false);
   assert.equal(harPremium(null), false);
   assert.equal(harPremium({ plan: "gratis", metadata: { plan: "premium" } }), false);
+});
+
+test("prøvedrift åpner fagverktøy og klartekst-tak uten å endre harPremium", () => {
+  assert.equal(premiumMurAktiv("true"), true);
+  assert.equal(premiumMurAktiv("false"), false);
+  assert.equal(premiumMurAktiv(undefined), false);
+  assert.equal(premiumMurAktiv("TRUE"), false);
+  assert.equal(harFagtilgang({ plan: "gratis" }, false), true);
+  assert.equal(harFagtilgang({ plan: "gratis" }, true), false);
+  assert.equal(harFagtilgang({ plan: "premium" }, true), true);
+  assert.equal(brukPremiumKvote({ plan: "gratis" }, false), true);
+  assert.equal(brukPremiumKvote({ plan: "gratis" }, true), false);
+  assert.equal(brukPremiumKvote({ plan: "premium" }, true), true);
+  assert.equal(aiKvoteGrense("klartekst", brukPremiumKvote({ plan: "gratis" }, false)), 120);
+  assert.equal(aiKvoteGrense("klartekst", brukPremiumKvote({ plan: "gratis" }, true)), 30);
+  assert.equal(aiKvoteGrense("budsjett", true), 10);
 });
 
 test("kvote er 10 for budsjett, 30 gratis og 120 premium for klartekst", async () => {

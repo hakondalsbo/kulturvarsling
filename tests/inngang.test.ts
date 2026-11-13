@@ -13,29 +13,51 @@ test("forsiden har én inngang til statsbudsjettsiden", () => {
 test("vercel.json omskriver de samme stiene uten routes", () => {
   const config = JSON.parse(readFileSync("vercel.json", "utf8"));
   assert.equal(config.routes, undefined);
-  assert.equal(config.redirects, undefined);
+  assert.deepEqual(config.redirects, [
+    {
+      source: "/:path*",
+      has: [{ type: "host", value: "kulturvarsling.no" }],
+      destination: "https://www.kulturvarsling.no/:path*",
+      permanent: true,
+    },
+  ]);
   assert.deepEqual(
     config.rewrites.map((r: { source: string; destination: string }) => [r.source, r.destination]),
     [
+      ["/design", "/404.html"],
+      ["/design/", "/404.html"],
+      ["/app/design", "/404.html"],
+      ["/app/design/", "/404.html"],
       ["/app", "/index.html"],
-      ["/app/(.*)", "/index.html"],
       ["/personvern", "/personvern.html"],
+      ["/vilkar", "/vilkar.html"],
+      ["/vilkar/", "/vilkar.html"],
       ["/bekreft", "/bekreft.html"],
       ["/avmelding", "/avmelding.html"],
       ["/statsbudsjett", "/index.html"],
       ["/statsbudsjett/", "/index.html"],
       ["/ordliste", "/index.html"],
+      ["/ordliste/", "/index.html"],
       ["/app/ordliste", "/index.html"],
       ["/hva-vi-dekker", "/index.html"],
       ["/hva-vi-dekker/", "/index.html"],
       ["/app/hva-vi-dekker", "/index.html"],
-      ["/design", "/index.html"],
-      ["/app/design", "/index.html"],
+      ["/arkiv", "/index.html"],
+      ["/arkiv/", "/index.html"],
+      ["/app/arkiv", "/index.html"],
       ["/min-side", "/index.html"],
+      ["/min-side/", "/index.html"],
       ["/app/min-side", "/index.html"],
+      ["/kilder", "/index.html"],
+      ["/kampanjer", "/index.html"],
+      ["/historikk", "/index.html"],
+      ["/profil", "/index.html"],
+      ["/admin/tilbakemeldinger", "/index.html"],
+      ["/admin/tilbakemeldinger/", "/index.html"],
       ["/mobiliser", "/index.html"],
       ["/mobiliser/", "/index.html"],
       ["/komite/:id", "/index.html"],
+      ["/app/(.*)", "/index.html"],
       ["/(.*)", "/404.html"],
     ],
   );
@@ -58,14 +80,17 @@ test("vercel.json omskriver de samme stiene uten routes", () => {
   );
 });
 
-test("komponentoversikten ligger på /design", () => {
+test("komponentoversikten er ikke en offentlig rute", () => {
   const app = readFileSync("src/App.tsx", "utf8");
   const design = readFileSync("src/design.tsx", "utf8");
   const vercel = readFileSync("vercel.json", "utf8");
-  assert.match(app, /\/design/);
+  assert.equal(existsSync("src/design.tsx"), true);
+  assert.doesNotMatch(app, /DesignSide/);
   assert.doesNotMatch(app, /href="\/design"/);
   assert.doesNotMatch(vercel, /"routes"/);
-  assert.match(vercel, /"source": "\/design", "destination": "\/index.html"/);
+  assert.match(vercel, /"source": "\/design", "destination": "\/404.html"/);
+  assert.match(vercel, /"source": "\/app\/design", "destination": "\/404.html"/);
+  assert.doesNotMatch(vercel, /"source": "\/design", "destination": "\/index.html"/);
   assert.match(vercel, /\{ "source": "\/statsbudsjett", "destination": "\/index.html" \}/);
   assert.match(vercel, /\{ "source": "\/statsbudsjett\/", "destination": "\/index.html" \}/);
   assert.match(vercel, /script-src 'self' https:\/\/vercel\.live https:\/\/challenges\.cloudflare\.com/);
