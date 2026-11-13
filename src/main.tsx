@@ -6,15 +6,20 @@ import { erStatsbudsjettSti } from './innhold/statsbudsjett2027.ts'
 import { StatsbudsjettSide, settStatsbudsjettMeta } from './statsbudsjett.tsx'
 import { MobiliserSide } from './mobiliser/MobiliserSide.tsx'
 import { erMobiliserSti } from './mobiliser/miljo.ts'
+import { TilbakemeldingLag } from './tilbakemelding.tsx'
 
 const sti = window.location.pathname
 const budsjett = erStatsbudsjettSti(sti)
 if (budsjett) settStatsbudsjettMeta()
 
 function Side() {
-  if (budsjett) return <StatsbudsjettSide />
-  if (erMobiliserSti(sti)) return <MobiliserSide />
-  return <App />
+  const innhold = budsjett ? <StatsbudsjettSide /> : erMobiliserSti(sti) ? <MobiliserSide /> : <App />;
+  return (
+    <>
+      {innhold}
+      <TilbakemeldingLag />
+    </>
+  );
 }
 
 createRoot(document.getElementById('root')!).render(

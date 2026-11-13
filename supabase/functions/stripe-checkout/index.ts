@@ -14,6 +14,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { corsHeadere, erTillattOpprinnelse } from "../_shared/cors.ts";
+import { premiumMurAktiv } from "../_shared/tilgang.ts";
 
 // Beløp i øre — må matche prisene brukeren oppretter i Stripe-dashbordet.
 const PRISER = {
@@ -82,6 +83,9 @@ Deno.serve(async (req: Request) => {
     });
 
   try {
+    if (!premiumMurAktiv(Deno.env.get("PREMIUM_AKTIV"))) {
+      return svar({ error: "Betaling er ikke åpen i prøvedriften." }, 403);
+    }
     const stripeNøkkel = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeNøkkel) {
       return svar({

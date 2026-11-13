@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { matcherHandling, vurderSak } from "../src/handling.ts";
+import { forsideHovedsak, matcherHandling, vurderSak } from "../src/handling.ts";
 
 const nå = new Date("2026-10-24T12:00:00+02:00");
 
@@ -100,6 +100,29 @@ test("bare_orientering slår ut nær frist", () => {
   assert.equal(v.mobiliserNaa, false);
   assert.equal(matcherHandling({ frist: "2026-10-28", handling: "bare_orientering" }, "orientering", nå), true);
   assert.equal(matcherHandling({ frist: "2026-10-28", handling: "bare_orientering" }, "handling", nå), false);
+});
+
+test("utløpt frist blir ikke forsidens hovedsak", () => {
+  const utløpt = {
+    id: "gammel",
+    tittel: "Høring som er ute",
+    frist: "2026-10-01",
+    status: "passert",
+    handling: "handling_mulig" as const,
+  };
+  const åpen = {
+    id: "apen",
+    tittel: "Ny høring",
+    frist: "2026-11-02",
+    status: "høring",
+    handling: "handling_mulig" as const,
+  };
+  assert.equal(forsideHovedsak([utløpt, åpen], nå)?.id, "apen");
+  assert.equal(forsideHovedsak([utløpt], nå), null);
+  assert.equal(
+    forsideHovedsak([{ id: "ute", tittel: "Høring", frist: "2026-10-20", status: "høring", handling: "handling_mulig" }], nå),
+    null,
+  );
 });
 
 test("null i handling faller tilbake på frist", () => {

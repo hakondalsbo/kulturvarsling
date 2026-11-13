@@ -44,7 +44,8 @@ export type MinSideProps = {
   fulgte?: Array<string | number>;
   sok?: LagretSok[];
   sokLastet?: boolean;
-  onLagreValg?: (valg: MinValg) => Promise<boolean> | boolean;
+  onLagreValg?: (valg: MinValg, ferdig?: boolean) => Promise<boolean> | boolean;
+  onSlettKonto?: () => Promise<boolean>;
   onLagreSok?: (navn: string, sporretekst: string) => Promise<LagretSok | null> | LagretSok | null;
   onSlettSok?: (id: string) => Promise<boolean> | boolean;
   onToggleFolg?: (id: string | number) => void;
@@ -120,6 +121,7 @@ export function MinSide({
   sok = [],
   sokLastet = false,
   onLagreValg,
+  onSlettKonto,
   onLagreSok,
   onSlettSok,
   onToggleFolg,
@@ -158,16 +160,38 @@ export function MinSide({
   const sokFeltId = useId();
   const stedFeltId = useId();
   const brukerId = user?.id ?? "";
+  const valgRef = useRef(valg);
+  const sistLagret = useRef(JSON.stringify(valg));
+  const kanLagreRef = useRef(kanLagre);
+  const lagreCb = useRef(onLagreValg);
+  valgRef.current = valg;
+  kanLagreRef.current = kanLagre;
+  lagreCb.current = onLagreValg;
 
   useEffect(() => {
     if (erDemo || !sokLastet) return;
-    const neste = valgFra(user);
-    setValg(neste);
     setSokListe(sok);
     setFulgt(fulgte.map(String));
+    const neste = valgFra(user);
+    const urort = JSON.stringify(valgRef.current) === sistLagret.current;
+    if (urort) {
+      setValg(neste);
+      sistLagret.current = JSON.stringify(neste);
+    }
+    const grunnlag = urort ? neste : valgRef.current;
     const anker = typeof window !== "undefined" && hoppOverOppsettForAnker(window.location.hash);
-    setVisOppsett(!anker && !user?.minsideKlar && !harAvgrensning(neste) && !neste.varslerAktive && fulgte.length === 0 && sok.length === 0);
+    setVisOppsett(!anker && !user?.minsideKlar && !harAvgrensning(grunnlag) && !grunnlag.varslerAktive && fulgte.length === 0 && sok.length === 0);
   }, [erDemo, sokLastet, brukerId]);
+
+  useEffect(() => {
+    return () => {
+      const lagre = lagreCb.current;
+      if (!kanLagreRef.current || !lagre) return;
+      const snapshot = valgRef.current;
+      if (JSON.stringify(snapshot) === sistLagret.current) return;
+      void lagre(snapshot, false);
+    };
+  }, []);
 
   useEffect(() => {
     if (!apneOppsett) return;
@@ -203,21 +227,25 @@ export function MinSide({
 
   async function lagre(neste: MinValg, ferdig: boolean) {
     setValg(neste);
-    if (!kanLagre || !onLagreValg) return;
+    if (!kanLagre || !onLagreValg) {
+      sistLagret.current = JSON.stringify(neste);
+      return;
+    }
     setLagrer(true);
-    const ok = await onLagreValg({ ...neste, varslerAktive: neste.varslerAktive });
+    const ok = await onLagreValg(neste, ferdig);
     setLagrer(false);
+    if (ok) sistLagret.current = JSON.stringify(neste);
     if (!ok && ferdig) onLogin?.();
   }
 
   function hoppOver() {
     if (steg === 1) {
-      setValg((v) => medAktiv({ ...v, geografisk: [], organ: [], komiteer: [] }));
+      void lagre(medAktiv({ ...valg, geografisk: [], organ: [], komiteer: [] }), false);
       setSteg(2);
       return;
     }
     if (steg === 2) {
-      setValg((v) => medAktiv({ ...v, fagfelt: [] }));
+      void lagre(medAktiv({ ...valg, fagfelt: [] }), false);
       setSteg(3);
       return;
     }
@@ -225,15 +253,18 @@ export function MinSide({
   }
 
   function neste() {
-    if (steg === 1) setSteg(2);
-    else if (steg === 2) setSteg(3);
-    else void apne();
+    if (steg === 1 || steg === 2) {
+      void lagre(medAktiv(valg), false);
+      setSteg(steg === 1 ? 2 : 3);
+      return;
+    }
+    void apne();
   }
 
   async function apne() {
     const nesteValg = medAktiv(valg);
     setVisOppsett(false);
-    await lagre({ ...nesteValg, varslerAktive: harAvgrensning(nesteValg) }, true);
+    await lagre(nesteValg, true);
   }
 
   function toggleToken(tokens: string[], pa: boolean) {
@@ -363,8 +394,42 @@ export function MinSide({
             signeringApen={signaturKanSigneres()}
           />
         )}
+        {kanLagre && onSlettKonto ? <SlettKonto onSlett={onSlettKonto} /> : null}
       </div>
     </div>
+  );
+}
+
+function SlettKonto({ onSlett }: { onSlett: () => Promise<boolean> }) {
+  const [steg, setSteg] = useState<"idle" | "bekreft" | "jobber">("idle");
+  const [feil, setFeil] = useState("");
+
+  async function slett() {
+    setSteg("jobber");
+    setFeil("");
+    const ok = await onSlett();
+    if (!ok) {
+      setSteg("bekreft");
+      setFeil("Kontoen ble ikke slettet. Prøv igjen, eller skriv til post@kulturvarsling.no.");
+    }
+  }
+
+  return (
+    <section className="minside-slett" aria-labelledby="minside-slett">
+      <h2 id="minside-slett">Konto</h2>
+      <p className="minside-forklaring">Du kan slette kontoen og dataene som er knyttet til den. Det kan ikke angres.</p>
+      {steg === "idle" ? (
+        <Knapp variant="fare" onClick={() => setSteg("bekreft")}>Slett min konto</Knapp>
+      ) : (
+        <div className="minside-rad">
+          <Knapp variant="fare" onClick={() => void slett()} disabled={steg === "jobber"}>
+            {steg === "jobber" ? "Sletter" : "Ja, slett kontoen"}
+          </Knapp>
+          <Knapp variant="linje" onClick={() => { setSteg("idle"); setFeil(""); }} disabled={steg === "jobber"}>Avbryt</Knapp>
+        </div>
+      )}
+      {feil ? <p className="kv-feil" role="alert">{feil}</p> : null}
+    </section>
   );
 }
 
@@ -465,7 +530,7 @@ function Oppsett({
       {steg === 3 ? (
         <>
           <p className="minside-forklaring">
-            Valgene styrer også hvilke saker en senere e-post kan inneholde. Ingenting sendes før utsending blir skrudd på.
+            Valgene brukes på Min side. E-postvarsler kommer senere. Ingenting sendes nå.
           </p>
           <Oppsummering steder={valgteSteder} fag={valgteFag} valg={valg} />
           {!harAvgrensning(valg) ? (
@@ -547,7 +612,7 @@ function Dashboard({
         {!kanLagre && onLogin ? <Knapp variant="stille" onClick={onLogin}>Logg inn for å lagre</Knapp> : null}
       </div>
       {apent ? (
-        <p className="minside-forklaring">Varslene dine er på uten avgrensning. Min side viser da alle fag i hele landet, samme regel som e-posten vil bruke.</p>
+        <p className="minside-forklaring">Uten avgrensning viser Min side alle fag i hele landet. E-postvarsler kommer senere. Ingenting sendes nå.</p>
       ) : null}
 
       {tom ? (

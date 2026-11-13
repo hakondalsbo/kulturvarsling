@@ -1,4 +1,4 @@
-import { harPremium, reserverAiKvote } from "../_shared/tilgang.ts";
+import { harFagtilgang, premiumMurAktiv, reserverAiKvote } from "../_shared/tilgang.ts";
 import { budsjettNokkel, lesBudsjettCache, pakkBudsjettCache, summerTilgjengeligeTall, parseBudsjettTolkning } from "./logikk.ts";
 import { hentBearerToken } from "../klartekst/logikk.ts";
 import { kallClaude } from "../_shared/claude.ts";
@@ -187,8 +187,9 @@ Deno.serve(async (req: Request) => {
     const { data: auth, error: authFeil } = await supabase.auth.getUser(token);
     if (authFeil || !auth.user || auth.user.is_anonymous) return json({ feil: "Du må være innlogget" }, 401);
     const { data: profil, error: profilFeil } = await supabase.from("profiler").select("plan").eq("id", auth.user.id).maybeSingle();
-    if (profilFeil) return json({ feil: "Kunne ikke kontrollere abonnementet akkurat nå" }, 503);
-    if (!harPremium(profil)) return json({ feil: "Budsjettanalyse krever Premium" }, 403);
+    const mur = premiumMurAktiv(Deno.env.get("PREMIUM_AKTIV"));
+    if (mur && profilFeil) return json({ feil: "Kunne ikke kontrollere abonnementet akkurat nå" }, 503);
+    if (!harFagtilgang(profil, mur)) return json({ feil: "Budsjettanalyse krever Premium" }, 403);
     if (body.list === true) return json({ kommuner: await hentKommuneListe() });
     const nøkkel = budsjettNokkel(body);
     if (!nøkkel) return json({ feil: "Velg et gyldig område" }, 400);

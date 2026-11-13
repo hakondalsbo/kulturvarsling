@@ -1,4 +1,4 @@
-import { harPremium, reserverAiKvote } from "../_shared/tilgang.ts";
+import { brukPremiumKvote, premiumMurAktiv, reserverAiKvote } from "../_shared/tilgang.ts";
 import { kallClaude } from "../_shared/claude.ts";
 import { kildegrunnlag, lagreTallSperring, loggUdokumenterteTall } from "../_shared/kildekontroll.ts";
 // Klartekst (VEIKART E2): «Hva betyr dette for deg?»
@@ -256,7 +256,7 @@ Deno.serve(async (req: Request) => {
     // Én pågående generering per cache-nøkkel i samme isolat. Det fjerner den
     // vanligste samtidighetsdobbeltkostnaden uten å utvide databaseskjemaet.
     if (!pågåendeGenereringer.has(cacheNøkkel)) {
-      const kvote = await reserverAiKvote(supabase, bruker.id, "klartekst", harPremium(profilRad));
+      const kvote = await reserverAiKvote(supabase, bruker.id, "klartekst", brukPremiumKvote(profilRad, premiumMurAktiv(Deno.env.get("PREMIUM_AKTIV"))));
       if (kvote !== "ok") return svar(req, { feil: kvote === "grense" ? "Du har nådd grensen for nye forklaringer i dag. Lagrede forklaringer er fortsatt tilgjengelige." : "Kunne ikke kontrollere analysegrensen akkurat nå" }, kvote === "grense" ? 429 : 503);
     }
     const parsed = await genererKlartekst(cacheNøkkel, sak, profil, apiKey);

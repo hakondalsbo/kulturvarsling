@@ -58,6 +58,17 @@
   margin-top: 8px;
 }
 
+.minside-slett {
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1px solid var(--linje);
+}
+
+.minside-slett h2 {
+  margin-top: 0;
+  font-size: 22px;
+}
+
 .minside-liste {
   max-height: 280px;
   overflow: auto;

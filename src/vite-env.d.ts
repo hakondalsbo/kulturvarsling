@@ -3,6 +3,8 @@
 interface ImportMetaEnv {
   readonly VITE_KOMMUNELOGIN?: string;
   readonly VITE_HORINGSHJELP?: string;
+  /** Nøyaktig "true" viser priser og premium-låser. Av i prøvedrift. */
+  readonly VITE_PREMIUM_AKTIV?: string;
   /** Sat fra VERCEL_ENV i vite.config, så prod-bygg kan skru av ?demo=. */
   readonly VITE_VERCEL_ENV?: string;
   readonly VITE_MOBILISERING_SIGNATUR_AKTIV?: string;

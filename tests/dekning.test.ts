@@ -131,7 +131,7 @@ test("ruten er /hva-vi-dekker og lenkes fra meny, metode og Mer", () => {
   assert.match(app, /id:"dekning",label:"Hva vi dekker"/);
   assert.match(app, /href="\/hva-vi-dekker">Hva vi dekker</);
   assert.match(app, /view==="dekning" && <DekningSide \/>/);
-  assert.doesNotMatch(app, /href="\/vilkar"/);
+  assert.match(app, /href="\/vilkar"/);
   assert.match(avis, /className="avis-metode-mer"><a href="\/hva-vi-dekker">Hva vi dekker<\/a>/);
   assert.doesNotMatch(avis, /href="\/vilkar"/);
   assert.match(side, /hva-vi-dekker\.md\?raw/);
